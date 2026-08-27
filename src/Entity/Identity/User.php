@@ -1,0 +1,199 @@
+<?php
+
+namespace App\Entity;
+
+use App\Repository\Identity\UserRepository;
+use Doctrine\ORM\Mapping as ORM;
+use Symfony\Bridge\Doctrine\Types\UuidType;
+use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
+use Symfony\Component\Security\Core\User\UserInterface;
+use Symfony\Component\Uid\Uuid;
+
+#[ORM\Entity(repositoryClass: UserRepository::class)]
+#[ORM\Table(name: 'users', schema: 'identity')]
+#[ORM\HasLifecycleCallbacks]
+class User implements UserInterface, PasswordAuthenticatedUserInterface
+{
+    // Rôles du cahier des charges (§22.1) — ROLE_VISITOR n'est pas persisté,
+    // un visiteur non authentifié n'a pas de ligne en base.
+    public const ROLE_CLIENT = 'ROLE_CLIENT';
+    public const ROLE_PRODUCER = 'ROLE_PRODUCER';
+    public const ROLE_PRODUCER_TEAM = 'ROLE_PRODUCER_TEAM';
+    public const ROLE_SUPPORT = 'ROLE_SUPPORT';
+    public const ROLE_ADMIN = 'ROLE_ADMIN';
+    public const ROLE_SUPER_ADMIN = 'ROLE_SUPER_ADMIN';
+
+    #[ORM\Id]
+    #[ORM\Column(type: UuidType::NAME, unique: true)]
+    private Uuid $id;
+
+    #[ORM\Column(type: 'citext', unique: true)] //* Equivalent JS ToLowerCase
+    private string $email;
+
+    #[ORM\Column(name: 'password_hash', length: 255)]
+    private string $password;
+
+    #[ORM\Column(type: 'text[]', nullable: true)]
+    private array $roles = [];
+
+    #[ORM\Column(name: 'first_name', length: 255, nullable: true)]
+    private ?string $firstName = null;
+
+    #[ORM\Column(name: 'last_name', length: 255, nullable: true)]
+    private ?string $lastName = null;
+
+    #[ORM\Column(length: 32, nullable: true)]
+    private ?string $phone = null;
+
+    #[ORM\Column(length: 10)]
+    private string $locale = 'fr';
+
+    #[ORM\Column(length: 255)]
+    private string $status = 'pending'; // = En attente de validation
+
+    #[ORM\Column(name: 'created_at', type: 'datetimetz_immutable')] // tz = Time Zone
+    private \DateTimeImmutable $createdAt;
+
+    #[ORM\Column(name: 'updated_at', type: 'datetimetz_immutable')]
+    private \DateTimeImmutable $updatedAt;
+
+    #[ORM\Column(name: 'last_login_at', type: 'datetimetz_immutable', nullable: true)]
+    private ?\DateTimeImmutable $lastLoginAt = null;
+
+    public function __construct()
+    {
+        $this->id = Uuid::v4();
+        $this->createdAt = new \DateTimeImmutable();
+        $this->updatedAt = new \DateTimeImmutable();
+    }
+
+    public function getId(): Uuid
+    {
+        return $this->id;
+    }
+
+    public function getEmail(): string
+    {
+        return $this->email;
+    }
+
+    public function setEmail(string $email): static
+    {
+        $this->email = $email;
+        return $this;
+    }
+
+    public function getUserIdentifier(): string
+    {
+        return $this->email;
+    }
+
+    public function getPassword(): string
+    {
+        return $this->password;
+    }
+
+    public function setPassword(string $password): static
+    {
+        $this->password = $password;
+        return $this;
+    }
+
+    public function getRoles(): array
+    {
+        return array_unique($this->roles);
+    }
+
+    public function setRoles(array $roles): static
+    {
+        $this->roles = $roles;
+        return $this;
+    }
+
+    public function getFirstName(): ?string
+    {
+        return $this->firstName;
+    }
+
+    public function setFirstName(?string $firstName): static
+    {
+        $this->firstName = $firstName;
+        return $this;
+    }
+
+    public function getLastName(): ?string
+    {
+        return $this->lastName;
+    }
+
+    public function setLastName(?string $lastName): static
+    {
+        $this->lastName = $lastName;
+        return $this;
+    }
+
+    public function getPhone(): ?string
+    {
+        return $this->phone;
+    }
+
+    public function setPhone(?string $phone): static
+    {
+        $this->phone = $phone;
+        return $this;
+    }
+
+    public function getLocale(): string
+    {
+        return $this->locale;
+    }
+
+    public function setLocale(string $locale): static
+    {
+        $this->locale = $locale;
+        return $this;
+    }
+
+    public function getStatus(): string
+    {
+        return $this->status;
+    }
+
+    public function setStatus(string $status): static
+    {
+        $this->status = $status;
+        return $this;
+    }
+
+    public function getCreatedAt(): \DateTimeImmutable
+    {
+        return $this->createdAt;
+    }
+
+    public function getUpdatedAt(): \DateTimeImmutable
+    {
+        return $this->updatedAt;
+    }
+
+    public function getLastLoginAt(): ?\DateTimeImmutable
+    {
+        return $this->lastLoginAt;
+    }
+
+    public function setLastLoginAt(?\DateTimeImmutable $lastLoginAt): static
+    {
+        $this->lastLoginAt = $lastLoginAt;
+        return $this;
+    }
+
+    #[ORM\PreUpdate]
+    public function touchUpdatedAt(): void
+    {
+        $this->updatedAt = new \DateTimeImmutable();
+    }
+
+    public function eraseCredentials(): void
+    {
+        // rien à effacer, pas de champ temporaire en clair
+    }
+}
