@@ -2,22 +2,22 @@
 
 namespace App\Repository\Identity;
 
-use App\Entity\Identity\PasswordRessetTokens;
+use App\Entity\Identity\PasswordResetToken;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
 /**
- * @extends ServiceEntityRepository<PasswordRessetTokens>
+ * @extends ServiceEntityRepository<PasswordResetToken>
  */
-class PasswordRessetTokensRepository extends ServiceEntityRepository
+class PasswordResetTokenRepository extends ServiceEntityRepository
 {
     public function __construct(ManagerRegistry $registry)
     {
-        parent::__construct($registry, PasswordRessetTokens::class);
+        parent::__construct($registry, PasswordResetToken::class);
     }
 
 //    /**
-//     * @return PasswordRessetTokens[] Returns an array of PasswordRessetTokens objects
+//     * @return PasswordResetToken[] Returns an array of PasswordResetToken objects
 //     */
 //    public function findByExampleField($value): array
 //    {
@@ -31,7 +31,7 @@ class PasswordRessetTokensRepository extends ServiceEntityRepository
 //        ;
 //    }
 
-//    public function findOneBySomeField($value): ?PasswordRessetTokens
+//    public function findOneBySomeField($value): ?PasswordResetToken
 //    {
 //        return $this->createQueryBuilder('p')
 //            ->andWhere('p.exampleField = :val')
