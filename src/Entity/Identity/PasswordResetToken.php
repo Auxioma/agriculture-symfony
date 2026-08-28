@@ -9,7 +9,7 @@ use Symfony\Bridge\Doctrine\Types\UuidType;
 use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: PasswordResetTokenRepository::class)]
-#[ORM\Table(name: 'passwordResetToken', schema: 'identity')]
+#[ORM\Table(name: 'password_reset_tokens', schema: 'identity')]
 class PasswordResetToken
 {
     #[ORM\Id]
