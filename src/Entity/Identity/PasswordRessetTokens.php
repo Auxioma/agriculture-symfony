@@ -6,6 +6,7 @@ use App\Repository\Identity\PasswordRessetTokensRepository;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: PasswordRessetTokensRepository::class)]
+#[ORM\Table(name: 'passwordRessetTokens', schema: 'identity')]
 class PasswordRessetTokens
 {
     #[ORM\Id]

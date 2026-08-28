@@ -6,6 +6,7 @@ use App\Repository\Identity\UserAddressRepository;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: UserAddressRepository::class)]
+#[ORM\Table(name: 'userAddress', schema: 'identity')]
 class UserAddress
 {
     #[ORM\Id]

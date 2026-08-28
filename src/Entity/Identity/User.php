@@ -10,13 +10,13 @@ use Symfony\Bridge\Doctrine\Types\UuidType;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Uid\Uuid;
+use App\Enum\UserStatus;
 
 #[ORM\Entity(repositoryClass: UserRepository::class)]
 #[ORM\Table(name: 'users', schema: 'identity')]
 #[ORM\HasLifecycleCallbacks]
 class User implements UserInterface, PasswordAuthenticatedUserInterface
 {
-    // Rôles du cahier des charges (§22.1) — ROLE_VISITOR n'est pas persisté,
     // un visiteur non authentifié n'a pas de ligne en base.
     public const ROLE_CLIENT = 'ROLE_CLIENT';
     public const ROLE_PRODUCER = 'ROLE_PRODUCER';
@@ -32,16 +32,16 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'citext', unique: true)] //* Equivalent JS ToLowerCase
     private string $email;
 
-    #[ORM\Column(name: 'password_hash', length: 255)]
+    #[ORM\Column(name: 'passwordHash', length: 255)]
     private string $password;
 
-    #[ORM\Column(type: 'text[]', nullable: true)]
+    #[ORM\Column(type: 'simple_array', nullable: true)]
     private array $roles = [];
 
-    #[ORM\Column(name: 'first_name', length: 255, nullable: true)]
+    #[ORM\Column(name: 'firstName', length: 255, nullable: true)]
     private ?string $firstName = null;
 
-    #[ORM\Column(name: 'last_name', length: 255, nullable: true)]
+    #[ORM\Column(name: 'lastName', length: 255, nullable: true)]
     private ?string $lastName = null;
 
     #[ORM\Column(length: 32, nullable: true)]
@@ -50,16 +50,16 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(length: 10)]
     private string $locale = 'fr';
 
-    #[ORM\Column(length: 255)]
-    private string $status = 'pending'; // = En attente de validation
+    #[ORM\Column(enumType: UserStatus::class)] // *attribut de type énumération
+    private UserStatus $status = UserStatus::Pending; // = En attente de validation // *propriété
 
-    #[ORM\Column(name: 'created_at', type: 'datetimetz_immutable')] // tz = Time Zone
+    #[ORM\Column(name: 'createdAt', type: 'datetimetz_immutable')] // tz = Time Zone
     private \DateTimeImmutable $createdAt;
 
-    #[ORM\Column(name: 'updated_at', type: 'datetimetz_immutable')]
+    #[ORM\Column(name: 'updatedAt', type: 'datetimetz_immutable')]
     private \DateTimeImmutable $updatedAt;
 
-    #[ORM\Column(name: 'last_login_at', type: 'datetimetz_immutable', nullable: true)]
+    #[ORM\Column(name: 'lastLoginAt', type: 'datetimetz_immutable', nullable: true)]
     private ?\DateTimeImmutable $lastLoginAt = null;
 
     /**
@@ -163,12 +163,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
-    public function getStatus(): string
+    public function getStatus(): UserStatus // *getter + setter
     {
         return $this->status;
     }
 
-    public function setStatus(string $status): static
+    public function setStatus(UserStatus $status): static
     {
         $this->status = $status;
         return $this;

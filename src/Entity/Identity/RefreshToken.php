@@ -7,6 +7,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: RefreshTokenRepository::class)]
+#[ORM\Table(name: 'refreshToken', schema: 'identity')]
 class RefreshToken
 {
     #[ORM\Id]
@@ -30,7 +31,7 @@ class RefreshToken
     #[ORM\Column(type: Types::DATETIMETZ_MUTABLE)]
     private ?\DateTime $createdAt = null;
 
-    #[ORM\Column(type: 'string', columnDefinition: 'INET', length: 255, nullable: true)]
+    #[ORM\Column(type: 'string', columnDefinition: 'INET', length: 45, nullable: true)] //* IPv4 ou IPv6
     private ?string $ipAddress = null;
 
     public function getId(): ?int

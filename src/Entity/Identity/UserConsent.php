@@ -6,6 +6,7 @@ use App\Repository\Identity\UserConsentRepository;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: UserConsentRepository::class)]
+#[ORM\Table(name: 'userConsent', schema: 'identity')]
 class UserConsent
 {
     #[ORM\Id]

@@ -3,8 +3,8 @@ doctrine:
         url: '%env(resolve:DATABASE_URL)%'
         types:
             uuid: Symfony\Bridge\Doctrine\Types\UuidType
-            citext: MartinGeorgiev\Doctrine\DBAL\Types\Citext
-            'text[]': MartinGeorgiev\Doctrine\DBAL\Types\TextArray
+            citext: App\Doctrine\CitextType
+            'text[]': App\Doctrine\TextArray
         mapping_types:
             citext: citext
             'text[]': 'text[]'
