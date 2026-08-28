@@ -77,6 +77,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToOne(mappedBy: 'idUser', cascade: ['persist', 'remove'])]
     private ?UserPreference $userPreference = null;
 
+    /**
+     * @var Collection<int, UserAddress>
+     */
+    #[ORM\OneToMany(targetEntity: UserAddress::class, mappedBy: 'idUser')]
+    private Collection $userAddresses;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -84,6 +90,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->updatedAt = new \DateTimeImmutable();
         $this->refreshTokens = new ArrayCollection();
         $this->passwordResetTokens = new ArrayCollection();
+        $this->userAddresses = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -289,6 +296,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         }
 
         $this->userPreference = $userPreference;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, UserAddress>
+     */
+    public function getUserAddresses(): Collection
+    {
+        return $this->userAddresses;
+    }
+
+    public function addUserAddress(UserAddress $userAddress): static
+    {
+        if (!$this->userAddresses->contains($userAddress)) {
+            $this->userAddresses->add($userAddress);
+            $userAddress->setIdUser($this);
+        }
+
+        return $this;
+    }
+
+    public function removeUserAddress(UserAddress $userAddress): static
+    {
+        if ($this->userAddresses->removeElement($userAddress)) {
+            // set the owning side to null (unless already changed)
+            if ($userAddress->getIdUser() === $this) {
+                $userAddress->setIdUser(null);
+            }
+        }
 
         return $this;
     }
