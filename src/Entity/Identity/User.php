@@ -74,6 +74,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: PasswordResetToken::class, mappedBy: 'idUser')]
     private Collection $passwordResetTokens;
 
+    #[ORM\OneToOne(mappedBy: 'idUser', cascade: ['persist', 'remove'])]
+    private ?UserPreference $userPreference = null;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -269,6 +272,23 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
                 $passwordResetToken->setIdUser(null);
             }
         }
+
+        return $this;
+    }
+
+    public function getUserPreference(): ?UserPreference
+    {
+        return $this->userPreference;
+    }
+
+    public function setUserPreference(UserPreference $userPreference): static
+    {
+        // set the owning side of the relation if necessary
+        if ($userPreference->getIdUser() !== $this) {
+            $userPreference->setIdUser($this);
+        }
+
+        $this->userPreference = $userPreference;
 
         return $this;
     }

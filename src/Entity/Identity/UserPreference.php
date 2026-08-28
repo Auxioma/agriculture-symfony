@@ -6,16 +6,83 @@ use App\Repository\Identity\UserPreferenceRepository;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: UserPreferenceRepository::class)]
-#[ORM\Table(name: 'userPreference', schema: 'identity')]
+#[ORM\Table(name: 'user_preferences', schema: 'identity')]
 class UserPreference
 {
     #[ORM\Id]
-    #[ORM\GeneratedValue]
-    #[ORM\Column]
-    private ?int $id = null;
+    #[ORM\OneToOne(inversedBy: 'preference', cascade: ['persist', 'remove'])]
+    #[ORM\JoinColumn(name: 'user_id', referencedColumnName: 'id', nullable: false)]
+    private User $idUser;
 
-    public function getId(): ?int
+    #[ORM\Column(length: 10)]
+    private string $locale;
+
+    #[ORM\Column(length: 3, nullable: true)]
+    private ?string $currency = null;
+
+    #[ORM\Column(length: 120, nullable: true)]
+    private ?string $distanceUnit = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?array $notificationSettings = null;
+
+    public function getIdUser(): User
     {
-        return $this->id;
+        return $this->idUser;
+    }
+
+    public function setIdUser(User $idUser): static
+    {
+        $this->idUser = $idUser;
+
+        return $this;
+    }
+
+    public function getLocale(): string
+    {
+        return $this->locale;
+    }
+
+    public function setLocale(string $locale): static
+    {
+        $this->locale = $locale;
+
+        return $this;
+    }
+
+    public function getCurrency(): ?string
+    {
+        return $this->currency;
+    }
+
+    public function setCurrency(?string $currency): static
+    {
+        $this->currency = $currency;
+
+        return $this;
+    }
+
+    public function getDistanceUnit(): ?string
+    {
+        return $this->distanceUnit;
+    }
+
+    public function setDistanceUnit(?string $distanceUnit): static
+    {
+        $this->distanceUnit = $distanceUnit;
+
+        return $this;
+    }
+
+    public function getNotificationSettings(): ?array
+    {
+        return $this->notificationSettings;
+    }
+
+    public function setNotificationSettings(?array $notificationSettings): static
+    {
+        $this->notificationSettings = $notificationSettings;
+
+        return $this;
     }
 }
