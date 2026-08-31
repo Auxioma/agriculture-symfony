@@ -32,16 +32,16 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'citext', unique: true)] //* Equivalent JS ToLowerCase
     private string $email;
 
-    #[ORM\Column(name: 'passwordHash', length: 255)]
+    #[ORM\Column(length: 255)]
     private string $password;
 
     #[ORM\Column(type: 'simple_array', nullable: true)]
     private array $roles = [];
 
-    #[ORM\Column(name: 'firstName', length: 255, nullable: true)]
+    #[ORM\Column(length: 255, nullable: true)]
     private ?string $firstName = null;
 
-    #[ORM\Column(name: 'lastName', length: 255, nullable: true)]
+    #[ORM\Column(length: 255, nullable: true)]
     private ?string $lastName = null;
 
     #[ORM\Column(length: 32, nullable: true)]
@@ -53,35 +53,47 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(enumType: UserStatus::class)] // *attribut de type énumération
     private UserStatus $status = UserStatus::Pending; // = En attente de validation // *propriété
 
-    #[ORM\Column(name: 'createdAt', type: 'datetimetz_immutable')] // tz = Time Zone
+    #[ORM\Column(type: 'datetimetz_immutable')] // tz = Time Zone
     private \DateTimeImmutable $createdAt;
 
-    #[ORM\Column(name: 'updatedAt', type: 'datetimetz_immutable')]
+    #[ORM\Column(type: 'datetimetz_immutable')]
     private \DateTimeImmutable $updatedAt;
 
-    #[ORM\Column(name: 'lastLoginAt', type: 'datetimetz_immutable', nullable: true)]
+    #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
     private ?\DateTimeImmutable $lastLoginAt = null;
 
     /**
      * @var Collection<int, RefreshToken>
      */
-    #[ORM\OneToMany(targetEntity: RefreshToken::class, mappedBy: 'idUser')]
+    #[ORM\OneToMany(targetEntity: RefreshToken::class, mappedBy: 'idUser', orphanRemoval: true)]
     private Collection $refreshTokens;
 
     /**
      * @var Collection<int, PasswordResetToken>
      */
-    #[ORM\OneToMany(targetEntity: PasswordResetToken::class, mappedBy: 'idUser')]
+    #[ORM\OneToMany(targetEntity: PasswordResetToken::class, mappedBy: 'idUser', orphanRemoval: true)]
     private Collection $passwordResetTokens;
 
     #[ORM\OneToOne(mappedBy: 'idUser', cascade: ['persist', 'remove'])]
-    private ?UserPreference $userPreference = null;
+    private ?UserPreference $preference = null;
 
     /**
      * @var Collection<int, UserAddress>
      */
-    #[ORM\OneToMany(targetEntity: UserAddress::class, mappedBy: 'idUser')]
+    #[ORM\OneToMany(targetEntity: UserAddress::class, mappedBy: 'idUser', orphanRemoval: true)]
     private Collection $userAddresses;
+
+    /**
+     * @var Collection<int, UserConsent>
+     */
+    #[ORM\OneToMany(targetEntity: UserConsent::class, mappedBy: 'idUser', orphanRemoval: true)]
+    private Collection $userConsents;
+
+    /**
+     * @var Collection<int, DataRequest>
+     */
+    #[ORM\OneToMany(targetEntity: DataRequest::class, mappedBy: 'idUser', orphanRemoval: true)]
+    private Collection $dataRequests;
 
     public function __construct()
     {
@@ -91,6 +103,8 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->refreshTokens = new ArrayCollection();
         $this->passwordResetTokens = new ArrayCollection();
         $this->userAddresses = new ArrayCollection();
+        $this->userConsents = new ArrayCollection();
+        $this->dataRequests = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -243,12 +257,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     public function removeRefreshToken(RefreshToken $refreshToken): static
     {
-        if ($this->refreshTokens->removeElement($refreshToken)) {
-            // set the owning side to null (unless already changed)
-            if ($refreshToken->getIdUser() === $this) {
-                $refreshToken->setIdUser(null);
-            }
-        }
+        $this->refreshTokens->removeElement($refreshToken);
 
         return $this;
     }
@@ -273,29 +282,24 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     public function removePasswordResetToken(PasswordResetToken $passwordResetToken): static
     {
-        if ($this->passwordResetTokens->removeElement($passwordResetToken)) {
-            // set the owning side to null (unless already changed)
-            if ($passwordResetToken->getIdUser() === $this) {
-                $passwordResetToken->setIdUser(null);
-            }
-        }
+        $this->passwordResetTokens->removeElement($passwordResetToken);
 
         return $this;
     }
 
-    public function getUserPreference(): ?UserPreference
+    public function getPreference(): ?UserPreference
     {
-        return $this->userPreference;
+        return $this->preference;
     }
 
-    public function setUserPreference(UserPreference $userPreference): static
+    public function setPreference(UserPreference $preference): static
     {
         // set the owning side of the relation if necessary
-        if ($userPreference->getIdUser() !== $this) {
-            $userPreference->setIdUser($this);
+        if ($preference->getIdUser() !== $this) {
+            $preference->setIdUser($this);
         }
 
-        $this->userPreference = $userPreference;
+        $this->preference = $preference;
 
         return $this;
     }
@@ -320,12 +324,58 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     public function removeUserAddress(UserAddress $userAddress): static
     {
-        if ($this->userAddresses->removeElement($userAddress)) {
-            // set the owning side to null (unless already changed)
-            if ($userAddress->getIdUser() === $this) {
-                $userAddress->setIdUser(null);
-            }
+        $this->userAddresses->removeElement($userAddress);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, UserConsent>
+     */
+    public function getUserConsents(): Collection
+    {
+        return $this->userConsents;
+    }
+
+    public function addUserConsent(UserConsent $userConsent): static
+    {
+        if (!$this->userConsents->contains($userConsent)) {
+            $this->userConsents->add($userConsent);
+            $userConsent->setIdUser($this);
         }
+
+        return $this;
+    }
+
+    public function removeUserConsent(UserConsent $userConsent): static
+    {
+        $this->userConsents->removeElement($userConsent);
+
+        return $this;
+    }
+
+
+    /**
+     * @return Collection<int, DataRequest>
+     */
+    public function getDataRequests(): Collection
+    {
+        return $this->dataRequests;
+    }
+
+    public function addDataRequest(DataRequest $dataRequest): static
+    {
+        if (!$this->dataRequests->contains($dataRequest)) {
+            $this->dataRequests->add($dataRequest);
+            $dataRequest->setIdUser($this);
+        }
+
+        return $this;
+    }
+
+    public function removeDataRequest(DataRequest $dataRequest): static
+    {
+        $this->dataRequests->removeElement($dataRequest);
 
         return $this;
     }

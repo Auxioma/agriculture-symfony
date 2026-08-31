@@ -18,7 +18,7 @@ class PasswordResetToken
 
     #[ORM\ManyToOne(inversedBy: 'passwordResetTokens')]
     #[ORM\JoinColumn(name: 'user_id', referencedColumnName: 'id', nullable: false)]
-    private ?User $idUser = null;
+    private User $idUser;
 
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $tokenHash = null;
@@ -39,12 +39,12 @@ class PasswordResetToken
         return $this->id;
     }
 
-    public function getIdUser(): ?User
+    public function getIdUser(): User
     {
         return $this->idUser;
     }
 
-    public function setIdUser(?User $idUser): static
+    public function setIdUser(User $idUser): static
     {
         $this->idUser = $idUser;
 

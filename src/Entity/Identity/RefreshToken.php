@@ -9,7 +9,7 @@ use Symfony\Bridge\Doctrine\Types\UuidType;
 use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: RefreshTokenRepository::class)]
-#[ORM\Table(name: 'refreshToken', schema: 'identity')]
+#[ORM\Table(name: 'refresh_tokens', schema: 'identity')]
 class RefreshToken
 {
     #[ORM\Id]
@@ -17,17 +17,17 @@ class RefreshToken
     private Uuid $id;
 
     #[ORM\ManyToOne(inversedBy: 'refreshTokens')]
-    #[ORM\JoinColumn(nullable: false)]
-    private ?User $idUser = null;
+    #[ORM\JoinColumn(name: 'user_id', nullable: false)]
+    private User $idUser;
 
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $tokenHash = null;
 
-    #[ORM\Column(type: Types::DATETIMETZ_MUTABLE, nullable: true)]
-    private ?\DateTime $expiresAt = null;
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
+    private ?\DateTimeImmutable $expiresAt = null;
 
-    #[ORM\Column(type: Types::DATETIMETZ_MUTABLE, nullable: true)]
-    private ?\DateTime $revokedAt = null;
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
+    private ?\DateTimeImmutable $revokedAt = null;
 
     #[ORM\Column(name: 'created_at', type: Types::DATETIMETZ_IMMUTABLE)]
     private \DateTimeImmutable $createdAt;
@@ -46,12 +46,12 @@ class RefreshToken
         return $this->id;
     }
 
-    public function getIdUser(): ?User
+    public function getIdUser(): User
     {
         return $this->idUser;
     }
 
-    public function setIdUser(?User $idUser): static
+    public function setIdUser(User $idUser): static
     {
         $this->idUser = $idUser;
 
