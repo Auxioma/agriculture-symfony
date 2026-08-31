@@ -23,7 +23,7 @@ class Label
     private string $code;
 
     #[ORM\Column(length: 120)]
-    private ?string $name = null;
+    private string $name;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $description = null;
@@ -70,7 +70,7 @@ class Label
         return $this;
     }
 
-    public function getName(): ?string
+    public function getName(): string
     {
         return $this->name;
     }
@@ -163,12 +163,7 @@ class Label
 
     public function removeProducerLabel(ProducerLabel $producerLabel): static
     {
-        if ($this->producerLabels->removeElement($producerLabel)) {
-            // set the owning side to null (unless already changed)
-            if ($producerLabel->getLabel() === $this) {
-                $producerLabel->setLabel(null);
-            }
-        }
+        $this->producerLabels->removeElement($producerLabel);
 
         return $this;
     }
