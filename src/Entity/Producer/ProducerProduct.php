@@ -5,6 +5,8 @@ namespace App\Entity\Producer;
 use App\Entity\Catalog\Currency;
 use App\Entity\Catalog\Product;
 use App\Repository\Producer\ProducerProductRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
@@ -48,9 +50,16 @@ class ProducerProduct
     #[ORM\Column(type: 'json', nullable: true)]
     private ?array $metadata = null;
 
+    /**
+     * @var Collection<int, ProducerProductMedia>
+     */
+    #[ORM\OneToMany(targetEntity: ProducerProductMedia::class, mappedBy: 'producerProduct')]
+    private Collection $media;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
+        $this->media = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -162,6 +171,35 @@ class ProducerProduct
     public function setMetadata(?array $metadata): static
     {
         $this->metadata = $metadata;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ProducerProductMedia>
+     */
+    public function getMedia(): Collection
+    {
+        return $this->media;
+    }
+
+    public function addMedium(ProducerProductMedia $medium): static
+    {
+        if (!$this->media->contains($medium)) {
+            $this->media->add($medium);
+            $medium->setProducerProduct($this);
+        }
+
+        return $this;
+    }
+
+    public function removeMedium(ProducerProductMedia $medium): static
+    {
+        if ($this->media->removeElement($medium)) {
+            if ($medium->getProducerProduct() === $this) {
+                $medium->setProducerProduct(null);
+            }
+        }
 
         return $this;
     }
