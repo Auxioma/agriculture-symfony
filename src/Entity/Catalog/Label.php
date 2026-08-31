@@ -2,6 +2,7 @@
 
 namespace App\Entity\Catalog;
 
+use App\Entity\Producer\ProducerLabel;
 use App\Repository\Catalog\LabelRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -38,11 +39,18 @@ class Label
      */
     #[ORM\OneToMany(targetEntity: LabelTranslation::class, mappedBy: 'label', orphanRemoval: true)]
     private Collection $labelTranslations;
+
+    /**
+     * @var Collection<int, ProducerLabel>
+     */
+    #[ORM\OneToMany(targetEntity: ProducerLabel::class, mappedBy: 'label', orphanRemoval: true)]
+    private Collection $producerLabels;
     
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->labelTranslations = new ArrayCollection();
+        $this->producerLabels = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -131,6 +139,36 @@ class Label
     public function removeLabelTranslation(LabelTranslation $labelTranslation): static
     {
         $this->labelTranslations->removeElement($labelTranslation);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ProducerLabel>
+     */
+    public function getProducerLabels(): Collection
+    {
+        return $this->producerLabels;
+    }
+
+    public function addProducerLabel(ProducerLabel $producerLabel): static
+    {
+        if (!$this->producerLabels->contains($producerLabel)) {
+            $this->producerLabels->add($producerLabel);
+            $producerLabel->setLabel($this);
+        }
+
+        return $this;
+    }
+
+    public function removeProducerLabel(ProducerLabel $producerLabel): static
+    {
+        if ($this->producerLabels->removeElement($producerLabel)) {
+            // set the owning side to null (unless already changed)
+            if ($producerLabel->getLabel() === $this) {
+                $producerLabel->setLabel(null);
+            }
+        }
 
         return $this;
     }

@@ -2,6 +2,7 @@
 
 namespace App\Entity\Producer;
 
+use App\Entity\Trust\VerificationDocument;
 use App\Entity\Catalog\Country;
 use App\Entity\Identity\User;
 use App\Enum\VerificationStatus;
@@ -68,11 +69,25 @@ class ProducerProfile
     #[ORM\OneToMany(targetEntity: ProducerProduct::class, mappedBy: 'producer', orphanRemoval: true)]
     private Collection $products;
 
+    /**
+     * @var Collection<int, ProducerLabel>
+     */
+    #[ORM\OneToMany(targetEntity: ProducerLabel::class, mappedBy: 'producer', orphanRemoval: true)]
+    private Collection $labels;
+
+    /**
+     * @var Collection<int, VerificationDocument>
+     */
+    #[ORM\OneToMany(targetEntity: VerificationDocument::class, mappedBy: 'producer', orphanRemoval: true)]
+    private Collection $verificationDocuments;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->producerMedia = new ArrayCollection();
         $this->products = new ArrayCollection();
+        $this->labels = new ArrayCollection();
+        $this->verificationDocuments = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -258,6 +273,50 @@ class ProducerProfile
     public function removeProduct(ProducerProduct $product): static
     {
         $this->products->removeElement($product);
+
+        return $this;
+    }
+
+public function getLabels(): Collection
+{
+    return $this->labels;
+}
+
+public function addLabel(ProducerLabel $label): static
+{
+    if (!$this->labels->contains($label)) {
+        $this->labels->add($label);
+        $label->setProducer($this);
+    }
+
+    return $this;
+}
+
+    public function removeLabel(ProducerLabel $label): static
+    {
+        $this->labels->removeElement($label);
+
+        return $this;
+    }
+
+    public function getVerificationDocuments(): Collection
+    {
+        return $this->verificationDocuments;
+    }
+
+    public function addVerificationDocument(VerificationDocument $verificationDocument): static
+    {
+        if (!$this->verificationDocuments->contains($verificationDocument)) {
+            $this->verificationDocuments->add($verificationDocument);
+            $verificationDocument->setProducer($this);
+        }
+
+        return $this;
+    }
+
+    public function removeVerificationDocument(VerificationDocument $verificationDocument): static
+    {
+        $this->verificationDocuments->removeElement($verificationDocument);
 
         return $this;
     }
