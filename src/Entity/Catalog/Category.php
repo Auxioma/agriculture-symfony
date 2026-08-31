@@ -44,10 +44,17 @@ class Category
     #[ORM\Column]
     private bool $isActive = false;
 
+    /**
+     * @var Collection<int, CategoryTranslation>
+     */
+    #[ORM\OneToMany(targetEntity: CategoryTranslation::class, mappedBy: 'category', orphanRemoval: true)]
+    private Collection $categoryTranslations;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->categories = new ArrayCollection();
+        $this->categoryTranslations = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -164,6 +171,31 @@ class Category
     public function setIsActive(bool $isActive): static
     {
         $this->isActive = $isActive;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, CategoryTranslation>
+     */
+    public function getCategoryTranslations(): Collection
+    {
+        return $this->categoryTranslations;
+    }
+
+    public function addCategoryTranslation(CategoryTranslation $categoryTranslation): static
+    {
+        if (!$this->categoryTranslations->contains($categoryTranslation)) {
+            $this->categoryTranslations->add($categoryTranslation);
+            $categoryTranslation->setCategory($this);
+        }
+
+        return $this;
+    }
+
+    public function removeCategoryTranslation(CategoryTranslation $categoryTranslation): static
+    {
+        $this->categoryTranslations->removeElement($categoryTranslation);
 
         return $this;
     }
