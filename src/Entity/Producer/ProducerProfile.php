@@ -6,6 +6,8 @@ use App\Entity\Catalog\Country;
 use App\Entity\Identity\User;
 use App\Enum\VerificationStatus;
 use App\Repository\Producer\ProducerProfileRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
@@ -54,9 +56,23 @@ class ProducerProfile
     #[ORM\Column]
     private bool $isActive = false;
 
+    /**
+     * @var Collection<int, ProducerMedia>
+     */
+    #[ORM\OneToMany(targetEntity: ProducerMedia::class, mappedBy: 'producer', orphanRemoval: true)]
+    private Collection $producerMedia;
+
+    /**
+     * @var Collection<int, ProducerProduct>
+     */
+    #[ORM\OneToMany(targetEntity: ProducerProduct::class, mappedBy: 'producer', orphanRemoval: true)]
+    private Collection $products;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
+        $this->producerMedia = new ArrayCollection();
+        $this->products = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -192,6 +208,56 @@ class ProducerProfile
     public function setIsActive(bool $isActive): static
     {
         $this->isActive = $isActive;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ProducerMedia>
+     */
+    public function getProducerMedia(): Collection
+    {
+        return $this->producerMedia;
+    }
+
+    public function addProducerMedium(ProducerMedia $producerMedium): static
+    {
+        if (!$this->producerMedia->contains($producerMedium)) {
+            $this->producerMedia->add($producerMedium);
+            $producerMedium->setProducer($this);
+        }
+
+        return $this;
+    }
+
+    public function removeProducerMedium(ProducerMedia $producerMedium): static
+    {
+        $this->producerMedia->removeElement($producerMedium);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ProducerProduct>
+     */
+    public function getProducts(): Collection
+    {
+        return $this->products;
+    }
+
+    public function addProduct(ProducerProduct $product): static
+    {
+        if (!$this->products->contains($product)) {
+            $this->products->add($product);
+            $product->setProducer($this);
+        }
+
+        return $this;
+    }
+
+    public function removeProduct(ProducerProduct $product): static
+    {
+        $this->products->removeElement($product);
 
         return $this;
     }

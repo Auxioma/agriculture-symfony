@@ -2,7 +2,10 @@
 
 namespace App\Entity\Catalog;
 
+use App\Entity\Producer\ProducerProduct;
 use App\Repository\Catalog\CurrencyRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: CurrencyRepository::class)]
@@ -24,6 +27,17 @@ class Currency
 
     #[ORM\Column]
     private bool $isActive = false;
+
+    /**
+     * @var Collection<int, ProducerProduct>
+     */
+    #[ORM\OneToMany(targetEntity: ProducerProduct::class, mappedBy: 'currency')]
+    private Collection $producerProducts;
+
+    public function __construct()
+    {
+        $this->producerProducts = new ArrayCollection();
+    }
 
     public function getCode(): string
     {
@@ -81,6 +95,36 @@ class Currency
     public function setIsActive(bool $isActive): static
     {
         $this->isActive = $isActive;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ProducerProduct>
+     */
+    public function getProducerProducts(): Collection
+    {
+        return $this->producerProducts;
+    }
+
+    public function addProducerProduct(ProducerProduct $producerProduct): static
+    {
+        if (!$this->producerProducts->contains($producerProduct)) {
+            $this->producerProducts->add($producerProduct);
+            $producerProduct->setCurrency($this);
+        }
+
+        return $this;
+    }
+
+    public function removeProducerProduct(ProducerProduct $producerProduct): static
+    {
+        if ($this->producerProducts->removeElement($producerProduct)) {
+            // set the owning side to null (unless already changed)
+            if ($producerProduct->getCurrency() === $this) {
+                $producerProduct->setCurrency(null);
+            }
+        }
 
         return $this;
     }
