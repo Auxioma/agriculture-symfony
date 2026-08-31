@@ -2,7 +2,6 @@
 
 namespace App\Entity\Catalog;
 
-use App\Entity\Producer\ProducerProduct;
 use App\Repository\Catalog\ProductRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -47,17 +46,12 @@ class Product
     #[ORM\OneToMany(targetEntity: ProductTranslation::class, mappedBy: 'product', orphanRemoval: true)]
     private Collection $productTranslations;
 
-    /**
-     * @var Collection<int, ProducerProduct>
-     */
-    #[ORM\OneToMany(targetEntity: ProducerProduct::class, mappedBy: 'product', orphanRemoval: true)]
-    private Collection $producerProducts;
+
 
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->productTranslations = new ArrayCollection();
-        $this->producerProducts = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -170,36 +164,6 @@ class Product
     public function removeProductTranslation(ProductTranslation $productTranslation): static
     {
         $this->productTranslations->removeElement($productTranslation);
-
-        return $this;
-    }
-
-    /**
-     * @return Collection<int, ProducerProduct>
-     */
-    public function getProducerProducts(): Collection
-    {
-        return $this->producerProducts;
-    }
-
-    public function addProducerProduct(ProducerProduct $producerProduct): static
-    {
-        if (!$this->producerProducts->contains($producerProduct)) {
-            $this->producerProducts->add($producerProduct);
-            $producerProduct->setProduct($this);
-        }
-
-        return $this;
-    }
-
-    public function removeProducerProduct(ProducerProduct $producerProduct): static
-    {
-        if ($this->producerProducts->removeElement($producerProduct)) {
-            // set the owning side to null (unless already changed)
-            if ($producerProduct->getProduct() === $this) {
-                $producerProduct->setProduct(null);
-            }
-        }
 
         return $this;
     }

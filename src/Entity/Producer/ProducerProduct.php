@@ -39,6 +39,7 @@ class ProducerProduct
     private ?string $defaultPrice = null;
 
     #[ORM\ManyToOne]
+    #[ORM\JoinColumn(name: 'currency', referencedColumnName: 'code')]
     private ?Currency $currency = null;
 
     #[ORM\Column]
