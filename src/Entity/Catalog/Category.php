@@ -50,11 +50,18 @@ class Category
     #[ORM\OneToMany(targetEntity: CategoryTranslation::class, mappedBy: 'category', orphanRemoval: true)]
     private Collection $categoryTranslations;
 
+    /**
+     * @var Collection<int, Product>
+     */
+    #[ORM\OneToMany(targetEntity: Product::class, mappedBy: 'category', orphanRemoval: true)]
+    private Collection $products;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->categories = new ArrayCollection();
         $this->categoryTranslations = new ArrayCollection();
+        $this->products = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -196,6 +203,31 @@ class Category
     public function removeCategoryTranslation(CategoryTranslation $categoryTranslation): static
     {
         $this->categoryTranslations->removeElement($categoryTranslation);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Product>
+     */
+    public function getProducts(): Collection
+    {
+        return $this->products;
+    }
+
+    public function addProduct(Product $product): static
+    {
+        if (!$this->products->contains($product)) {
+            $this->products->add($product);
+            $product->setCategory($this);
+        }
+
+        return $this;
+    }
+
+    public function removeProduct(Product $product): static
+    {
+        $this->products->removeElement($product);
 
         return $this;
     }
