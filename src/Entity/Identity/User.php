@@ -3,6 +3,7 @@
 namespace App\Entity\Identity;
 
 use App\Entity\Matching\ClientRequest;
+use App\Entity\Matching\RequestAttachment;
 use App\Entity\Producer\TeamMember;
 use App\Repository\Identity\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -113,6 +114,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: ClientRequest::class, mappedBy: 'client', orphanRemoval: true)]
     private Collection $requests;
 
+    /**
+     * @var Collection<int, RequestAttachment>
+     */
+    #[ORM\OneToMany(targetEntity: RequestAttachment::class, mappedBy: 'uploadedBy')]
+    private Collection $requestAttachments;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -126,6 +133,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->teamMemberships = new ArrayCollection();
         $this->requests = new ArrayCollection();
         $this->roles = ['ROLE_CLIENT'];
+        $this->requestAttachments = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -459,6 +467,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function removeRequest(ClientRequest $request): static
     {
         $this->requests->removeElement($request);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, RequestAttachment>
+     */
+    public function getRequestAttachments(): Collection
+    {
+        return $this->requestAttachments;
+    }
+
+    public function addRequestAttachment(RequestAttachment $requestAttachment): static
+    {
+        if (!$this->requestAttachments->contains($requestAttachment)) {
+            $this->requestAttachments->add($requestAttachment);
+            $requestAttachment->setUploadedBy($this);
+        }
+
+        return $this;
+    }
+
+    public function removeRequestAttachment(RequestAttachment $requestAttachment): static
+    {
+        if ($this->requestAttachments->removeElement($requestAttachment)) {
+            // set the owning side to null (unless already changed)
+            if ($requestAttachment->getUploadedBy() === $this) {
+                $requestAttachment->setUploadedBy(null);
+            }
+        }
 
         return $this;
     }

@@ -11,6 +11,8 @@ use App\Entity\Identity\User;
 use App\Enum\NeedType;
 use App\Enum\RequestStatus;
 use App\Repository\Matching\ClientRequestRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
@@ -93,10 +95,17 @@ class ClientRequest
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
     private \DateTimeImmutable $createdAt;
 
+    /**
+     * @var Collection<int, RequestAttachment>
+     */
+    #[ORM\OneToMany(targetEntity: RequestAttachment::class, mappedBy: 'request', orphanRemoval: true)]
+    private Collection $attachments;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->createdAt = new \DateTimeImmutable();
+        $this->attachments = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -359,5 +368,27 @@ class ClientRequest
     public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
+    }
+
+    public function getAttachments(): Collection
+    {
+        return $this->attachments;
+    }
+
+    public function addAttachment(RequestAttachment $attachment): static
+    {
+        if (!$this->attachments->contains($attachment)) {
+            $this->attachments->add($attachment);
+            $attachment->setRequest($this);
+        }
+
+        return $this;
+    }
+
+    public function removeAttachment(RequestAttachment $attachment): static
+    {
+        $this->attachments->removeElement($attachment);
+
+        return $this;
     }
 }
