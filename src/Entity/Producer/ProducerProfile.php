@@ -81,6 +81,12 @@ class ProducerProfile
     #[ORM\OneToMany(targetEntity: VerificationDocument::class, mappedBy: 'producer', orphanRemoval: true)]
     private Collection $verificationDocuments;
 
+    /**
+     * @var Collection<int, TeamMember>
+     */
+    #[ORM\OneToMany(targetEntity: TeamMember::class, mappedBy: 'producer', orphanRemoval: true)]
+    private Collection $teamMembers;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -88,6 +94,7 @@ class ProducerProfile
         $this->products = new ArrayCollection();
         $this->labels = new ArrayCollection();
         $this->verificationDocuments = new ArrayCollection();
+        $this->teamMembers = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -317,6 +324,28 @@ public function addLabel(ProducerLabel $label): static
     public function removeVerificationDocument(VerificationDocument $verificationDocument): static
     {
         $this->verificationDocuments->removeElement($verificationDocument);
+
+        return $this;
+    }
+
+    public function getTeamMembers(): Collection
+    {
+        return $this->teamMembers;
+    }
+
+    public function addTeamMember(TeamMember $teamMember): static
+    {
+        if (!$this->teamMembers->contains($teamMember)) {
+            $this->teamMembers->add($teamMember);
+            $teamMember->setProducer($this);
+        }
+
+        return $this;
+    }
+
+    public function removeTeamMember(TeamMember $teamMember): static
+    {
+        $this->teamMembers->removeElement($teamMember);
 
         return $this;
     }

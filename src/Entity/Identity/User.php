@@ -2,6 +2,7 @@
 
 namespace App\Entity\Identity;
 
+use App\Entity\Producer\TeamMember;
 use App\Repository\Identity\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -99,6 +100,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: DataRequest::class, mappedBy: 'idUser', orphanRemoval: true)]
     private Collection $dataRequests;
 
+    /**
+     * @var Collection<int, TeamMember>
+     */
+    #[ORM\OneToMany(targetEntity: TeamMember::class, mappedBy: 'idUser', orphanRemoval: true)]
+    private Collection $teamMemberships;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -109,6 +116,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->userAddresses = new ArrayCollection();
         $this->userConsents = new ArrayCollection();
         $this->dataRequests = new ArrayCollection();
+        $this->teamMemberships = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -395,6 +403,28 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
             $producerProfile->setOwner($this);
         }
         $this->producerProfile = $producerProfile;
+
+        return $this;
+    }
+
+    public function getTeamMemberships(): Collection
+    {
+        return $this->teamMemberships;
+    }
+
+    public function addTeamMembership(TeamMember $teamMembership): static
+    {
+        if (!$this->teamMemberships->contains($teamMembership)) {
+            $this->teamMemberships->add($teamMembership);
+            $teamMembership->setIdUser($this);
+        }
+
+        return $this;
+    }
+
+    public function removeTeamMembership(TeamMember $teamMembership): static
+    {
+        $this->teamMemberships->removeElement($teamMembership);
 
         return $this;
     }
