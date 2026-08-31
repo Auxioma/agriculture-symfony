@@ -57,6 +57,9 @@ class ProducerProfile
     #[ORM\Column]
     private bool $isActive = false;
 
+    #[ORM\OneToOne(mappedBy: 'producer', cascade: ['persist'])]
+    private ?ProducerSetting $settings = null;
+
     /**
      * @var Collection<int, ProducerMedia>
      */
@@ -298,20 +301,20 @@ class ProducerProfile
         return $this;
     }
 
-public function getLabels(): Collection
-{
-    return $this->labels;
-}
-
-public function addLabel(ProducerLabel $label): static
-{
-    if (!$this->labels->contains($label)) {
-        $this->labels->add($label);
-        $label->setProducer($this);
+    public function getLabels(): Collection
+    {
+        return $this->labels;
     }
 
-    return $this;
-}
+    public function addLabel(ProducerLabel $label): static
+    {
+        if (!$this->labels->contains($label)) {
+            $this->labels->add($label);
+            $label->setProducer($this);
+        }
+
+        return $this;
+    }
 
     public function removeLabel(ProducerLabel $label): static
     {
@@ -404,6 +407,21 @@ public function addLabel(ProducerLabel $label): static
     public function removeOpeningHour(OpeningHour $openingHour): static
     {
         $this->openingHours->removeElement($openingHour);
+
+        return $this;
+    }
+
+    public function getSettings(): ?ProducerSetting
+    {
+        return $this->settings;
+    }
+
+    public function setSettings(ProducerSetting $settings): static
+    {
+        if ($settings->getProducer() !== $this) {
+            $settings->setProducer($this);
+        }
+        $this->settings = $settings;
 
         return $this;
     }
