@@ -101,11 +101,18 @@ class ClientRequest
     #[ORM\OneToMany(targetEntity: RequestAttachment::class, mappedBy: 'request', orphanRemoval: true)]
     private Collection $attachments;
 
+    /**
+     * @var Collection<int, RequestLabel>
+     */
+    #[ORM\OneToMany(targetEntity: RequestLabel::class, mappedBy: 'request', orphanRemoval: true)]
+    private Collection $labels;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->createdAt = new \DateTimeImmutable();
         $this->attachments = new ArrayCollection();
+        $this->labels = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -388,6 +395,28 @@ class ClientRequest
     public function removeAttachment(RequestAttachment $attachment): static
     {
         $this->attachments->removeElement($attachment);
+
+        return $this;
+    }
+
+    public function getLabels(): Collection
+    {
+        return $this->labels;
+    }
+
+    public function addLabel(RequestLabel $label): static
+    {
+        if (!$this->labels->contains($label)) {
+            $this->labels->add($label);
+            $label->setRequest($this);
+        }
+
+        return $this;
+    }
+
+    public function removeLabel(RequestLabel $label): static
+    {
+        $this->labels->removeElement($label);
 
         return $this;
     }

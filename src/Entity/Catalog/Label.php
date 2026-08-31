@@ -2,6 +2,7 @@
 
 namespace App\Entity\Catalog;
 
+use App\Entity\Matching\RequestLabel;
 use App\Entity\Producer\ProducerLabel;
 use App\Repository\Catalog\LabelRepository;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -45,12 +46,19 @@ class Label
      */
     #[ORM\OneToMany(targetEntity: ProducerLabel::class, mappedBy: 'label', orphanRemoval: true)]
     private Collection $producerLabels;
+
+    /**
+     * @var Collection<int, RequestLabel>
+     */
+    #[ORM\OneToMany(targetEntity: RequestLabel::class, mappedBy: 'label', orphanRemoval: true)]
+    private Collection $requestLabels;
     
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->labelTranslations = new ArrayCollection();
         $this->producerLabels = new ArrayCollection();
+        $this->requestLabels = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -164,6 +172,31 @@ class Label
     public function removeProducerLabel(ProducerLabel $producerLabel): static
     {
         $this->producerLabels->removeElement($producerLabel);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, RequestLabel>
+     */
+    public function getRequestLabels(): Collection
+    {
+        return $this->requestLabels;
+    }
+
+    public function addRequestLabel(RequestLabel $requestLabel): static
+    {
+        if (!$this->requestLabels->contains($requestLabel)) {
+            $this->requestLabels->add($requestLabel);
+            $requestLabel->setLabel($this);
+        }
+
+        return $this;
+    }
+
+    public function removeRequestLabel(RequestLabel $requestLabel): static
+    {
+        if ($this->requestLabels->removeElement($requestLabel));
 
         return $this;
     }
