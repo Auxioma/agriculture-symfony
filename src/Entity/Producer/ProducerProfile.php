@@ -102,6 +102,12 @@ class ProducerProfile
     #[ORM\OneToMany(targetEntity: OpeningHour::class, mappedBy: 'producer', orphanRemoval: true)]
     private Collection $openingHours;
 
+    /**
+     * @var Collection<int, QuickReply>
+     */
+    #[ORM\OneToMany(targetEntity: QuickReply::class, mappedBy: 'producer', orphanRemoval: true)]
+    private Collection $quickReplies;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -112,6 +118,7 @@ class ProducerProfile
         $this->teamMembers = new ArrayCollection();
         $this->deliveryZones = new ArrayCollection();
         $this->openingHours = new ArrayCollection();
+        $this->quickReplies = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -422,6 +429,28 @@ class ProducerProfile
             $settings->setProducer($this);
         }
         $this->settings = $settings;
+
+        return $this;
+    }
+
+    public function getQuickReplies(): Collection
+    {
+        return $this->quickReplies;
+    }
+
+    public function addQuickReply(QuickReply $quickReply): static
+    {
+        if (!$this->quickReplies->contains($quickReply)) {
+            $this->quickReplies->add($quickReply);
+            $quickReply->setProducer($this);
+        }
+
+        return $this;
+    }
+
+    public function removeQuickReply(QuickReply $quickReply): static
+    {
+        $this->quickReplies->removeElement($quickReply);
 
         return $this;
     }
