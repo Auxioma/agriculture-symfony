@@ -56,10 +56,17 @@ class ProducerProduct
     #[ORM\OneToMany(targetEntity: ProducerProductMedia::class, mappedBy: 'producerProduct')]
     private Collection $media;
 
+/**
+     * @var Collection<int, ProductAvailability>
+     */
+    #[ORM\OneToMany(targetEntity: ProductAvailability::class, mappedBy: 'producerProduct', orphanRemoval: true)]
+    private Collection $productAvailabilities;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->media = new ArrayCollection();
+        $this->productAvailabilities = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -200,6 +207,31 @@ class ProducerProduct
                 $medium->setProducerProduct(null);
             }
         }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ProductAvailability>
+     */
+    public function getProductAvailabilities(): Collection
+    {
+        return $this->productAvailabilities;
+    }
+
+    public function addProductAvailability(ProductAvailability $productAvailability): static
+    {
+        if (!$this->productAvailabilities->contains($productAvailability)) {
+            $this->productAvailabilities->add($productAvailability);
+            $productAvailability->setProducerProduct($this);
+        }
+
+        return $this;
+    }
+
+    public function removeProductAvailability(ProductAvailability $productAvailability): static
+    {
+        $this->productAvailabilities->removeElement($productAvailability);
 
         return $this;
     }

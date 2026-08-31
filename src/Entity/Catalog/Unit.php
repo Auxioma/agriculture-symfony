@@ -2,7 +2,10 @@
 
 namespace App\Entity\Catalog;
 
+use App\Entity\Producer\ProductAvailability;
 use App\Repository\Catalog\UnitRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
 use Symfony\Component\Uid\Uuid;
@@ -27,9 +30,16 @@ class Unit
     #[ORM\Column(type: 'json', nullable: true)]
     private ?array $localeLabels = null;
 
+    /**
+     * @var Collection<int, ProductAvailability>
+     */
+    #[ORM\OneToMany(targetEntity: ProductAvailability::class, mappedBy: 'unit')]
+    private Collection $productAvailabilities;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
+        $this->productAvailabilities = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -81,6 +91,36 @@ class Unit
     public function setLocaleLabels(?array $localeLabels): static
     {
         $this->localeLabels = $localeLabels;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ProductAvailability>
+     */
+    public function getProductAvailabilities(): Collection
+    {
+        return $this->productAvailabilities;
+    }
+
+    public function addProductAvailability(ProductAvailability $productAvailability): static
+    {
+        if (!$this->productAvailabilities->contains($productAvailability)) {
+            $this->productAvailabilities->add($productAvailability);
+            $productAvailability->setUnit($this);
+        }
+
+        return $this;
+    }
+
+    public function removeProductAvailability(ProductAvailability $productAvailability): static
+    {
+        if ($this->productAvailabilities->removeElement($productAvailability)) {
+            // set the owning side to null (unless already changed)
+            if ($productAvailability->getUnit() === $this) {
+                $productAvailability->setUnit(null);
+            }
+        }
 
         return $this;
     }
