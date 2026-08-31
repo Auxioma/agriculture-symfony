@@ -87,6 +87,12 @@ class ProducerProfile
     #[ORM\OneToMany(targetEntity: TeamMember::class, mappedBy: 'producer', orphanRemoval: true)]
     private Collection $teamMembers;
 
+    /**
+     * @var Collection<int, DeliveryZone>
+     */
+    #[ORM\OneToMany(targetEntity: DeliveryZone::class, mappedBy: 'producer', orphanRemoval: true)]
+    private Collection $deliveryZones;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -95,6 +101,7 @@ class ProducerProfile
         $this->labels = new ArrayCollection();
         $this->verificationDocuments = new ArrayCollection();
         $this->teamMembers = new ArrayCollection();
+        $this->deliveryZones = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -346,6 +353,28 @@ public function addLabel(ProducerLabel $label): static
     public function removeTeamMember(TeamMember $teamMember): static
     {
         $this->teamMembers->removeElement($teamMember);
+
+        return $this;
+    }
+
+    public function getDeliveryZones(): Collection
+    {
+        return $this->deliveryZones;
+    }
+
+    public function addDeliveryZone(DeliveryZone $deliveryZone): static
+    {
+        if (!$this->deliveryZones->contains($deliveryZone)) {
+            $this->deliveryZones->add($deliveryZone);
+            $deliveryZone->setProducer($this);
+        }
+
+        return $this;
+    }
+
+    public function removeDeliveryZone(DeliveryZone $deliveryZone): static
+    {
+        $this->deliveryZones->removeElement($deliveryZone);
 
         return $this;
     }
