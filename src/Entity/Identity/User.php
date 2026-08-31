@@ -11,6 +11,7 @@ use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Uid\Uuid;
 use App\Enum\UserStatus;
+use App\Entity\Producer\ProducerProfile;
 
 #[ORM\Entity(repositoryClass: UserRepository::class)]
 #[ORM\Table(name: 'users', schema: 'identity')]
@@ -76,6 +77,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     #[ORM\OneToOne(mappedBy: 'idUser', cascade: ['persist', 'remove'])]
     private ?UserPreference $preference = null;
+
+    #[ORM\OneToOne(mappedBy: 'owner', cascade: ['persist'])]
+    private ?ProducerProfile $producerProfile = null;
 
     /**
      * @var Collection<int, UserAddress>
@@ -379,4 +383,20 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
         return $this;
     }
+    
+    public function getProducerProfile(): ?ProducerProfile
+    {
+        return $this->producerProfile;
+    }
+
+    public function setProducerProfile(ProducerProfile $producerProfile): static
+    {
+        if ($producerProfile->getOwner() !== $this) {
+            $producerProfile->setOwner($this);
+        }
+        $this->producerProfile = $producerProfile;
+
+        return $this;
+    }
+    
 }
