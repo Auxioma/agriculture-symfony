@@ -2,6 +2,7 @@
 
 namespace App\Entity\Catalog;
 
+use App\Entity\Matching\ClientRequest;
 use App\Repository\Catalog\ProductRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -46,12 +47,19 @@ class Product
     #[ORM\OneToMany(targetEntity: ProductTranslation::class, mappedBy: 'product', orphanRemoval: true)]
     private Collection $productTranslations;
 
+    /**
+     * @var Collection<int, ClientRequest>
+     */
+    #[ORM\OneToMany(targetEntity: ClientRequest::class, mappedBy: 'product', orphanRemoval: true)]
+    private Collection $clientRequests;
+
 
 
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->productTranslations = new ArrayCollection();
+        $this->clientRequests = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -164,6 +172,36 @@ class Product
     public function removeProductTranslation(ProductTranslation $productTranslation): static
     {
         $this->productTranslations->removeElement($productTranslation);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ClientRequest>
+     */
+    public function getClientRequests(): Collection
+    {
+        return $this->clientRequests;
+    }
+
+    public function addClientRequest(ClientRequest $clientRequest): static
+    {
+        if (!$this->clientRequests->contains($clientRequest)) {
+            $this->clientRequests->add($clientRequest);
+            $clientRequest->setProduct($this);
+        }
+
+        return $this;
+    }
+
+    public function removeClientRequest(ClientRequest $clientRequest): static
+    {
+        if ($this->clientRequests->removeElement($clientRequest)) {
+            // set the owning side to null (unless already changed)
+            if ($clientRequest->getProduct() === $this) {
+                $clientRequest->setProduct(null);
+            }
+        }
 
         return $this;
     }

@@ -2,6 +2,7 @@
 
 namespace App\Entity\Identity;
 
+use App\Entity\Matching\ClientRequest;
 use App\Entity\Producer\TeamMember;
 use App\Repository\Identity\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -37,8 +38,8 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(length: 255)]
     private string $password;
 
-    #[ORM\Column(type: 'simple_array', nullable: true)]
-    private array $roles = [];
+    #[ORM\Column(type: 'simple_array')]
+    private array $roles;
 
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $firstName = null;
@@ -106,6 +107,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: TeamMember::class, mappedBy: 'idUser', orphanRemoval: true)]
     private Collection $teamMemberships;
 
+    /**
+     * @var Collection<int, ClientRequest>
+     */
+    #[ORM\OneToMany(targetEntity: ClientRequest::class, mappedBy: 'client', orphanRemoval: true)]
+    private Collection $requests;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -117,6 +124,8 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->userConsents = new ArrayCollection();
         $this->dataRequests = new ArrayCollection();
         $this->teamMemberships = new ArrayCollection();
+        $this->requests = new ArrayCollection();
+        $this->roles = ['ROLE_CLIENT'];
     }
 
     public function getId(): Uuid
@@ -425,6 +434,31 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function removeTeamMembership(TeamMember $teamMembership): static
     {
         $this->teamMemberships->removeElement($teamMembership);
+
+        return $this;
+    }
+    
+    /**
+     * @return Collection<int, ClientRequest>
+     */
+    public function getRequests(): Collection
+    {
+        return $this->requests;
+    }
+
+    public function addRequest(ClientRequest $request): static
+    {
+        if (!$this->requests->contains($request)) {
+            $this->requests->add($request);
+            $request->setClient($this);
+        }
+
+        return $this;
+    }
+
+    public function removeRequest(ClientRequest $request): static
+    {
+        $this->requests->removeElement($request);
 
         return $this;
     }

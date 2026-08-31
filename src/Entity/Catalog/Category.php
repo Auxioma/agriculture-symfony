@@ -2,6 +2,7 @@
 
 namespace App\Entity\Catalog;
 
+use App\Entity\Matching\ClientRequest;
 use App\Repository\Catalog\CategoryRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -56,12 +57,19 @@ class Category
     #[ORM\OneToMany(targetEntity: Product::class, mappedBy: 'category', orphanRemoval: true)]
     private Collection $products;
 
+    /**
+     * @var Collection<int, ClientRequest>
+     */
+    #[ORM\OneToMany(targetEntity: ClientRequest::class, mappedBy: 'category', orphanRemoval: true)]
+    private Collection $clientRequests;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->categories = new ArrayCollection();
         $this->categoryTranslations = new ArrayCollection();
         $this->products = new ArrayCollection();
+        $this->clientRequests = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -228,6 +236,36 @@ class Category
     public function removeProduct(Product $product): static
     {
         $this->products->removeElement($product);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ClientRequest>
+     */
+    public function getClientRequests(): Collection
+    {
+        return $this->clientRequests;
+    }
+
+    public function addClientRequest(ClientRequest $clientRequest): static
+    {
+        if (!$this->clientRequests->contains($clientRequest)) {
+            $this->clientRequests->add($clientRequest);
+            $clientRequest->setCategory($this);
+        }
+
+        return $this;
+    }
+
+    public function removeClientRequest(ClientRequest $clientRequest): static
+    {
+        if ($this->clientRequests->removeElement($clientRequest)) {
+            // set the owning side to null (unless already changed)
+            if ($clientRequest->getCategory() === $this) {
+                $clientRequest->setCategory(null);
+            }
+        }
 
         return $this;
     }

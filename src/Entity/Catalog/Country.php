@@ -2,6 +2,7 @@
 
 namespace App\Entity\Catalog;
 
+use App\Entity\Matching\ClientRequest;
 use App\Entity\Producer\ProducerProfile;
 use App\Repository\Catalog\CountryRepository;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -34,9 +35,16 @@ class Country
     #[ORM\OneToMany(targetEntity: ProducerProfile::class, mappedBy: 'country')]
     private Collection $producerProfiles;
 
+    /**
+     * @var Collection<int, ClientRequest>
+     */
+    #[ORM\OneToMany(targetEntity: ClientRequest::class, mappedBy: 'country')]
+    private Collection $clientRequests;
+
     public function __construct()
     {
         $this->producerProfiles = new ArrayCollection();
+        $this->clientRequests = new ArrayCollection();
     }
 
     public function getCode(): string
@@ -123,6 +131,36 @@ class Country
             // set the owning side to null (unless already changed)
             if ($producerProfile->getCountry() === $this) {
                 $producerProfile->setCountry(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ClientRequest>
+     */
+    public function getClientRequests(): Collection
+    {
+        return $this->clientRequests;
+    }
+
+    public function addClientRequest(ClientRequest $clientRequest): static
+    {
+        if (!$this->clientRequests->contains($clientRequest)) {
+            $this->clientRequests->add($clientRequest);
+            $clientRequest->setCountry($this);
+        }
+
+        return $this;
+    }
+
+    public function removeClientRequest(ClientRequest $clientRequest): static
+    {
+        if ($this->clientRequests->removeElement($clientRequest)) {
+            // set the owning side to null (unless already changed)
+            if ($clientRequest->getCountry() === $this) {
+                $clientRequest->setCountry(null);
             }
         }
 

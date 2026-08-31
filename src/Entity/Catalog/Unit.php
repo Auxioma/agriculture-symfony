@@ -2,6 +2,7 @@
 
 namespace App\Entity\Catalog;
 
+use App\Entity\Matching\ClientRequest;
 use App\Entity\Producer\ProductAvailability;
 use App\Repository\Catalog\UnitRepository;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -36,10 +37,17 @@ class Unit
     #[ORM\OneToMany(targetEntity: ProductAvailability::class, mappedBy: 'unit')]
     private Collection $productAvailabilities;
 
+    /**
+     * @var Collection<int, ClientRequest>
+     */
+    #[ORM\OneToMany(targetEntity: ClientRequest::class, mappedBy: 'unit')]
+    private Collection $clientRequests;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->productAvailabilities = new ArrayCollection();
+        $this->clientRequests = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -119,6 +127,36 @@ class Unit
             // set the owning side to null (unless already changed)
             if ($productAvailability->getUnit() === $this) {
                 $productAvailability->setUnit(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ClientRequest>
+     */
+    public function getClientRequests(): Collection
+    {
+        return $this->clientRequests;
+    }
+
+    public function addClientRequest(ClientRequest $clientRequest): static
+    {
+        if (!$this->clientRequests->contains($clientRequest)) {
+            $this->clientRequests->add($clientRequest);
+            $clientRequest->setUnit($this);
+        }
+
+        return $this;
+    }
+
+    public function removeClientRequest(ClientRequest $clientRequest): static
+    {
+        if ($this->clientRequests->removeElement($clientRequest)) {
+            // set the owning side to null (unless already changed)
+            if ($clientRequest->getUnit() === $this) {
+                $clientRequest->setUnit(null);
             }
         }
 

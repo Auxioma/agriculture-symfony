@@ -30,7 +30,7 @@ class ProducerProfile
     private string $farmName;
 
     #[ORM\Column(type: 'citext', nullable: true)]
-    private ?string $slug = null;
+    private string $slug;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $description = null;
@@ -39,7 +39,7 @@ class ProducerProfile
     private ?string $story = null;
 
     #[ORM\ManyToOne]
-    #[ORM\JoinColumn(name: 'country_code', referencedColumnName: 'code', nullable: true)]
+    #[ORM\JoinColumn(nullable: false, name: 'country_code', referencedColumnName: 'code')]
     private ?Country $country = null;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
@@ -55,7 +55,7 @@ class ProducerProfile
     private VerificationStatus $verificationStatus = VerificationStatus::Pending;
 
     #[ORM\Column]
-    private bool $isActive = false;
+    private bool $isActive = true;
 
     #[ORM\OneToOne(mappedBy: 'producer', cascade: ['persist'])]
     private ?ProducerSetting $settings = null;
