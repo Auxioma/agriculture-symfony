@@ -107,12 +107,19 @@ class ClientRequest
     #[ORM\OneToMany(targetEntity: RequestLabel::class, mappedBy: 'request', orphanRemoval: true)]
     private Collection $labels;
 
+    /**
+     * @var Collection<int, RequestMatch>
+     */
+    #[ORM\OneToMany(targetEntity: RequestMatch::class, mappedBy: 'request', orphanRemoval: true)]
+    private Collection $matches;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->createdAt = new \DateTimeImmutable();
         $this->attachments = new ArrayCollection();
         $this->labels = new ArrayCollection();
+        $this->matches = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -417,6 +424,31 @@ class ClientRequest
     public function removeLabel(RequestLabel $label): static
     {
         $this->labels->removeElement($label);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, RequestMatch>
+     */
+    public function getmatches(): Collection
+    {
+        return $this->matches;
+    }
+
+    public function addRequestMatch(RequestMatch $requestMatch): static
+    {
+        if (!$this->matches->contains($requestMatch)) {
+            $this->matches->add($requestMatch);
+            $requestMatch->setRequest($this);
+        }
+
+        return $this;
+    }
+
+    public function removeRequestMatch(RequestMatch $requestMatch): static
+    {
+        if ($this->matches->removeElement($requestMatch));
 
         return $this;
     }
