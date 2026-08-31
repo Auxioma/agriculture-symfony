@@ -2,6 +2,7 @@
 
 namespace App\Entity\Producer;
 
+use App\Entity\Matching\ProducerReply;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Trust\VerificationDocument;
 use App\Entity\Catalog\Country;
@@ -115,6 +116,12 @@ class ProducerProfile
     #[ORM\OneToMany(targetEntity: RequestMatch::class, mappedBy: 'producer', orphanRemoval: true)]
     private Collection $matches;
 
+    /**
+     * @var Collection<int, ProducerReply>
+     */
+    #[ORM\OneToMany(targetEntity: ProducerReply::class, mappedBy: 'request', orphanRemoval: true)]
+    private Collection $replies;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -127,6 +134,7 @@ class ProducerProfile
         $this->openingHours = new ArrayCollection();
         $this->quickReplies = new ArrayCollection();
         $this->matches = new ArrayCollection();
+        $this->replies = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -484,6 +492,31 @@ class ProducerProfile
     public function removeRequestMatch(RequestMatch $requestMatch): static
     {
         if ($this->matches->removeElement($requestMatch));
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ProducerReply>
+     */
+    public function getreplies(): Collection
+    {
+        return $this->replies;
+    }
+
+    public function addProducerReply(ProducerReply $producerReply): static
+    {
+        if (!$this->replies->contains($producerReply)) {
+            $this->replies->add($producerReply);
+            $producerReply->setProducer($this);
+        }
+
+        return $this;
+    }
+
+    public function removeProducerReply(ProducerReply $producerReply): static
+    {
+        if ($this->replies->removeElement($producerReply));
 
         return $this;
     }

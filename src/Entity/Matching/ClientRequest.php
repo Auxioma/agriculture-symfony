@@ -113,6 +113,12 @@ class ClientRequest
     #[ORM\OneToMany(targetEntity: RequestMatch::class, mappedBy: 'request', orphanRemoval: true)]
     private Collection $matches;
 
+    /**
+     * @var Collection<int, ProducerReply>
+     */
+    #[ORM\OneToMany(targetEntity: ProducerReply::class, mappedBy: 'request', orphanRemoval: true)]
+    private Collection $replies;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -120,6 +126,7 @@ class ClientRequest
         $this->attachments = new ArrayCollection();
         $this->labels = new ArrayCollection();
         $this->matches = new ArrayCollection();
+        $this->replies = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -449,6 +456,31 @@ class ClientRequest
     public function removeRequestMatch(RequestMatch $requestMatch): static
     {
         if ($this->matches->removeElement($requestMatch));
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ProducerReply>
+     */
+    public function getreplies(): Collection
+    {
+        return $this->replies;
+    }
+
+    public function addProducerReply(ProducerReply $producerReply): static
+    {
+        if (!$this->replies->contains($producerReply)) {
+            $this->replies->add($producerReply);
+            $producerReply->setRequest($this);
+        }
+
+        return $this;
+    }
+
+    public function removeProducerReply(ProducerReply $producerReply): static
+    {
+        if ($this->replies->removeElement($producerReply));
 
         return $this;
     }

@@ -3,6 +3,7 @@
 namespace App\Entity\Catalog;
 
 use App\Entity\Matching\ClientRequest;
+use App\Entity\Matching\ProducerReply;
 use App\Entity\Producer\ProductAvailability;
 use App\Repository\Catalog\UnitRepository;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -43,11 +44,18 @@ class Unit
     #[ORM\OneToMany(targetEntity: ClientRequest::class, mappedBy: 'unit')]
     private Collection $clientRequests;
 
+    /**
+     * @var Collection<int, ProducerReply>
+     */
+    #[ORM\OneToMany(targetEntity: ProducerReply::class, mappedBy: 'priceUnit')]
+    private Collection $producerReplies;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->productAvailabilities = new ArrayCollection();
         $this->clientRequests = new ArrayCollection();
+        $this->producerReplies = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -157,6 +165,36 @@ class Unit
             // set the owning side to null (unless already changed)
             if ($clientRequest->getUnit() === $this) {
                 $clientRequest->setUnit(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ProducerReply>
+     */
+    public function getProducerReplies(): Collection
+    {
+        return $this->producerReplies;
+    }
+
+    public function addProducerReply(ProducerReply $producerReply): static
+    {
+        if (!$this->producerReplies->contains($producerReply)) {
+            $this->producerReplies->add($producerReply);
+            $producerReply->setPriceUnit($this);
+        }
+
+        return $this;
+    }
+
+    public function removeProducerReply(ProducerReply $producerReply): static
+    {
+        if ($this->producerReplies->removeElement($producerReply)) {
+            // set the owning side to null (unless already changed)
+            if ($producerReply->getPriceUnit() === $this) {
+                $producerReply->setPriceUnit(null);
             }
         }
 
