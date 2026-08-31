@@ -93,6 +93,12 @@ class ProducerProfile
     #[ORM\OneToMany(targetEntity: DeliveryZone::class, mappedBy: 'producer', orphanRemoval: true)]
     private Collection $deliveryZones;
 
+    /**
+     * @var Collection<int, OpeningHour>
+     */
+    #[ORM\OneToMany(targetEntity: OpeningHour::class, mappedBy: 'producer', orphanRemoval: true)]
+    private Collection $openingHours;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -102,6 +108,7 @@ class ProducerProfile
         $this->verificationDocuments = new ArrayCollection();
         $this->teamMembers = new ArrayCollection();
         $this->deliveryZones = new ArrayCollection();
+        $this->openingHours = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -375,6 +382,28 @@ public function addLabel(ProducerLabel $label): static
     public function removeDeliveryZone(DeliveryZone $deliveryZone): static
     {
         $this->deliveryZones->removeElement($deliveryZone);
+
+        return $this;
+    }
+
+    public function getOpeningHours(): Collection
+    {
+        return $this->openingHours;
+    }
+
+    public function addOpeningHour(OpeningHour $openingHour): static
+    {
+        if (!$this->openingHours->contains($openingHour)) {
+            $this->openingHours->add($openingHour);
+            $openingHour->setProducer($this);
+        }
+
+        return $this;
+    }
+
+    public function removeOpeningHour(OpeningHour $openingHour): static
+    {
+        $this->openingHours->removeElement($openingHour);
 
         return $this;
     }
