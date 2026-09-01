@@ -14,6 +14,7 @@ use App\Entity\Messaging\MessageRead;
 use App\Entity\Messaging\UserPresence;
 use App\Entity\Producer\TeamMember;
 use App\Entity\Support\Ticket;
+use App\Entity\Support\TicketMessage;
 use App\Entity\Trust\ModerationAction;
 use App\Entity\Trust\Report;
 use App\Entity\Trust\Review;
@@ -210,6 +211,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: Ticket::class, mappedBy: 'idUser', orphanRemoval: true)]
     private Collection $tickets;
 
+    /**
+     * @var Collection<int, TicketMessage>
+     */
+    #[ORM\OneToMany(targetEntity: TicketMessage::class, mappedBy: 'sender')]
+    private Collection $ticketMessages;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -236,6 +243,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->moderationActions = new ArrayCollection();
         $this->userSanctions = new ArrayCollection();
         $this->tickets = new ArrayCollection();
+        $this->ticketMessages = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -961,6 +969,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function removeTicket(Ticket $ticket): static
     {
         $this->tickets->removeElement($ticket);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, TicketMessage>
+     */
+    public function getTicketMessages(): Collection
+    {
+        return $this->ticketMessages;
+    }
+
+    public function addTicketMessage(TicketMessage $ticketMessage): static
+    {
+        if (!$this->ticketMessages->contains($ticketMessage)) {
+            $this->ticketMessages->add($ticketMessage);
+            $ticketMessage->setSender($this);
+        }
+
+        return $this;
+    }
+
+    public function removeTicketMessage(TicketMessage $ticketMessage): static
+    {
+        if ($this->ticketMessages->removeElement($ticketMessage)) {
+            // set the owning side to null (unless already changed)
+            if ($ticketMessage->getSender() === $this) {
+                $ticketMessage->setSender(null);
+            }
+        }
 
         return $this;
     }

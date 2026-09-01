@@ -4,6 +4,8 @@ namespace App\Entity\Support;
 
 use App\Entity\Identity\User;
 use App\Repository\Support\TicketRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
@@ -39,10 +41,17 @@ class Ticket
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
     private ?\DateTimeImmutable $closedAt = null;
 
+    /**
+     * @var Collection<int, TicketMessage>
+     */
+    #[ORM\OneToMany(targetEntity: TicketMessage::class, mappedBy: 'ticket', orphanRemoval: true)]
+    private Collection $messages;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->createdAt = new \DateTimeImmutable();
+        $this->messages = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -123,6 +132,31 @@ class Ticket
     public function setClosedAt(?\DateTimeImmutable $closedAt): static
     {
         $this->closedAt = $closedAt;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, TicketMessage>
+     */
+    public function getMessages(): Collection
+    {
+        return $this->messages;
+    }
+
+    public function addMessage(TicketMessage $message): static
+    {
+        if (!$this->messages->contains($message)) {
+            $this->messages->add($message);
+            $message->setTicket($this);
+        }
+
+        return $this;
+    }
+
+    public function removeMessage(TicketMessage $message): static
+    {
+        $this->messages->removeElement($message);
 
         return $this;
     }
