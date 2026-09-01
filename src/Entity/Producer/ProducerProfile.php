@@ -2,6 +2,7 @@
 
 namespace App\Entity\Producer;
 
+use App\Entity\Billing\CouponRedemption;
 use App\Entity\Billing\Subscription;
 use App\Entity\Matching\DealOutcome;
 use App\Entity\Matching\ProducerReply;
@@ -143,6 +144,12 @@ class ProducerProfile
     #[ORM\OneToMany(targetEntity: Subscription::class, mappedBy: 'producer', orphanRemoval: true)]
     private Collection $subscriptions;
 
+    /**
+     * @var Collection<int, CouponRedemption>
+     */
+    #[ORM\OneToMany(targetEntity: CouponRedemption::class, mappedBy: 'producer', orphanRemoval: true)]
+    private Collection $couponRedemptions;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -159,6 +166,7 @@ class ProducerProfile
         $this->dealOutcomes = new ArrayCollection();
         $this->conversations = new ArrayCollection();
         $this->subscriptions = new ArrayCollection();
+        $this->couponRedemptions = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -616,6 +624,36 @@ class ProducerProfile
     public function removeSubscription(Subscription $subscription): static
     {
         if ($this->subscriptions->removeElement($subscription));
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, CouponRedemption>
+     */
+    public function getCouponRedemptions(): Collection
+    {
+        return $this->couponRedemptions;
+    }
+
+    public function addCouponRedemption(CouponRedemption $couponRedemption): static
+    {
+        if (!$this->couponRedemptions->contains($couponRedemption)) {
+            $this->couponRedemptions->add($couponRedemption);
+            $couponRedemption->setProducer($this);
+        }
+
+        return $this;
+    }
+
+    public function removeCouponRedemption(CouponRedemption $couponRedemption): static
+    {
+        if ($this->couponRedemptions->removeElement($couponRedemption)) {
+            // set the owning side to null (unless already changed)
+            if ($couponRedemption->getProducer() === $this) {
+                $couponRedemption->setProducer(null);
+            }
+        }
 
         return $this;
     }

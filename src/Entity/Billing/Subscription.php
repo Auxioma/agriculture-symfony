@@ -56,12 +56,19 @@ class Subscription
     #[ORM\OneToMany(targetEntity: Invoice::class, mappedBy: 'subscription', orphanRemoval: true)]
     private Collection $invoices;
 
+    /**
+     * @var Collection<int, CouponRedemption>
+     */
+    #[ORM\OneToMany(targetEntity: CouponRedemption::class, mappedBy: 'subscription', orphanRemoval: true)]
+    private Collection $couponRedemptions;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->createdAt = new \DateTimeImmutable();
         $this->updatedAt = new \DateTimeImmutable();
         $this->invoices = new ArrayCollection();
+        $this->couponRedemptions = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -190,6 +197,36 @@ class Subscription
     public function removeInvoice(Invoice $invoice): static
     {
         $this->invoices->removeElement($invoice);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, CouponRedemption>
+     */
+    public function getCouponRedemptions(): Collection
+    {
+        return $this->couponRedemptions;
+    }
+
+    public function addCouponRedemption(CouponRedemption $couponRedemption): static
+    {
+        if (!$this->couponRedemptions->contains($couponRedemption)) {
+            $this->couponRedemptions->add($couponRedemption);
+            $couponRedemption->setSubscription($this);
+        }
+
+        return $this;
+    }
+
+    public function removeCouponRedemption(CouponRedemption $couponRedemption): static
+    {
+        if ($this->couponRedemptions->removeElement($couponRedemption)) {
+            // set the owning side to null (unless already changed)
+            if ($couponRedemption->getSubscription() === $this) {
+                $couponRedemption->setSubscription(null);
+            }
+        }
 
         return $this;
     }

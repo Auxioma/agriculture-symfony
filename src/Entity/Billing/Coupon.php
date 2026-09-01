@@ -3,6 +3,8 @@
 namespace App\Entity\Billing;
 
 use App\Repository\Billing\CouponRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
@@ -34,9 +36,16 @@ class Coupon
     #[ORM\Column(type: 'json', nullable: true)]
     private ?array $metadata = null;
 
+    /**
+     * @var Collection<int, CouponRedemption>
+     */
+    #[ORM\OneToMany(targetEntity: CouponRedemption::class, mappedBy: 'coupon')]
+    private Collection $couponRedemptions;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
+        $this->couponRedemptions = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -112,6 +121,31 @@ class Coupon
     public function setMetadata(?array $metadata): static
     {
         $this->metadata = $metadata;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, CouponRedemption>
+     */
+    public function getCouponRedemptions(): Collection
+    {
+        return $this->couponRedemptions;
+    }
+
+    public function addCouponRedemption(CouponRedemption $couponRedemption): static
+    {
+        if (!$this->couponRedemptions->contains($couponRedemption)) {
+            $this->couponRedemptions->add($couponRedemption);
+            $couponRedemption->setCoupon($this);
+        }
+
+        return $this;
+    }
+
+    public function removeCouponRedemption(CouponRedemption $couponRedemption): static
+    {
+        if ($this->couponRedemptions->removeElement($couponRedemption));
 
         return $this;
     }
