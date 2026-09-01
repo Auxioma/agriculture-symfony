@@ -10,6 +10,7 @@ use App\Entity\Messaging\Conversation;
 use App\Entity\Messaging\ConversationParticipant;
 use App\Entity\Messaging\Message;
 use App\Entity\Messaging\MessageRead;
+use App\Entity\Messaging\UserPresence;
 use App\Entity\Producer\TeamMember;
 use App\Repository\Identity\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -163,6 +164,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
      */
     #[ORM\OneToMany(targetEntity: MessageRead::class, mappedBy: 'idUser', orphanRemoval: true)]
     private Collection $messageReads;
+
+    #[ORM\OneToOne(mappedBy: 'idUser', cascade: ['persist', 'remove'])]
+    private ?UserPresence $userPresence = null;
 
     public function __construct()
     {
@@ -732,6 +736,23 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
                 $messageRead->setIdUser(null);
             }
         }
+
+        return $this;
+    }
+
+    public function getUserPresence(): ?UserPresence
+    {
+        return $this->userPresence;
+    }
+
+    public function setUserPresence(UserPresence $userPresence): static
+    {
+        // set the owning side of the relation if necessary
+        if ($userPresence->getIdUser() !== $this) {
+            $userPresence->setIdUser($this);
+        }
+
+        $this->userPresence = $userPresence;
 
         return $this;
     }
