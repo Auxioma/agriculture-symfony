@@ -7,6 +7,8 @@ use App\Entity\Catalog\Unit;
 use App\Entity\Producer\ProducerProfile;
 use App\Enum\ReplyStatus;
 use App\Repository\Matching\ProducerReplyRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
@@ -56,10 +58,17 @@ class ProducerReply
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
     private \DateTimeImmutable $createdAt;
 
+    /**
+     * @var Collection<int, ReplyAttachment>
+     */
+    #[ORM\OneToMany(targetEntity: ReplyAttachment::class, mappedBy: 'reply')]
+    private Collection $attachments;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->createdAt = new \DateTimeImmutable();
+        $this->attachments = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -190,5 +199,31 @@ class ProducerReply
     public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
+    }
+
+    public function getAttachments(): Collection
+    {
+        return $this->attachments;
+    }
+
+    public function addAttachment(ReplyAttachment $attachment): static
+    {
+        if (!$this->attachments->contains($attachment)) {
+            $this->attachments->add($attachment);
+            $attachment->setReply($this);
+        }
+
+        return $this;
+    }
+
+    public function removeAttachment(ReplyAttachment $attachment): static
+    {
+        if ($this->attachments->removeElement($attachment)) {
+            if ($attachment->getReply() === $this) {
+                $attachment->setReply(null);
+            }
+        }
+
+        return $this;
     }
 }

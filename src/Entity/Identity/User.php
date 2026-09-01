@@ -4,6 +4,7 @@ namespace App\Entity\Identity;
 
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\RequestAttachment;
+use App\Entity\Matching\RequestEvent;
 use App\Entity\Producer\TeamMember;
 use App\Repository\Identity\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -120,6 +121,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: RequestAttachment::class, mappedBy: 'uploadedBy')]
     private Collection $requestAttachments;
 
+    /**
+     * @var Collection<int, RequestEvent>
+     */
+    #[ORM\OneToMany(targetEntity: RequestEvent::class, mappedBy: 'actor')]
+    private Collection $requestEvents;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -134,6 +141,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->requests = new ArrayCollection();
         $this->roles = ['ROLE_CLIENT'];
         $this->requestAttachments = new ArrayCollection();
+        $this->requestEvents = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -495,6 +503,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
             // set the owning side to null (unless already changed)
             if ($requestAttachment->getUploadedBy() === $this) {
                 $requestAttachment->setUploadedBy(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, RequestEvent>
+     */
+    public function getRequestEvents(): Collection
+    {
+        return $this->requestEvents;
+    }
+
+    public function addRequestEvent(RequestEvent $requestEvent): static
+    {
+        if (!$this->requestEvents->contains($requestEvent)) {
+            $this->requestEvents->add($requestEvent);
+            $requestEvent->setActor($this);
+        }
+
+        return $this;
+    }
+
+    public function removeRequestEvent(RequestEvent $requestEvent): static
+    {
+        if ($this->requestEvents->removeElement($requestEvent)) {
+            // set the owning side to null (unless already changed)
+            if ($requestEvent->getActor() === $this) {
+                $requestEvent->setActor(null);
             }
         }
 

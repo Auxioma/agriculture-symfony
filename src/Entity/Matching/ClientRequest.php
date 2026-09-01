@@ -119,6 +119,12 @@ class ClientRequest
     #[ORM\OneToMany(targetEntity: ProducerReply::class, mappedBy: 'request', orphanRemoval: true)]
     private Collection $replies;
 
+    /**
+     * @var Collection<int, RequestEvent>
+     */
+    #[ORM\OneToMany(targetEntity: RequestEvent::class, mappedBy: 'request', orphanRemoval: true)]
+    private Collection $requestEvents;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -127,6 +133,7 @@ class ClientRequest
         $this->labels = new ArrayCollection();
         $this->matches = new ArrayCollection();
         $this->replies = new ArrayCollection();
+        $this->requestEvents = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -481,6 +488,36 @@ class ClientRequest
     public function removeProducerReply(ProducerReply $producerReply): static
     {
         if ($this->replies->removeElement($producerReply));
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, RequestEvent>
+     */
+    public function getRequestEvents(): Collection
+    {
+        return $this->requestEvents;
+    }
+
+    public function addRequestEvent(RequestEvent $requestEvent): static
+    {
+        if (!$this->requestEvents->contains($requestEvent)) {
+            $this->requestEvents->add($requestEvent);
+            $requestEvent->setRequest($this);
+        }
+
+        return $this;
+    }
+
+    public function removeRequestEvent(RequestEvent $requestEvent): static
+    {
+        if ($this->requestEvents->removeElement($requestEvent)) {
+            // set the owning side to null (unless already changed)
+            if ($requestEvent->getRequest() === $this) {
+                $requestEvent->setRequest(null);
+            }
+        }
 
         return $this;
     }
