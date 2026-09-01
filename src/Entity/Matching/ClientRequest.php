@@ -512,12 +512,7 @@ class ClientRequest
 
     public function removeRequestEvent(RequestEvent $requestEvent): static
     {
-        if ($this->requestEvents->removeElement($requestEvent)) {
-            // set the owning side to null (unless already changed)
-            if ($requestEvent->getRequest() === $this) {
-                $requestEvent->setRequest(null);
-            }
-        }
+        if ($this->requestEvents->removeElement($requestEvent));
 
         return $this;
     }
