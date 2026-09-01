@@ -4,6 +4,8 @@ namespace App\Entity\Notification;
 
 use App\Entity\Identity\User;
 use App\Repository\Notification\NotificationRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
@@ -39,10 +41,17 @@ class Notification
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
     private \DateTimeImmutable $createdAt;
 
+    /**
+     * @var Collection<int, NotificationDelivery>
+     */
+    #[ORM\OneToMany(targetEntity: NotificationDelivery::class, mappedBy: 'notification', orphanRemoval: true)]
+    private Collection $deliveries;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->createdAt = new \DateTimeImmutable();
+        $this->deliveries = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -125,5 +134,30 @@ class Notification
     public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
+    }
+
+    /**
+     * @return Collection<int, NotificationDelivery>
+     */
+    public function getDeliveries(): Collection
+    {
+        return $this->deliveries;
+    }
+
+    public function addDelivery(NotificationDelivery $delivery): static
+    {
+        if (!$this->deliveries->contains($delivery)) {
+            $this->deliveries->add($delivery);
+            $delivery->setNotification($this);
+        }
+
+        return $this;
+    }
+
+    public function removeDelivery(NotificationDelivery $delivery): static
+    {
+        $this->deliveries->removeElement($delivery);
+
+        return $this;
     }
 }
