@@ -8,6 +8,7 @@ use App\Entity\Matching\RequestAttachment;
 use App\Entity\Matching\RequestEvent;
 use App\Entity\Messaging\Conversation;
 use App\Entity\Messaging\ConversationParticipant;
+use App\Entity\Messaging\Message;
 use App\Entity\Producer\TeamMember;
 use App\Repository\Identity\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -150,6 +151,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: ConversationParticipant::class, mappedBy: 'idUser', orphanRemoval: true)]
     private Collection $conversationParticipants;
 
+    /**
+     * @var Collection<int, Message>
+     */
+    #[ORM\OneToMany(targetEntity: Message::class, mappedBy: 'sender')]
+    private Collection $messages;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -168,6 +175,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->dealOutcomes = new ArrayCollection();
         $this->conversations = new ArrayCollection();
         $this->conversationParticipants = new ArrayCollection();
+        $this->messages = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -654,6 +662,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
             // set the owning side to null (unless already changed)
             if ($conversationParticipant->getIdUser() === $this) {
                 $conversationParticipant->setIdUser(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Message>
+     */
+    public function getmessages(): Collection
+    {
+        return $this->messages;
+    }
+
+    public function addmessages(Message $messages): static
+    {
+        if (!$this->messages->contains($messages)) {
+            $this->messages->add($messages);
+            $messages->setSender($this);
+        }
+
+        return $this;
+    }
+
+    public function removemessages(Message $messages): static
+    {
+        if ($this->messages->removeElement($messages)) {
+            // set the owning side to null (unless already changed)
+            if ($messages->getSender() === $this) {
+                $messages->setSender(null);
             }
         }
 

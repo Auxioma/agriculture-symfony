@@ -46,9 +46,16 @@ class Conversation
     #[ORM\OneToMany(targetEntity: ConversationParticipant::class, mappedBy: 'convesartion', orphanRemoval: true)]
     private Collection $conversationParticipants;
 
+    /**
+     * @var Collection<int, Message>
+     */
+    #[ORM\OneToMany(targetEntity: Message::class, mappedBy: 'conversation', orphanRemoval: true)]
+    private Collection $messages;
+
     public function __construct()
     {
         $this->conversationParticipants = new ArrayCollection();
+        $this->messages = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -152,6 +159,36 @@ class Conversation
             // set the owning side to null (unless already changed)
             if ($conversationParticipant->getConvesartion() === $this) {
                 $conversationParticipant->setConvesartion(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Message>
+     */
+    public function getMessages(): Collection
+    {
+        return $this->messages;
+    }
+
+    public function addMessage(Message $message): static
+    {
+        if (!$this->messages->contains($message)) {
+            $this->messages->add($message);
+            $message->setConversation($this);
+        }
+
+        return $this;
+    }
+
+    public function removeMessage(Message $message): static
+    {
+        if ($this->messages->removeElement($message)) {
+            // set the owning side to null (unless already changed)
+            if ($message->getConversation() === $this) {
+                $message->setConversation(null);
             }
         }
 
