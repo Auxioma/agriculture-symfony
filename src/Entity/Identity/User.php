@@ -3,6 +3,7 @@
 namespace App\Entity\Identity;
 
 use App\Entity\Engagement\Favorite;
+use App\Entity\Engagement\SavedSearch;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\DealOutcome;
 use App\Entity\Matching\RequestAttachment;
@@ -224,6 +225,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: Favorite::class, mappedBy: 'idUser', orphanRemoval: true)]
     private Collection $favorites;
 
+    /**
+     * @var Collection<int, SavedSearch>
+     */
+    #[ORM\OneToMany(targetEntity: SavedSearch::class, mappedBy: 'idUser', orphanRemoval: true)]
+    private Collection $savedSearches;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -252,6 +259,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->tickets = new ArrayCollection();
         $this->ticketMessages = new ArrayCollection();
         $this->favorites = new ArrayCollection();
+        $this->savedSearches = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -1032,6 +1040,31 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function removeFavorite(Favorite $favorite): static
     {
         $this->favorites->removeElement($favorite);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, SavedSearch>
+     */
+    public function getSavedSearches(): Collection
+    {
+        return $this->savedSearches;
+    }
+
+    public function addSavedSearch(SavedSearch $savedSearch): static
+    {
+        if (!$this->savedSearches->contains($savedSearch)) {
+            $this->savedSearches->add($savedSearch);
+            $savedSearch->setIdUser($this);
+        }
+
+        return $this;
+    }
+
+    public function removeSavedSearch(SavedSearch $savedSearch): static
+    {
+        $this->savedSearches->removeElement($savedSearch);
 
         return $this;
     }
