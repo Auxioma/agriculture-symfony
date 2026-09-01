@@ -17,6 +17,8 @@ use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Uid\Uuid;
 use App\Enum\UserStatus;
 use App\Entity\Producer\ProducerProfile;
+use Doctrine\DBAL\Types\Types;
+
 
 #[ORM\Entity(repositoryClass: UserRepository::class)]
 #[ORM\Table(name: 'users', schema: 'identity')]
@@ -38,8 +40,8 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'citext', unique: true)] //* Equivalent JS ToLowerCase
     private string $email;
 
-    #[ORM\Column(length: 255)]
-    private string $password;
+    #[ORM\Column(type: Types::TEXT)]
+    private string $passwordHash;
 
     #[ORM\Column(type: 'simple_array')]
     private array $roles;
@@ -173,16 +175,21 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this->email;
     }
 
-    public function getPassword(): string
+    public function getPasswordHash(): string
     {
-        return $this->password;
+        return $this->passwordHash;
     }
 
-    public function setPassword(string $password): static
+    public function setPasswordHash(string $passwordHash): static
     {
-        $this->password = $password;
+        $this->passwordHash = $passwordHash;
         return $this;
     }
+
+    public function getPassword(): string
+{
+    return $this->passwordHash;
+}
 
     public function getRoles(): array
     {
