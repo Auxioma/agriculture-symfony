@@ -125,6 +125,12 @@ class ClientRequest
     #[ORM\OneToMany(targetEntity: RequestEvent::class, mappedBy: 'request', orphanRemoval: true)]
     private Collection $requestEvents;
 
+    /**
+     * @var Collection<int, RecurringRequestRule>
+     */
+    #[ORM\OneToMany(targetEntity: RecurringRequestRule::class, mappedBy: 'request', orphanRemoval: true)]
+    private Collection $recurringRequestRules;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -134,6 +140,7 @@ class ClientRequest
         $this->matches = new ArrayCollection();
         $this->replies = new ArrayCollection();
         $this->requestEvents = new ArrayCollection();
+        $this->recurringRequestRules = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -513,6 +520,31 @@ class ClientRequest
     public function removeRequestEvent(RequestEvent $requestEvent): static
     {
         if ($this->requestEvents->removeElement($requestEvent));
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, RecurringRequestRule>
+     */
+    public function getRecurringRequestRules(): Collection
+    {
+        return $this->recurringRequestRules;
+    }
+
+    public function addRecurringRequestRule(RecurringRequestRule $recurringRequestRule): static
+    {
+        if (!$this->recurringRequestRules->contains($recurringRequestRule)) {
+            $this->recurringRequestRules->add($recurringRequestRule);
+            $recurringRequestRule->setRequest($this);
+        }
+
+        return $this;
+    }
+
+    public function removeRecurringRequestRule(RecurringRequestRule $recurringRequestRule): static
+    {
+        if ($this->recurringRequestRules->removeElement($recurringRequestRule));
 
         return $this;
     }
