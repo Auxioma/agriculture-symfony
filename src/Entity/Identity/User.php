@@ -13,6 +13,7 @@ use App\Entity\Messaging\Message;
 use App\Entity\Messaging\MessageRead;
 use App\Entity\Messaging\UserPresence;
 use App\Entity\Producer\TeamMember;
+use App\Entity\Trust\Report;
 use App\Entity\Trust\Review;
 use App\Repository\Identity\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -182,6 +183,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: Review::class, mappedBy: 'client', orphanRemoval: true)]
     private Collection $reviews;
 
+    /**
+     * @var Collection<int, Report>
+     */
+    #[ORM\OneToMany(targetEntity: Report::class, mappedBy: 'reporter')]
+    private Collection $reports;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -204,6 +211,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->messageReads = new ArrayCollection();
         $this->blockedUsers = new ArrayCollection();
         $this->reviews = new ArrayCollection();
+        $this->reports = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -817,6 +825,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
             // set the owning side to null (unless already changed)
             if ($review->getClient() === $this) {
                 $review->setClient(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Report>
+     */
+    public function getReports(): Collection
+    {
+        return $this->reports;
+    }
+
+    public function addReport(Report $report): static
+    {
+        if (!$this->reports->contains($report)) {
+            $this->reports->add($report);
+            $report->setReporter($this);
+        }
+
+        return $this;
+    }
+
+    public function removeReport(Report $report): static
+    {
+        if ($this->reports->removeElement($report)) {
+            // set the owning side to null (unless already changed)
+            if ($report->getReporter() === $this) {
+                $report->setReporter(null);
             }
         }
 
