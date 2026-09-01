@@ -32,7 +32,7 @@ class ProducerProfile
     #[ORM\Column(length: 255)]
     private string $farmName;
 
-    #[ORM\Column(type: 'citext', nullable: true)]
+    #[ORM\Column(type: 'citext', unique: true)]
     private string $slug;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
@@ -174,12 +174,12 @@ class ProducerProfile
         return $this;
     }
 
-    public function getSlug(): ?string
+    public function getSlug(): string
     {
         return $this->slug;
     }
 
-    public function setSlug(?string $slug): static
+    public function setSlug(string $slug): static
     {
         $this->slug = $slug;
 
