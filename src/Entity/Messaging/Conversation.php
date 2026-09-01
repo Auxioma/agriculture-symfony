@@ -7,6 +7,8 @@ use App\Entity\Matching\ClientRequest;
 use App\Entity\Producer\ProducerProfile;
 use App\Enum\ConversationStatus;
 use App\Repository\Messaging\ConversationRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -37,6 +39,17 @@ class Conversation
 
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
     private ?\DateTimeImmutable $createdAt = null;
+
+    /**
+     * @var Collection<int, ConversationParticipant>
+     */
+    #[ORM\OneToMany(targetEntity: ConversationParticipant::class, mappedBy: 'convesartion', orphanRemoval: true)]
+    private Collection $conversationParticipants;
+
+    public function __construct()
+    {
+        $this->conversationParticipants = new ArrayCollection();
+    }
 
     public function getId(): ?int
     {
@@ -111,6 +124,36 @@ class Conversation
     public function setCreatedAt(\DateTimeImmutable $createdAt): static
     {
         $this->createdAt = $createdAt;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ConversationParticipant>
+     */
+    public function getConversationParticipants(): Collection
+    {
+        return $this->conversationParticipants;
+    }
+
+    public function addConversationParticipant(ConversationParticipant $conversationParticipant): static
+    {
+        if (!$this->conversationParticipants->contains($conversationParticipant)) {
+            $this->conversationParticipants->add($conversationParticipant);
+            $conversationParticipant->setConvesartion($this);
+        }
+
+        return $this;
+    }
+
+    public function removeConversationParticipant(ConversationParticipant $conversationParticipant): static
+    {
+        if ($this->conversationParticipants->removeElement($conversationParticipant)) {
+            // set the owning side to null (unless already changed)
+            if ($conversationParticipant->getConvesartion() === $this) {
+                $conversationParticipant->setConvesartion(null);
+            }
+        }
 
         return $this;
     }

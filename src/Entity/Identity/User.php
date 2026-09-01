@@ -7,6 +7,7 @@ use App\Entity\Matching\DealOutcome;
 use App\Entity\Matching\RequestAttachment;
 use App\Entity\Matching\RequestEvent;
 use App\Entity\Messaging\Conversation;
+use App\Entity\Messaging\ConversationParticipant;
 use App\Entity\Producer\TeamMember;
 use App\Repository\Identity\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -143,6 +144,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: Conversation::class, mappedBy: 'client')]
     private Collection $conversations;
 
+    /**
+     * @var Collection<int, ConversationParticipant>
+     */
+    #[ORM\OneToMany(targetEntity: ConversationParticipant::class, mappedBy: 'idUser', orphanRemoval: true)]
+    private Collection $conversationParticipants;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -160,6 +167,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->requestEvents = new ArrayCollection();
         $this->dealOutcomes = new ArrayCollection();
         $this->conversations = new ArrayCollection();
+        $this->conversationParticipants = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -616,6 +624,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
             // set the owning side to null (unless already changed)
             if ($conversation->getClient() === $this) {
                 $conversation->setClient(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ConversationParticipant>
+     */
+    public function getConversationParticipants(): Collection
+    {
+        return $this->conversationParticipants;
+    }
+
+    public function addConversationParticipant(ConversationParticipant $conversationParticipant): static
+    {
+        if (!$this->conversationParticipants->contains($conversationParticipant)) {
+            $this->conversationParticipants->add($conversationParticipant);
+            $conversationParticipant->setIdUser($this);
+        }
+
+        return $this;
+    }
+
+    public function removeConversationParticipant(ConversationParticipant $conversationParticipant): static
+    {
+        if ($this->conversationParticipants->removeElement($conversationParticipant)) {
+            // set the owning side to null (unless already changed)
+            if ($conversationParticipant->getIdUser() === $this) {
+                $conversationParticipant->setIdUser(null);
             }
         }
 
