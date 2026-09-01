@@ -15,6 +15,7 @@ use App\Entity\Messaging\ConversationParticipant;
 use App\Entity\Messaging\Message;
 use App\Entity\Messaging\MessageRead;
 use App\Entity\Messaging\UserPresence;
+use App\Entity\Notification\Notification;
 use App\Entity\Producer\TeamMember;
 use App\Entity\Support\Ticket;
 use App\Entity\Support\TicketMessage;
@@ -238,6 +239,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: Referral::class, mappedBy: 'referrer')]
     private Collection $referrals;
 
+    /**
+     * @var Collection<int, Notification>
+     */
+    #[ORM\OneToMany(targetEntity: Notification::class, mappedBy: 'idUser', orphanRemoval: true)]
+    private Collection $notifications;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -268,6 +275,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->favorites = new ArrayCollection();
         $this->savedSearches = new ArrayCollection();
         $this->referrals = new ArrayCollection();
+        $this->notifications = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -1103,6 +1111,31 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
                 $referral->setReferrer(null);
             }
         }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Notification>
+     */
+    public function getNotifications(): Collection
+    {
+        return $this->notifications;
+    }
+
+    public function addNotification(Notification $notification): static
+    {
+        if (!$this->notifications->contains($notification)) {
+            $this->notifications->add($notification);
+            $notification->setIdUser($this);
+        }
+
+        return $this;
+    }
+
+    public function removeNotification(Notification $notification): static
+    {
+        $this->notifications->removeElement($notification);
 
         return $this;
     }
