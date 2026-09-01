@@ -16,6 +16,7 @@ use App\Entity\Producer\TeamMember;
 use App\Entity\Trust\ModerationAction;
 use App\Entity\Trust\Report;
 use App\Entity\Trust\Review;
+use App\Entity\Trust\UserSanction;
 use App\Repository\Identity\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -196,6 +197,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: ModerationAction::class, mappedBy: 'admin')]
     private Collection $moderationActions;
 
+    /**
+     * @var Collection<int, UserSanction>
+     */
+    #[ORM\OneToMany(targetEntity: UserSanction::class, mappedBy: 'idUser', orphanRemoval: true)]
+    private Collection $userSanctions;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -220,6 +227,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->reviews = new ArrayCollection();
         $this->reports = new ArrayCollection();
         $this->moderationActions = new ArrayCollection();
+        $this->userSanctions = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -895,6 +903,31 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
                 $moderationAction->setAdmin(null);
             }
         }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, UserSanction>
+     */
+    public function getUserSanctions(): Collection
+    {
+        return $this->userSanctions;
+    }
+
+    public function addUserSanction(UserSanction $userSanction): static
+    {
+        if (!$this->userSanctions->contains($userSanction)) {
+            $this->userSanctions->add($userSanction);
+            $userSanction->setIdUser($this);
+        }
+
+        return $this;
+    }
+
+    public function removeUserSanction(UserSanction $userSanction): static
+    {
+        if ($this->userSanctions->removeElement($userSanction));
 
         return $this;
     }
