@@ -10,9 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
 use Symfony\Component\Uid\Uuid;
 
-#[ORM\Entity(repositoryClass: RequestMatchRepository::class)]
-#[ORM\Table(name: 'request_matches', schema: 'matching')]
-class RequestMatch
+    #[ORM\Entity(repositoryClass: RequestMatchRepository::class)]
+    #[ORM\Table(name: 'request_matches', schema: 'matching')]
+    #[ORM\UniqueConstraint(name: 'uniq_request_producer', columns: ['request_id', 'producer_id'])]
+    class RequestMatch
 {
     #[ORM\Id]
     #[ORM\Column(type: UuidType::NAME, unique: true)]

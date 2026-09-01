@@ -23,7 +23,7 @@ class Product
     #[ORM\JoinColumn(nullable: false)]
     private Category $category;
 
-    #[ORM\Column(type: 'citext', nullable: true)]
+    #[ORM\Column(type: 'citext', nullable: true, unique: true)]
     private ?string $slug = null;
 
     #[ORM\Column(length: 120)]

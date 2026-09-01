@@ -27,7 +27,7 @@ class Category
     #[ORM\OneToMany(targetEntity: self::class, mappedBy: 'parent')]
     private Collection $categories;
 
-    #[ORM\Column(type: 'citext', nullable: true)]
+    #[ORM\Column(type: 'citext', nullable: true, unique: true)]
     private ?string $slug = null;
 
     #[ORM\Column(length: 120)]
