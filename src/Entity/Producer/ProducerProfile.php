@@ -747,12 +747,7 @@ class ProducerProfile
 
     public function removeProducerDailyMetric(ProducerDailyMetric $producerDailyMetric): static
     {
-        if ($this->producerDailyMetrics->removeElement($producerDailyMetric)) {
-            // set the owning side to null (unless already changed)
-            if ($producerDailyMetric->getProducer() === $this) {
-                $producerDailyMetric->setProducer(null);
-            }
-        }
+        if ($this->producerDailyMetrics->removeElement($producerDailyMetric));
 
         return $this;
     }
