@@ -2,6 +2,7 @@
 
 namespace App\Entity\Identity;
 
+use App\Entity\Engagement\Favorite;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\DealOutcome;
 use App\Entity\Matching\RequestAttachment;
@@ -217,6 +218,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: TicketMessage::class, mappedBy: 'sender')]
     private Collection $ticketMessages;
 
+    /**
+     * @var Collection<int, Favorite>
+     */
+    #[ORM\OneToMany(targetEntity: Favorite::class, mappedBy: 'idUser', orphanRemoval: true)]
+    private Collection $favorites;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -244,6 +251,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->userSanctions = new ArrayCollection();
         $this->tickets = new ArrayCollection();
         $this->ticketMessages = new ArrayCollection();
+        $this->favorites = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -999,6 +1007,31 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
                 $ticketMessage->setSender(null);
             }
         }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Favorite>
+     */
+    public function getFavorites(): Collection
+    {
+        return $this->favorites;
+    }
+
+    public function addFavorite(Favorite $favorite): static
+    {
+        if (!$this->favorites->contains($favorite)) {
+            $this->favorites->add($favorite);
+            $favorite->setIdUser($this);
+        }
+
+        return $this;
+    }
+
+    public function removeFavorite(Favorite $favorite): static
+    {
+        $this->favorites->removeElement($favorite);
 
         return $this;
     }
