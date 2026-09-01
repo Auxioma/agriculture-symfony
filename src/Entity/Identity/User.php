@@ -13,6 +13,7 @@ use App\Entity\Messaging\Message;
 use App\Entity\Messaging\MessageRead;
 use App\Entity\Messaging\UserPresence;
 use App\Entity\Producer\TeamMember;
+use App\Entity\Trust\Review;
 use App\Repository\Identity\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -175,6 +176,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: BlockedUser::class, mappedBy: 'blocker', orphanRemoval: true)]
     private Collection $blockedUsers;
 
+    /**
+     * @var Collection<int, Review>
+     */
+    #[ORM\OneToMany(targetEntity: Review::class, mappedBy: 'client', orphanRemoval: true)]
+    private Collection $reviews;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -196,6 +203,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->messages = new ArrayCollection();
         $this->messageReads = new ArrayCollection();
         $this->blockedUsers = new ArrayCollection();
+        $this->reviews = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -779,6 +787,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
             // set the owning side to null (unless already changed)
             if ($blockedUser->getBlocker() === $this) {
                 $blockedUser->setBlocker(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Review>
+     */
+    public function getReviews(): Collection
+    {
+        return $this->reviews;
+    }
+
+    public function addReview(Review $review): static
+    {
+        if (!$this->reviews->contains($review)) {
+            $this->reviews->add($review);
+            $review->setClient($this);
+        }
+
+        return $this;
+    }
+
+    public function removeReview(Review $review): static
+    {
+        if ($this->reviews->removeElement($review)) {
+            // set the owning side to null (unless already changed)
+            if ($review->getClient() === $this) {
+                $review->setClient(null);
             }
         }
 

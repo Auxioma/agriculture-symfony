@@ -9,6 +9,7 @@ use App\Entity\Catalog\Product;
 use App\Entity\Catalog\Unit;
 use App\Entity\Identity\User;
 use App\Entity\Messaging\Conversation;
+use App\Entity\Trust\Review;
 use App\Enum\NeedType;
 use App\Enum\RequestStatus;
 use App\Repository\Matching\ClientRequestRepository;
@@ -144,6 +145,12 @@ class ClientRequest
     #[ORM\OneToMany(targetEntity: Conversation::class, mappedBy: 'request', orphanRemoval: true)]
     private Collection $conversations;
 
+    /**
+     * @var Collection<int, Review>
+     */
+    #[ORM\OneToMany(targetEntity: Review::class, mappedBy: 'request', orphanRemoval: true)]
+    private Collection $reviews;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -157,6 +164,7 @@ class ClientRequest
         $this->recurringRequestRules = new ArrayCollection();
         $this->dealOutcomes = new ArrayCollection();
         $this->conversations = new ArrayCollection();
+        $this->reviews = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -611,6 +619,31 @@ class ClientRequest
     public function removeConversation(Conversation $conversation): static
     {
         if ($this->conversations->removeElement($conversation));
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Review>
+     */
+    public function getReviews(): Collection
+    {
+        return $this->reviews;
+    }
+
+    public function addReview(Review $review): static
+    {
+        if (!$this->reviews->contains($review)) {
+            $this->reviews->add($review);
+            $review->setRequest($this);
+        }
+
+        return $this;
+    }
+
+    public function removeReview(Review $review): static
+    {
+        if ($this->reviews->removeElement($review));
 
         return $this;
     }

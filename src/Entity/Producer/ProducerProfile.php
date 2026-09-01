@@ -9,6 +9,7 @@ use App\Entity\Matching\DealOutcome;
 use App\Entity\Matching\ProducerReply;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
+use App\Entity\Trust\Review;
 use App\Entity\Trust\VerificationDocument;
 use App\Entity\Catalog\Country;
 use App\Entity\Identity\User;
@@ -157,6 +158,12 @@ class ProducerProfile
     #[ORM\OneToMany(targetEntity: PaymentMethod::class, mappedBy: 'producer', orphanRemoval: true)]
     private Collection $paymentMethods;
 
+    /**
+     * @var Collection<int, Review>
+     */
+    #[ORM\OneToMany(targetEntity: Review::class, mappedBy: 'producer', orphanRemoval: true)]
+    private Collection $reviews;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -175,6 +182,7 @@ class ProducerProfile
         $this->subscriptions = new ArrayCollection();
         $this->couponRedemptions = new ArrayCollection();
         $this->paymentMethods = new ArrayCollection();
+        $this->reviews = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -682,6 +690,31 @@ class ProducerProfile
     public function removePaymentMethod(PaymentMethod $paymentMethod): static
     {
         $this->paymentMethods->removeElement($paymentMethod);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Review>
+     */
+    public function getReviews(): Collection
+    {
+        return $this->reviews;
+    }
+
+    public function addReview(Review $review): static
+    {
+        if (!$this->reviews->contains($review)) {
+            $this->reviews->add($review);
+            $review->setProducer($this);
+        }
+
+        return $this;
+    }
+
+    public function removeReview(Review $review): static
+    {
+        if ($this->reviews->removeElement($review));
 
         return $this;
     }
