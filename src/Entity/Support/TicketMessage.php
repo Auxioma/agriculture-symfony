@@ -4,6 +4,8 @@ namespace App\Entity\Support;
 
 use App\Entity\Identity\User;
 use App\Repository\Support\TicketMessageRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
@@ -30,10 +32,17 @@ class TicketMessage
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
     private \DateTimeImmutable $createdAt;
 
+    /**
+     * @var Collection<int, TicketAttachment>
+     */
+    #[ORM\OneToMany(targetEntity: TicketAttachment::class, mappedBy: 'ticketMessage', orphanRemoval: true)]
+    private Collection $attachments;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->createdAt = new \DateTimeImmutable();
+        $this->attachments = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -80,5 +89,30 @@ class TicketMessage
     public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
+    }
+
+    /**
+     * @return Collection<int, TicketAttachment>
+     */
+    public function getAttachments(): Collection
+    {
+        return $this->attachments;
+    }
+
+    public function addAttachment(TicketAttachment $attachment): static
+    {
+        if (!$this->attachments->contains($attachment)) {
+            $this->attachments->add($attachment);
+            $attachment->setTicketMessage($this);
+        }
+
+        return $this;
+    }
+
+    public function removeAttachment(TicketAttachment $attachment): static
+    {
+        $this->attachments->removeElement($attachment);
+
+        return $this;
     }
 }
