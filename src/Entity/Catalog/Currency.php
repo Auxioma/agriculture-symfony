@@ -2,6 +2,7 @@
 
 namespace App\Entity\Catalog;
 
+use App\Entity\Billing\Invoice;
 use App\Entity\Billing\PlanPrice;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\ProducerReply;
@@ -55,12 +56,19 @@ class Currency
     #[ORM\OneToMany(targetEntity: PlanPrice::class, mappedBy: 'currency')]
     private Collection $planPrices;
 
+    /**
+     * @var Collection<int, Invoice>
+     */
+    #[ORM\OneToMany(targetEntity: Invoice::class, mappedBy: 'currency')]
+    private Collection $invoices;
+
     public function __construct()
     {
         $this->producerProducts = new ArrayCollection();
         $this->clientRequests = new ArrayCollection();
         $this->producerReplies = new ArrayCollection();
         $this->planPrices = new ArrayCollection();
+        $this->invoices = new ArrayCollection();
     }
 
     public function getCode(): string
@@ -237,6 +245,36 @@ class Currency
             // set the owning side to null (unless already changed)
             if ($planPrice->getCurrency() === $this) {
                 $planPrice->setCurrency(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Invoice>
+     */
+    public function getInvoices(): Collection
+    {
+        return $this->invoices;
+    }
+
+    public function addInvoice(Invoice $invoice): static
+    {
+        if (!$this->invoices->contains($invoice)) {
+            $this->invoices->add($invoice);
+            $invoice->setCurrency($this);
+        }
+
+        return $this;
+    }
+
+    public function removeInvoice(Invoice $invoice): static
+    {
+        if ($this->invoices->removeElement($invoice)) {
+            // set the owning side to null (unless already changed)
+            if ($invoice->getCurrency() === $this) {
+                $invoice->setCurrency(null);
             }
         }
 
