@@ -6,6 +6,7 @@ use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\DealOutcome;
 use App\Entity\Matching\RequestAttachment;
 use App\Entity\Matching\RequestEvent;
+use App\Entity\Messaging\Conversation;
 use App\Entity\Producer\TeamMember;
 use App\Repository\Identity\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -136,6 +137,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: DealOutcome::class, mappedBy: 'declaredBy')]
     private Collection $dealOutcomes;
 
+    /**
+     * @var Collection<int, Conversation>
+     */
+    #[ORM\OneToMany(targetEntity: Conversation::class, mappedBy: 'client')]
+    private Collection $conversations;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -152,6 +159,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->requestAttachments = new ArrayCollection();
         $this->requestEvents = new ArrayCollection();
         $this->dealOutcomes = new ArrayCollection();
+        $this->conversations = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -578,6 +586,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
             // set the owning side to null (unless already changed)
             if ($dealOutcome->getDeclaredBy() === $this) {
                 $dealOutcome->setDeclaredBy(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Conversation>
+     */
+    public function getConversations(): Collection
+    {
+        return $this->conversations;
+    }
+
+    public function addConversation(Conversation $conversation): static
+    {
+        if (!$this->conversations->contains($conversation)) {
+            $this->conversations->add($conversation);
+            $conversation->setClient($this);
+        }
+
+        return $this;
+    }
+
+    public function removeConversation(Conversation $conversation): static
+    {
+        if ($this->conversations->removeElement($conversation)) {
+            // set the owning side to null (unless already changed)
+            if ($conversation->getClient() === $this) {
+                $conversation->setClient(null);
             }
         }
 

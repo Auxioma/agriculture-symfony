@@ -8,6 +8,7 @@ use App\Entity\Catalog\Currency;
 use App\Entity\Catalog\Product;
 use App\Entity\Catalog\Unit;
 use App\Entity\Identity\User;
+use App\Entity\Messaging\Conversation;
 use App\Enum\NeedType;
 use App\Enum\RequestStatus;
 use App\Repository\Matching\ClientRequestRepository;
@@ -137,6 +138,12 @@ class ClientRequest
     #[ORM\OneToMany(targetEntity: DealOutcome::class, mappedBy: 'request', orphanRemoval: true)]
     private Collection $dealOutcomes;
 
+    /**
+     * @var Collection<int, Conversation>
+     */
+    #[ORM\OneToMany(targetEntity: Conversation::class, mappedBy: 'request', orphanRemoval: true)]
+    private Collection $conversations;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -149,6 +156,7 @@ class ClientRequest
         $this->requestEvents = new ArrayCollection();
         $this->recurringRequestRules = new ArrayCollection();
         $this->dealOutcomes = new ArrayCollection();
+        $this->conversations = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -578,6 +586,36 @@ class ClientRequest
     public function removeDealOutcome(DealOutcome $dealOutcome): static
     {
         $this->dealOutcomes->removeElement($dealOutcome);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Conversation>
+     */
+    public function getConversations(): Collection
+    {
+        return $this->conversations;
+    }
+
+    public function addConversation(Conversation $conversation): static
+    {
+        if (!$this->conversations->contains($conversation)) {
+            $this->conversations->add($conversation);
+            $conversation->setRequest($this);
+        }
+
+        return $this;
+    }
+
+    public function removeConversation(Conversation $conversation): static
+    {
+        if ($this->conversations->removeElement($conversation)) {
+            // set the owning side to null (unless already changed)
+            if ($conversation->getRequest() === $this) {
+                $conversation->setRequest(null);
+            }
+        }
 
         return $this;
     }
