@@ -13,6 +13,7 @@ use App\Entity\Messaging\Message;
 use App\Entity\Messaging\MessageRead;
 use App\Entity\Messaging\UserPresence;
 use App\Entity\Producer\TeamMember;
+use App\Entity\Trust\ModerationAction;
 use App\Entity\Trust\Report;
 use App\Entity\Trust\Review;
 use App\Repository\Identity\UserRepository;
@@ -189,6 +190,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: Report::class, mappedBy: 'reporter')]
     private Collection $reports;
 
+    /**
+     * @var Collection<int, ModerationAction>
+     */
+    #[ORM\OneToMany(targetEntity: ModerationAction::class, mappedBy: 'admin')]
+    private Collection $moderationActions;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -212,6 +219,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->blockedUsers = new ArrayCollection();
         $this->reviews = new ArrayCollection();
         $this->reports = new ArrayCollection();
+        $this->moderationActions = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -855,6 +863,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
             // set the owning side to null (unless already changed)
             if ($report->getReporter() === $this) {
                 $report->setReporter(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ModerationAction>
+     */
+    public function getModerationActions(): Collection
+    {
+        return $this->moderationActions;
+    }
+
+    public function addModerationAction(ModerationAction $moderationAction): static
+    {
+        if (!$this->moderationActions->contains($moderationAction)) {
+            $this->moderationActions->add($moderationAction);
+            $moderationAction->setAdmin($this);
+        }
+
+        return $this;
+    }
+
+    public function removeModerationAction(ModerationAction $moderationAction): static
+    {
+        if ($this->moderationActions->removeElement($moderationAction)) {
+            // set the owning side to null (unless already changed)
+            if ($moderationAction->getAdmin() === $this) {
+                $moderationAction->setAdmin(null);
             }
         }
 
