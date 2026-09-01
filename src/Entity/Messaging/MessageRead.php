@@ -8,47 +8,40 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: MessageReadRepository::class)]
+#[ORM\Table(name: 'message_reads', schema: 'messaging')]
 class MessageRead
 {
     #[ORM\Id]
-    #[ORM\GeneratedValue]
-    #[ORM\Column]
-    private ?int $id = null;
-
-    #[ORM\ManyToOne(inversedBy: 'messageReads')]
+    #[ORM\ManyToOne]
     #[ORM\JoinColumn(nullable: false)]
-    private ?Message $messsage = null;
+    private Message $message;
 
-    #[ORM\ManyToOne(inversedBy: 'messageReads')]
-    #[ORM\JoinColumn(nullable: false)]
-    private ?User $idUser = null;
+    #[ORM\Id]
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(name: 'user_id', referencedColumnName: 'id', nullable: false)]
+    private User $idUser;
 
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
     private ?\DateTimeImmutable $readAt = null;
 
-    public function getId(): ?int
+    public function getMessage(): Message
     {
-        return $this->id;
+        return $this->message;
     }
 
-    public function getMesssage(): ?Message
+    public function setMessage(Message $message): static
     {
-        return $this->messsage;
-    }
-
-    public function setMesssage(?Message $messsage): static
-    {
-        $this->messsage = $messsage;
+        $this->message = $message;
 
         return $this;
     }
 
-    public function getIdUser(): ?User
+    public function getIdUser(): User
     {
         return $this->idUser;
     }
 
-    public function setIdUser(?User $idUser): static
+    public function setIdUser(User $idUser): static
     {
         $this->idUser = $idUser;
 

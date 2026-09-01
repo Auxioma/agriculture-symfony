@@ -610,12 +610,7 @@ class ClientRequest
 
     public function removeConversation(Conversation $conversation): static
     {
-        if ($this->conversations->removeElement($conversation)) {
-            // set the owning side to null (unless already changed)
-            if ($conversation->getRequest() === $this) {
-                $conversation->setRequest(null);
-            }
-        }
+        if ($this->conversations->removeElement($conversation));
 
         return $this;
     }

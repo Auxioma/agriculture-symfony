@@ -5,18 +5,20 @@ namespace App\Entity\Messaging;
 use App\Repository\Messaging\MessageAttachmentRepository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Bridge\Doctrine\Types\UuidType;
+use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: MessageAttachmentRepository::class)]
+#[ORM\Table(name: 'message_attachments', schema: 'messaging')]
 class MessageAttachment
 {
     #[ORM\Id]
-    #[ORM\GeneratedValue]
-    #[ORM\Column]
-    private ?int $id = null;
+    #[ORM\Column(type: UuidType::NAME, unique: true)]
+    private Uuid $id;
 
-    #[ORM\ManyToOne(inversedBy: 'messageAttachments')]
+    #[ORM\ManyToOne(inversedBy: 'attachments')]
     #[ORM\JoinColumn(nullable: false)]
-    private ?Message $message = null;
+    private Message $message;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $fileUrl = null;
@@ -30,17 +32,22 @@ class MessageAttachment
     #[ORM\Column(nullable: true)]
     private ?int $fileSize = null;
 
-    public function getId(): ?int
+    public function __construct()
+    {
+        $this->id = Uuid::v4();
+    }
+
+    public function getId(): Uuid
     {
         return $this->id;
     }
 
-    public function getMessage(): ?Message
+    public function getMessage(): Message
     {
         return $this->message;
     }
 
-    public function setMessage(?Message $message): static
+    public function setMessage(Message $message): static
     {
         $this->message = $message;
 

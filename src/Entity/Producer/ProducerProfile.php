@@ -582,12 +582,7 @@ class ProducerProfile
 
     public function removeConversation(Conversation $conversation): static
     {
-        if ($this->conversations->removeElement($conversation)) {
-            // set the owning side to null (unless already changed)
-            if ($conversation->getProducer() === $this) {
-                $conversation->setProducer(null);
-            }
-        }
+        if ($this->conversations->removeElement($conversation));
 
         return $this;
     }

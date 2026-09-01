@@ -8,20 +8,18 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: ConversationParticipantRepository::class)]
+#[ORM\Table(name: 'conversation_participants', schema: 'messaging')]
 class ConversationParticipant
 {
     #[ORM\Id]
-    #[ORM\GeneratedValue]
-    #[ORM\Column]
-    private ?int $id = null;
-
-    #[ORM\ManyToOne(inversedBy: 'conversationParticipants')]
+    #[ORM\ManyToOne(inversedBy: 'participants')]
     #[ORM\JoinColumn(nullable: false)]
-    private ?Conversation $convesartion = null;
+    private Conversation $conversation;
 
-    #[ORM\ManyToOne(inversedBy: 'conversationParticipants')]
-    #[ORM\JoinColumn(nullable: false)]
-    private ?User $idUser = null;
+    #[ORM\Id]
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(name: 'user_id', referencedColumnName: 'id', nullable: false)]
+    private User $idUser;
 
     #[ORM\Column(length: 120, nullable: true)]
     private ?string $role = null;
@@ -29,29 +27,24 @@ class ConversationParticipant
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
     private ?\DateTimeImmutable $lastSeenAt = null;
 
-    public function getId(): ?int
+    public function getConversation(): Conversation
     {
-        return $this->id;
+        return $this->conversation;
     }
 
-    public function getConvesartion(): ?Conversation
+    public function setConversation(Conversation $conversation): static
     {
-        return $this->convesartion;
-    }
-
-    public function setConvesartion(?Conversation $convesartion): static
-    {
-        $this->convesartion = $convesartion;
+        $this->conversation = $conversation;
 
         return $this;
     }
 
-    public function getIdUser(): ?User
+    public function getIdUser(): User
     {
         return $this->idUser;
     }
 
-    public function setIdUser(?User $idUser): static
+    public function setIdUser(User $idUser): static
     {
         $this->idUser = $idUser;
 

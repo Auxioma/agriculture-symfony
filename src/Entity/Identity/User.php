@@ -167,7 +167,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     private Collection $messageReads;
 
     #[ORM\OneToOne(mappedBy: 'idUser', cascade: ['persist', 'remove'])]
-    private ?UserPresence $userPresence = null;
+    private ?UserPresence $presence = null;
 
     /**
      * @var Collection<int, BlockedUser>
@@ -678,12 +678,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     public function removeConversationParticipant(ConversationParticipant $conversationParticipant): static
     {
-        if ($this->conversationParticipants->removeElement($conversationParticipant)) {
-            // set the owning side to null (unless already changed)
-            if ($conversationParticipant->getIdUser() === $this) {
-                $conversationParticipant->setIdUser(null);
-            }
-        }
+        if ($this->conversationParticipants->removeElement($conversationParticipant));
 
         return $this;
     }
@@ -738,29 +733,24 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     public function removeMessageRead(MessageRead $messageRead): static
     {
-        if ($this->messageReads->removeElement($messageRead)) {
-            // set the owning side to null (unless already changed)
-            if ($messageRead->getIdUser() === $this) {
-                $messageRead->setIdUser(null);
-            }
-        }
+        if ($this->messageReads->removeElement($messageRead));
 
         return $this;
     }
 
-    public function getUserPresence(): ?UserPresence
+    public function getPresence(): ?UserPresence
     {
-        return $this->userPresence;
+        return $this->presence;
     }
 
-    public function setUserPresence(UserPresence $userPresence): static
+    public function setPresence(UserPresence $presence): static
     {
         // set the owning side of the relation if necessary
-        if ($userPresence->getIdUser() !== $this) {
-            $userPresence->setIdUser($this);
+        if ($presence->getIdUser() !== $this) {
+            $presence->setIdUser($this);
         }
 
-        $this->userPresence = $userPresence;
+        $this->presence = $presence;
 
         return $this;
     }

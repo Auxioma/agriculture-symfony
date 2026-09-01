@@ -11,40 +11,42 @@ use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Bridge\Doctrine\Types\UuidType;
+use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: ConversationRepository::class)]
+#[ORM\Table(name: 'conversations', schema: 'messaging')]
 class Conversation
 {
     #[ORM\Id]
-    #[ORM\GeneratedValue]
-    #[ORM\Column]
-    private ?int $id = null;
+    #[ORM\Column(type: UuidType::NAME, unique: true)]
+    private Uuid $id;
 
     #[ORM\ManyToOne(inversedBy: 'conversations')]
     #[ORM\JoinColumn(nullable: false)]
-    private ?ClientRequest $request = null;
+    private ClientRequest $request;
 
     #[ORM\ManyToOne(inversedBy: 'conversations')]
     private ?User $client = null;
 
     #[ORM\ManyToOne(inversedBy: 'conversations')]
     #[ORM\JoinColumn(nullable: false)]
-    private ?ProducerProfile $producer = null;
+    private ProducerProfile $producer;
 
     #[ORM\Column(enumType: ConversationStatus::class)]
-    private ?ConversationStatus $status = null;
+    private ConversationStatus $status = ConversationStatus::Open;
 
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
     private ?\DateTimeImmutable $lastMessageAt = null;
 
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
-    private ?\DateTimeImmutable $createdAt = null;
+    private \DateTimeImmutable $createdAt;
 
     /**
      * @var Collection<int, ConversationParticipant>
      */
-    #[ORM\OneToMany(targetEntity: ConversationParticipant::class, mappedBy: 'convesartion', orphanRemoval: true)]
-    private Collection $conversationParticipants;
+    #[ORM\OneToMany(targetEntity: ConversationParticipant::class, mappedBy: 'conversation', orphanRemoval: true)]
+    private Collection $participants;
 
     /**
      * @var Collection<int, Message>
@@ -54,21 +56,23 @@ class Conversation
 
     public function __construct()
     {
-        $this->conversationParticipants = new ArrayCollection();
+        $this->id = Uuid::v4();
+        $this->createdAt = new \DateTimeImmutable();
+        $this->participants = new ArrayCollection();
         $this->messages = new ArrayCollection();
     }
 
-    public function getId(): ?int
+    public function getId(): Uuid
     {
         return $this->id;
     }
 
-    public function getRequest(): ?ClientRequest
+    public function getRequest(): ClientRequest
     {
         return $this->request;
     }
 
-    public function setRequest(?ClientRequest $request): static
+    public function setRequest(ClientRequest $request): static
     {
         $this->request = $request;
 
@@ -87,19 +91,19 @@ class Conversation
         return $this;
     }
 
-    public function getProducer(): ?ProducerProfile
+    public function getProducer(): ProducerProfile
     {
         return $this->producer;
     }
 
-    public function setProducer(?ProducerProfile $producer): static
+    public function setProducer(ProducerProfile $producer): static
     {
         $this->producer = $producer;
 
         return $this;
     }
 
-    public function getStatus(): ?ConversationStatus
+    public function getStatus(): ConversationStatus
     {
         return $this->status;
     }
@@ -123,44 +127,32 @@ class Conversation
         return $this;
     }
 
-    public function getCreatedAt(): ?\DateTimeImmutable
+    public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
-    }
-
-    public function setCreatedAt(\DateTimeImmutable $createdAt): static
-    {
-        $this->createdAt = $createdAt;
-
-        return $this;
     }
 
     /**
      * @return Collection<int, ConversationParticipant>
      */
-    public function getConversationParticipants(): Collection
+    public function getParticipants(): Collection
     {
-        return $this->conversationParticipants;
+        return $this->participants;
     }
 
-    public function addConversationParticipant(ConversationParticipant $conversationParticipant): static
+    public function addParticipant(ConversationParticipant $participant): static
     {
-        if (!$this->conversationParticipants->contains($conversationParticipant)) {
-            $this->conversationParticipants->add($conversationParticipant);
-            $conversationParticipant->setConvesartion($this);
+        if (!$this->participants->contains($participant)) {
+            $this->participants->add($participant);
+            $participant->setConversation($this);
         }
 
         return $this;
     }
 
-    public function removeConversationParticipant(ConversationParticipant $conversationParticipant): static
+    public function removeParticipant(ConversationParticipant $participant): static
     {
-        if ($this->conversationParticipants->removeElement($conversationParticipant)) {
-            // set the owning side to null (unless already changed)
-            if ($conversationParticipant->getConvesartion() === $this) {
-                $conversationParticipant->setConvesartion(null);
-            }
-        }
+        $this->participants->removeElement($participant);
 
         return $this;
     }
@@ -185,12 +177,7 @@ class Conversation
 
     public function removeMessage(Message $message): static
     {
-        if ($this->messages->removeElement($message)) {
-            // set the owning side to null (unless already changed)
-            if ($message->getConversation() === $this) {
-                $message->setConversation(null);
-            }
-        }
+        $this->messages->removeElement($message);
 
         return $this;
     }

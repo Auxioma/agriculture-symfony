@@ -8,66 +8,63 @@ use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Bridge\Doctrine\Types\UuidType;
+use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: MessageRepository::class)]
+#[ORM\Table(name: 'messages', schema: 'messaging')]
 class Message
 {
     #[ORM\Id]
-    #[ORM\GeneratedValue]
-    #[ORM\Column]
-    private ?int $id = null;
+    #[ORM\Column(type: UuidType::NAME, unique: true)]
+    private Uuid $id;
 
     #[ORM\ManyToOne(inversedBy: 'messages')]
     #[ORM\JoinColumn(nullable: false)]
-    private ?Conversation $conversation = null;
+    private Conversation $conversation;
 
-    #[ORM\ManyToOne(inversedBy: 'content')]
+    #[ORM\ManyToOne]
     private ?User $sender = null;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $content = null;
 
-    #[ORM\Column]
+    #[ORM\Column(type: 'json')]
     private array $metadata = [];
 
     #[ORM\Column]
-    private ?bool $isSystem = null;
+    private bool $isSystem = false;
 
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
     private ?\DateTimeImmutable $moderatedAt = null;
 
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
-    private ?\DateTimeImmutable $createdAt = null;
+    private \DateTimeImmutable $createdAt;
 
     /**
      * @var Collection<int, MessageAttachment>
      */
     #[ORM\OneToMany(targetEntity: MessageAttachment::class, mappedBy: 'message', orphanRemoval: true)]
-    private Collection $messageAttachments;
-
-    /**
-     * @var Collection<int, MessageRead>
-     */
-    #[ORM\OneToMany(targetEntity: MessageRead::class, mappedBy: 'messsage', orphanRemoval: true)]
-    private Collection $messageReads;
+    private Collection $attachments;
 
     public function __construct()
     {
-        $this->messageAttachments = new ArrayCollection();
-        $this->messageReads = new ArrayCollection();
+        $this->id = Uuid::v4();
+        $this->createdAt = new \DateTimeImmutable();
+        $this->attachments = new ArrayCollection();
     }
 
-    public function getId(): ?int
+    public function getId(): Uuid
     {
         return $this->id;
     }
 
-    public function getConversation(): ?Conversation
+    public function getConversation(): Conversation
     {
         return $this->conversation;
     }
 
-    public function setConversation(?Conversation $conversation): static
+    public function setConversation(Conversation $conversation): static
     {
         $this->conversation = $conversation;
 
@@ -110,7 +107,7 @@ class Message
         return $this;
     }
 
-    public function isSystem(): ?bool
+    public function isSystem(): bool
     {
         return $this->isSystem;
     }
@@ -134,74 +131,32 @@ class Message
         return $this;
     }
 
-    public function getCreatedAt(): ?\DateTimeImmutable
+    public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
-    }
-
-    public function setCreatedAt(\DateTimeImmutable $createdAt): static
-    {
-        $this->createdAt = $createdAt;
-
-        return $this;
     }
 
     /**
      * @return Collection<int, MessageAttachment>
      */
-    public function getMessageAttachments(): Collection
+    public function getAttachments(): Collection
     {
-        return $this->messageAttachments;
+        return $this->attachments;
     }
 
-    public function addMessageAttachment(MessageAttachment $messageAttachment): static
+    public function addAttachment(MessageAttachment $attachment): static
     {
-        if (!$this->messageAttachments->contains($messageAttachment)) {
-            $this->messageAttachments->add($messageAttachment);
-            $messageAttachment->setMessage($this);
+        if (!$this->attachments->contains($attachment)) {
+            $this->attachments->add($attachment);
+            $attachment->setMessage($this);
         }
 
         return $this;
     }
 
-    public function removeMessageAttachment(MessageAttachment $messageAttachment): static
+    public function removeAttachment(MessageAttachment $attachment): static
     {
-        if ($this->messageAttachments->removeElement($messageAttachment)) {
-            // set the owning side to null (unless already changed)
-            if ($messageAttachment->getMessage() === $this) {
-                $messageAttachment->setMessage(null);
-            }
-        }
-
-        return $this;
-    }
-
-    /**
-     * @return Collection<int, MessageRead>
-     */
-    public function getMessageReads(): Collection
-    {
-        return $this->messageReads;
-    }
-
-    public function addMessageRead(MessageRead $messageRead): static
-    {
-        if (!$this->messageReads->contains($messageRead)) {
-            $this->messageReads->add($messageRead);
-            $messageRead->setMesssage($this);
-        }
-
-        return $this;
-    }
-
-    public function removeMessageRead(MessageRead $messageRead): static
-    {
-        if ($this->messageReads->removeElement($messageRead)) {
-            // set the owning side to null (unless already changed)
-            if ($messageRead->getMesssage() === $this) {
-                $messageRead->setMesssage(null);
-            }
-        }
+        $this->attachments->removeElement($attachment);
 
         return $this;
     }
