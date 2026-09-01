@@ -45,9 +45,16 @@ class Message
     #[ORM\OneToMany(targetEntity: MessageAttachment::class, mappedBy: 'message', orphanRemoval: true)]
     private Collection $messageAttachments;
 
+    /**
+     * @var Collection<int, MessageRead>
+     */
+    #[ORM\OneToMany(targetEntity: MessageRead::class, mappedBy: 'messsage', orphanRemoval: true)]
+    private Collection $messageReads;
+
     public function __construct()
     {
         $this->messageAttachments = new ArrayCollection();
+        $this->messageReads = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -163,6 +170,36 @@ class Message
             // set the owning side to null (unless already changed)
             if ($messageAttachment->getMessage() === $this) {
                 $messageAttachment->setMessage(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, MessageRead>
+     */
+    public function getMessageReads(): Collection
+    {
+        return $this->messageReads;
+    }
+
+    public function addMessageRead(MessageRead $messageRead): static
+    {
+        if (!$this->messageReads->contains($messageRead)) {
+            $this->messageReads->add($messageRead);
+            $messageRead->setMesssage($this);
+        }
+
+        return $this;
+    }
+
+    public function removeMessageRead(MessageRead $messageRead): static
+    {
+        if ($this->messageReads->removeElement($messageRead)) {
+            // set the owning side to null (unless already changed)
+            if ($messageRead->getMesssage() === $this) {
+                $messageRead->setMesssage(null);
             }
         }
 

@@ -9,6 +9,7 @@ use App\Entity\Matching\RequestEvent;
 use App\Entity\Messaging\Conversation;
 use App\Entity\Messaging\ConversationParticipant;
 use App\Entity\Messaging\Message;
+use App\Entity\Messaging\MessageRead;
 use App\Entity\Producer\TeamMember;
 use App\Repository\Identity\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -157,6 +158,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: Message::class, mappedBy: 'sender')]
     private Collection $messages;
 
+    /**
+     * @var Collection<int, MessageRead>
+     */
+    #[ORM\OneToMany(targetEntity: MessageRead::class, mappedBy: 'idUser', orphanRemoval: true)]
+    private Collection $messageReads;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -176,6 +183,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->conversations = new ArrayCollection();
         $this->conversationParticipants = new ArrayCollection();
         $this->messages = new ArrayCollection();
+        $this->messageReads = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -692,6 +700,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
             // set the owning side to null (unless already changed)
             if ($messages->getSender() === $this) {
                 $messages->setSender(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, MessageRead>
+     */
+    public function getMessageReads(): Collection
+    {
+        return $this->messageReads;
+    }
+
+    public function addMessageRead(MessageRead $messageRead): static
+    {
+        if (!$this->messageReads->contains($messageRead)) {
+            $this->messageReads->add($messageRead);
+            $messageRead->setIdUser($this);
+        }
+
+        return $this;
+    }
+
+    public function removeMessageRead(MessageRead $messageRead): static
+    {
+        if ($this->messageReads->removeElement($messageRead)) {
+            // set the owning side to null (unless already changed)
+            if ($messageRead->getIdUser() === $this) {
+                $messageRead->setIdUser(null);
             }
         }
 
