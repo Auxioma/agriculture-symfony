@@ -3,6 +3,7 @@
 namespace App\Entity\Identity;
 
 use App\Entity\Engagement\Favorite;
+use App\Entity\Engagement\Referral;
 use App\Entity\Engagement\SavedSearch;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\DealOutcome;
@@ -231,6 +232,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: SavedSearch::class, mappedBy: 'idUser', orphanRemoval: true)]
     private Collection $savedSearches;
 
+    /**
+     * @var Collection<int, Referral>
+     */
+    #[ORM\OneToMany(targetEntity: Referral::class, mappedBy: 'referrer')]
+    private Collection $referrals;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -260,6 +267,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->ticketMessages = new ArrayCollection();
         $this->favorites = new ArrayCollection();
         $this->savedSearches = new ArrayCollection();
+        $this->referrals = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -1065,6 +1073,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function removeSavedSearch(SavedSearch $savedSearch): static
     {
         $this->savedSearches->removeElement($savedSearch);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Referral>
+     */
+    public function getReferrals(): Collection
+    {
+        return $this->referrals;
+    }
+
+    public function addReferral(Referral $referral): static
+    {
+        if (!$this->referrals->contains($referral)) {
+            $this->referrals->add($referral);
+            $referral->setReferrer($this);
+        }
+
+        return $this;
+    }
+
+    public function removeReferral(Referral $referral): static
+    {
+        if ($this->referrals->removeElement($referral)) {
+            // set the owning side to null (unless already changed)
+            if ($referral->getReferrer() === $this) {
+                $referral->setReferrer(null);
+            }
+        }
 
         return $this;
     }
