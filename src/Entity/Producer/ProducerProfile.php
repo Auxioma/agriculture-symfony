@@ -2,6 +2,7 @@
 
 namespace App\Entity\Producer;
 
+use App\Entity\Analytics\ProducerDailyMetric;
 use App\Entity\Billing\CouponRedemption;
 use App\Entity\Billing\PaymentMethod;
 use App\Entity\Billing\Subscription;
@@ -164,6 +165,12 @@ class ProducerProfile
     #[ORM\OneToMany(targetEntity: Review::class, mappedBy: 'producer', orphanRemoval: true)]
     private Collection $reviews;
 
+    /**
+     * @var Collection<int, ProducerDailyMetric>
+     */
+    #[ORM\OneToMany(targetEntity: ProducerDailyMetric::class, mappedBy: 'producer', orphanRemoval: true)]
+    private Collection $producerDailyMetrics;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -183,6 +190,7 @@ class ProducerProfile
         $this->couponRedemptions = new ArrayCollection();
         $this->paymentMethods = new ArrayCollection();
         $this->reviews = new ArrayCollection();
+        $this->producerDailyMetrics = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -715,6 +723,36 @@ class ProducerProfile
     public function removeReview(Review $review): static
     {
         if ($this->reviews->removeElement($review));
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ProducerDailyMetric>
+     */
+    public function getProducerDailyMetrics(): Collection
+    {
+        return $this->producerDailyMetrics;
+    }
+
+    public function addProducerDailyMetric(ProducerDailyMetric $producerDailyMetric): static
+    {
+        if (!$this->producerDailyMetrics->contains($producerDailyMetric)) {
+            $this->producerDailyMetrics->add($producerDailyMetric);
+            $producerDailyMetric->setProducer($this);
+        }
+
+        return $this;
+    }
+
+    public function removeProducerDailyMetric(ProducerDailyMetric $producerDailyMetric): static
+    {
+        if ($this->producerDailyMetrics->removeElement($producerDailyMetric)) {
+            // set the owning side to null (unless already changed)
+            if ($producerDailyMetric->getProducer() === $this) {
+                $producerDailyMetric->setProducer(null);
+            }
+        }
 
         return $this;
     }
