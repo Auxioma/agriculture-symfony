@@ -2,6 +2,7 @@
 
 namespace App\Entity\Producer;
 
+use App\Entity\Billing\Subscription;
 use App\Entity\Matching\DealOutcome;
 use App\Entity\Matching\ProducerReply;
 use App\Entity\Matching\RequestMatch;
@@ -136,6 +137,12 @@ class ProducerProfile
     #[ORM\OneToMany(targetEntity: Conversation::class, mappedBy: 'producer', orphanRemoval: true)]
     private Collection $conversations;
 
+    /**
+     * @var Collection<int, Subscription>
+     */
+    #[ORM\OneToMany(targetEntity: Subscription::class, mappedBy: 'producer', orphanRemoval: true)]
+    private Collection $subscriptions;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -151,6 +158,7 @@ class ProducerProfile
         $this->replies = new ArrayCollection();
         $this->dealOutcomes = new ArrayCollection();
         $this->conversations = new ArrayCollection();
+        $this->subscriptions = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -583,6 +591,31 @@ class ProducerProfile
     public function removeConversation(Conversation $conversation): static
     {
         if ($this->conversations->removeElement($conversation));
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Subscription>
+     */
+    public function getSubscriptions(): Collection
+    {
+        return $this->subscriptions;
+    }
+
+    public function addSubscription(Subscription $subscription): static
+    {
+        if (!$this->subscriptions->contains($subscription)) {
+            $this->subscriptions->add($subscription);
+            $subscription->setProducer($this);
+        }
+
+        return $this;
+    }
+
+    public function removeSubscription(Subscription $subscription): static
+    {
+        if ($this->subscriptions->removeElement($subscription));
 
         return $this;
     }

@@ -5,6 +5,8 @@ namespace App\Entity\Billing;
 use App\Entity\Catalog\Currency;
 use App\Enum\BillingCycle;
 use App\Repository\Billing\PlanPriceRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
@@ -38,9 +40,16 @@ class PlanPrice
     #[ORM\Column]
     private bool $isActive = false;
 
+    /**
+     * @var Collection<int, Subscription>
+     */
+    #[ORM\OneToMany(targetEntity: Subscription::class, mappedBy: 'planPrice', orphanRemoval: true)]
+    private Collection $subscriptions;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
+        $this->subscriptions = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -116,6 +125,31 @@ class PlanPrice
     public function setIsActive(bool $isActive): static
     {
         $this->isActive = $isActive;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Subscription>
+     */
+    public function getSubscriptions(): Collection
+    {
+        return $this->subscriptions;
+    }
+
+    public function addSubscription(Subscription $subscription): static
+    {
+        if (!$this->subscriptions->contains($subscription)) {
+            $this->subscriptions->add($subscription);
+            $subscription->setPlanPrice($this);
+        }
+
+        return $this;
+    }
+
+    public function removeSubscription(Subscription $subscription): static
+    {
+        if ($this->subscriptions->removeElement($subscription));
 
         return $this;
     }
