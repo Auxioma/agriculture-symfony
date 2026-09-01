@@ -141,6 +141,7 @@ class ClientRequest
     {
         $this->id = Uuid::v4();
         $this->createdAt = new \DateTimeImmutable();
+        $this->radiusKm = '50';
         $this->attachments = new ArrayCollection();
         $this->labels = new ArrayCollection();
         $this->matches = new ArrayCollection();
