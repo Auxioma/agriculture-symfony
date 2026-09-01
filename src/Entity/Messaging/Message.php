@@ -4,6 +4,8 @@ namespace App\Entity\Messaging;
 
 use App\Entity\Identity\User;
 use App\Repository\Messaging\MessageRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -36,6 +38,17 @@ class Message
 
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
     private ?\DateTimeImmutable $createdAt = null;
+
+    /**
+     * @var Collection<int, MessageAttachment>
+     */
+    #[ORM\OneToMany(targetEntity: MessageAttachment::class, mappedBy: 'message', orphanRemoval: true)]
+    private Collection $messageAttachments;
+
+    public function __construct()
+    {
+        $this->messageAttachments = new ArrayCollection();
+    }
 
     public function getId(): ?int
     {
@@ -122,6 +135,36 @@ class Message
     public function setCreatedAt(\DateTimeImmutable $createdAt): static
     {
         $this->createdAt = $createdAt;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, MessageAttachment>
+     */
+    public function getMessageAttachments(): Collection
+    {
+        return $this->messageAttachments;
+    }
+
+    public function addMessageAttachment(MessageAttachment $messageAttachment): static
+    {
+        if (!$this->messageAttachments->contains($messageAttachment)) {
+            $this->messageAttachments->add($messageAttachment);
+            $messageAttachment->setMessage($this);
+        }
+
+        return $this;
+    }
+
+    public function removeMessageAttachment(MessageAttachment $messageAttachment): static
+    {
+        if ($this->messageAttachments->removeElement($messageAttachment)) {
+            // set the owning side to null (unless already changed)
+            if ($messageAttachment->getMessage() === $this) {
+                $messageAttachment->setMessage(null);
+            }
+        }
 
         return $this;
     }
