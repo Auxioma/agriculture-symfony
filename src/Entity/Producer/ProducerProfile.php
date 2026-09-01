@@ -120,7 +120,7 @@ class ProducerProfile
     /**
      * @var Collection<int, ProducerReply>
      */
-    #[ORM\OneToMany(targetEntity: ProducerReply::class, mappedBy: 'request', orphanRemoval: true)]
+    #[ORM\OneToMany(targetEntity: ProducerReply::class, mappedBy: 'producer', orphanRemoval: true)]
     private Collection $replies;
 
     /**
