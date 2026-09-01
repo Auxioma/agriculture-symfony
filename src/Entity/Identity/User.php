@@ -2,6 +2,7 @@
 
 namespace App\Entity\Identity;
 
+use App\Entity\Audit\AuditLog;
 use App\Entity\Engagement\Favorite;
 use App\Entity\Engagement\Referral;
 use App\Entity\Engagement\SavedSearch;
@@ -245,6 +246,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: Notification::class, mappedBy: 'idUser', orphanRemoval: true)]
     private Collection $notifications;
 
+    /**
+     * @var Collection<int, AuditLog>
+     */
+    #[ORM\OneToMany(targetEntity: AuditLog::class, mappedBy: 'actor')]
+    private Collection $auditLogs;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -276,6 +283,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->savedSearches = new ArrayCollection();
         $this->referrals = new ArrayCollection();
         $this->notifications = new ArrayCollection();
+        $this->auditLogs = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -1136,6 +1144,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function removeNotification(Notification $notification): static
     {
         $this->notifications->removeElement($notification);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, AuditLog>
+     */
+    public function getAuditLogs(): Collection
+    {
+        return $this->auditLogs;
+    }
+
+    public function addAuditLog(AuditLog $auditLog): static
+    {
+        if (!$this->auditLogs->contains($auditLog)) {
+            $this->auditLogs->add($auditLog);
+            $auditLog->setActor($this);
+        }
+
+        return $this;
+    }
+
+    public function removeAuditLog(AuditLog $auditLog): static
+    {
+        if ($this->auditLogs->removeElement($auditLog)) {
+            // set the owning side to null (unless already changed)
+            if ($auditLog->getActor() === $this) {
+                $auditLog->setActor(null);
+            }
+        }
 
         return $this;
     }
