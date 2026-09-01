@@ -3,6 +3,7 @@
 namespace App\Entity\Producer;
 
 use App\Entity\Billing\CouponRedemption;
+use App\Entity\Billing\PaymentMethod;
 use App\Entity\Billing\Subscription;
 use App\Entity\Matching\DealOutcome;
 use App\Entity\Matching\ProducerReply;
@@ -150,6 +151,12 @@ class ProducerProfile
     #[ORM\OneToMany(targetEntity: CouponRedemption::class, mappedBy: 'producer', orphanRemoval: true)]
     private Collection $couponRedemptions;
 
+    /**
+     * @var Collection<int, PaymentMethod>
+     */
+    #[ORM\OneToMany(targetEntity: PaymentMethod::class, mappedBy: 'producer', orphanRemoval: true)]
+    private Collection $paymentMethods;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -167,6 +174,7 @@ class ProducerProfile
         $this->conversations = new ArrayCollection();
         $this->subscriptions = new ArrayCollection();
         $this->couponRedemptions = new ArrayCollection();
+        $this->paymentMethods = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -649,6 +657,31 @@ class ProducerProfile
     public function removeCouponRedemption(CouponRedemption $couponRedemption): static
     {
         if ($this->couponRedemptions->removeElement($couponRedemption));
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, PaymentMethod>
+     */
+    public function getPaymentMethods(): Collection
+    {
+        return $this->paymentMethods;
+    }
+
+    public function addPaymentMethod(PaymentMethod $paymentMethod): static
+    {
+        if (!$this->paymentMethods->contains($paymentMethod)) {
+            $this->paymentMethods->add($paymentMethod);
+            $paymentMethod->setProducer($this);
+        }
+
+        return $this;
+    }
+
+    public function removePaymentMethod(PaymentMethod $paymentMethod): static
+    {
+        $this->paymentMethods->removeElement($paymentMethod);
 
         return $this;
     }
