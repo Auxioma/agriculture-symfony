@@ -648,12 +648,7 @@ class ProducerProfile
 
     public function removeCouponRedemption(CouponRedemption $couponRedemption): static
     {
-        if ($this->couponRedemptions->removeElement($couponRedemption)) {
-            // set the owning side to null (unless already changed)
-            if ($couponRedemption->getProducer() === $this) {
-                $couponRedemption->setProducer(null);
-            }
-        }
+        if ($this->couponRedemptions->removeElement($couponRedemption));
 
         return $this;
     }
