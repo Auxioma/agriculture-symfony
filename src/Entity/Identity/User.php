@@ -13,6 +13,7 @@ use App\Entity\Messaging\Message;
 use App\Entity\Messaging\MessageRead;
 use App\Entity\Messaging\UserPresence;
 use App\Entity\Producer\TeamMember;
+use App\Entity\Support\Ticket;
 use App\Entity\Trust\ModerationAction;
 use App\Entity\Trust\Report;
 use App\Entity\Trust\Review;
@@ -203,6 +204,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: UserSanction::class, mappedBy: 'idUser', orphanRemoval: true)]
     private Collection $userSanctions;
 
+    /**
+     * @var Collection<int, Ticket>
+     */
+    #[ORM\OneToMany(targetEntity: Ticket::class, mappedBy: 'idUser', orphanRemoval: true)]
+    private Collection $tickets;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -228,6 +235,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->reports = new ArrayCollection();
         $this->moderationActions = new ArrayCollection();
         $this->userSanctions = new ArrayCollection();
+        $this->tickets = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -928,6 +936,31 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function removeUserSanction(UserSanction $userSanction): static
     {
         if ($this->userSanctions->removeElement($userSanction));
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Ticket>
+     */
+    public function getTickets(): Collection
+    {
+        return $this->tickets;
+    }
+
+    public function addTicket(Ticket $ticket): static
+    {
+        if (!$this->tickets->contains($ticket)) {
+            $this->tickets->add($ticket);
+            $ticket->setIdUser($this);
+        }
+
+        return $this;
+    }
+
+    public function removeTicket(Ticket $ticket): static
+    {
+        $this->tickets->removeElement($ticket);
 
         return $this;
     }
