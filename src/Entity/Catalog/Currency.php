@@ -2,6 +2,7 @@
 
 namespace App\Entity\Catalog;
 
+use App\Entity\Billing\PlanPrice;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\ProducerReply;
 use App\Entity\Producer\ProducerProduct;
@@ -48,11 +49,18 @@ class Currency
     #[ORM\OneToMany(targetEntity: ProducerReply::class, mappedBy: 'currency')]
     private Collection $producerReplies;
 
+    /**
+     * @var Collection<int, PlanPrice>
+     */
+    #[ORM\OneToMany(targetEntity: PlanPrice::class, mappedBy: 'currency')]
+    private Collection $planPrices;
+
     public function __construct()
     {
         $this->producerProducts = new ArrayCollection();
         $this->clientRequests = new ArrayCollection();
         $this->producerReplies = new ArrayCollection();
+        $this->planPrices = new ArrayCollection();
     }
 
     public function getCode(): string
@@ -199,6 +207,36 @@ class Currency
             // set the owning side to null (unless already changed)
             if ($producerReply->getCurrency() === $this) {
                 $producerReply->setCurrency(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, PlanPrice>
+     */
+    public function getPlanPrices(): Collection
+    {
+        return $this->planPrices;
+    }
+
+    public function addPlanPrice(PlanPrice $planPrice): static
+    {
+        if (!$this->planPrices->contains($planPrice)) {
+            $this->planPrices->add($planPrice);
+            $planPrice->setCurrency($this);
+        }
+
+        return $this;
+    }
+
+    public function removePlanPrice(PlanPrice $planPrice): static
+    {
+        if ($this->planPrices->removeElement($planPrice)) {
+            // set the owning side to null (unless already changed)
+            if ($planPrice->getCurrency() === $this) {
+                $planPrice->setCurrency(null);
             }
         }
 

@@ -3,6 +3,8 @@
 namespace App\Entity\Billing;
 
 use App\Repository\Billing\SubscriptionPlanRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
@@ -37,9 +39,16 @@ class SubscriptionPlan
     #[ORM\Column(nullable: true)]
     private ?int $position = null;
 
+    /**
+     * @var Collection<int, PlanPrice>
+     */
+    #[ORM\OneToMany(targetEntity: PlanPrice::class, mappedBy: 'plan', orphanRemoval: true)]
+    private Collection $prices;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
+        $this->prices = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -127,6 +136,31 @@ class SubscriptionPlan
     public function setPosition(?int $position): static
     {
         $this->position = $position;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, PlanPrice>
+     */
+    public function getPrices(): Collection
+    {
+        return $this->prices;
+    }
+
+    public function addPrice(PlanPrice $price): static
+    {
+        if (!$this->prices->contains($price)) {
+            $this->prices->add($price);
+            $price->setPlan($this);
+        }
+
+        return $this;
+    }
+
+    public function removePrice(PlanPrice $price): static
+    {
+        $this->prices->removeElement($price);
 
         return $this;
     }
