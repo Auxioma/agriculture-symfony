@@ -25,7 +25,7 @@ class Subscription
     #[ORM\JoinColumn(nullable: false)]
     private ProducerProfile $producer;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'subscriptions')]
     #[ORM\JoinColumn(nullable: false)]
     private PlanPrice $planPrice;
 
@@ -41,7 +41,7 @@ class Subscription
     #[ORM\Column]
     private bool $cancelAtPeriodEnd = false;
 
-    #[ORM\Column(type: Types::TEXT, nullable: true, unique: true)]
+    #[ORM\Column(length: 255, nullable: true, unique: true)]
     private ?string $providerSubscriptionId = null;
 
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]

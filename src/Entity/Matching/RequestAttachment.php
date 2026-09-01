@@ -33,7 +33,7 @@ class RequestAttachment
     #[ORM\Column(nullable: true)]
     private ?int $fileSize = null;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'requestAttachments')]
     private ?User $uploadedBy = null;
 
     public function __construct()

@@ -17,7 +17,7 @@ class UserSanction
     #[ORM\Column(type: UuidType::NAME, unique: true)]
     private Uuid $id;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'userSanctions')]
     #[ORM\JoinColumn(name: 'user_id', referencedColumnName: 'id', nullable: false)]
     private User $idUser;
 

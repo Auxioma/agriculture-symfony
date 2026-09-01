@@ -17,7 +17,7 @@ class ConversationParticipant
     private Conversation $conversation;
 
     #[ORM\Id]
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'conversationParticipants')]
     #[ORM\JoinColumn(name: 'user_id', referencedColumnName: 'id', nullable: false)]
     private User $idUser;
 

@@ -21,7 +21,7 @@ class ModerationAction
     #[ORM\JoinColumn(nullable: false)]
     private Report $report;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'moderationActions')]
     private ?User $admin = null;
 
     #[ORM\Column(length: 120, nullable: true)]

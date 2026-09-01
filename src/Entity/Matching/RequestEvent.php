@@ -17,11 +17,11 @@ class RequestEvent
     #[ORM\Column(type: UuidType::NAME, unique: true)]
     private Uuid $id;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'requestEvents')]
     #[ORM\JoinColumn(nullable: false)]
     private ClientRequest $request;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'requestEvents')]
     private ?User $actor = null;
 
     #[ORM\Column(length: 120, nullable: true)]

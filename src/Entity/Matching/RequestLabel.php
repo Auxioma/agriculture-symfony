@@ -16,7 +16,7 @@ class RequestLabel
     private ClientRequest $request;
 
     #[ORM\Id]
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'requestLabels')]
     #[ORM\JoinColumn(nullable: false)]
     private Label $label;
 

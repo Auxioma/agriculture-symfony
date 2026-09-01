@@ -8,18 +8,16 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: BlockedUserRepository::class)]
+#[ORM\Table(name: 'blocked_users', schema: 'messaging')]
 class BlockedUser
 {
     #[ORM\Id]
-    #[ORM\GeneratedValue]
-    #[ORM\Column]
-    private ?int $id = null;
-
     #[ORM\ManyToOne(inversedBy: 'blockedUsers')]
     #[ORM\JoinColumn(nullable: false)]
     private ?User $blocker = null;
 
-    #[ORM\ManyToOne(inversedBy: 'blockedUsers')]
+    #[ORM\Id]
+    #[ORM\ManyToOne]
     #[ORM\JoinColumn(nullable: false)]
     private ?User $blocked = null;
 
@@ -28,11 +26,6 @@ class BlockedUser
 
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
     private ?\DateTimeImmutable $createdAt = null;
-
-    public function getId(): ?int
-    {
-        return $this->id;
-    }
 
     public function getBlocker(): ?User
     {

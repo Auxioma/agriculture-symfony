@@ -23,7 +23,7 @@ class TicketMessage
     #[ORM\JoinColumn(nullable: false)]
     private Ticket $ticket;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'ticketMessages')]
     private ?User $sender = null;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]

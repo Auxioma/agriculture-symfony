@@ -17,7 +17,7 @@ class Referral
     #[ORM\Column(type: UuidType::NAME, unique: true)]
     private Uuid $id;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'referrals')]
     private ?User $referrer = null;
 
     #[ORM\ManyToOne]

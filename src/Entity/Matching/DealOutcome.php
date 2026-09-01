@@ -18,18 +18,18 @@ class DealOutcome
     #[ORM\Column(type: UuidType::NAME, unique: true)]
     private Uuid $id;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'dealOutcomes')]
     #[ORM\JoinColumn(nullable: false)]
     private ClientRequest $request;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'dealOutcomes')]
     #[ORM\JoinColumn(nullable: false)]
     private ProducerProfile $producer;
 
     #[ORM\Column(length: 120, nullable: true)]
     private ?string $outcome = null;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'dealOutcomes')]
     private ?User $declaredBy = null;
 
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]

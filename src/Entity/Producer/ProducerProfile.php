@@ -47,7 +47,7 @@ class ProducerProfile
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $story = null;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'producerProfiles')]
     #[ORM\JoinColumn(nullable: false, name: 'country_code', referencedColumnName: 'code')]
     private ?Country $country = null;
 

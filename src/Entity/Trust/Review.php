@@ -13,6 +13,7 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: ReviewRepository::class)]
 #[ORM\Table(name: 'reviews', schema: 'trust')]
+#[ORM\UniqueConstraint(name: 'uniq_client_request_producer', columns: ['client_id', 'request_id', 'producer_id'])]
 class Review
 {
     #[ORM\Id]
@@ -26,7 +27,7 @@ class Review
     #[ORM\JoinColumn(nullable: false)]
     private ProducerProfile $producer;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'reviews')]
     #[ORM\JoinColumn(nullable: false)]
     private ClientRequest $request;
 

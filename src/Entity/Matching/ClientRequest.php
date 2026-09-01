@@ -32,10 +32,10 @@ class ClientRequest
     #[ORM\JoinColumn(nullable: false)]
     private User $client;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'clientRequests')]
     private ?Category $category = null;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'clientRequests')]
     private ?Product $product = null;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
@@ -47,7 +47,7 @@ class ClientRequest
     #[ORM\Column(type: Types::DECIMAL, precision: 14, scale: 3, nullable: true)]
     private ?string $quantity = null;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'clientRequests')]
     private ?Unit $unit = null;
 
     #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2, nullable: true)]
@@ -56,7 +56,7 @@ class ClientRequest
     #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2, nullable: true)]
     private ?string $budgetMax = null;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'clientRequests')]
     #[ORM\JoinColumn(name: 'currency', referencedColumnName: 'code')]
     private ?Currency $currency = null;
 
@@ -66,7 +66,7 @@ class ClientRequest
     #[ORM\Column(type: Types::SMALLINT)]
     private int $urgencyLevel = 0;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'clientRequests')]
     #[ORM\JoinColumn(name: 'country_code', referencedColumnName: 'code')]
     private ?Country $country = null;
 

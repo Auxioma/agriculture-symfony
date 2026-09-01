@@ -30,7 +30,7 @@ class PlanPrice
     #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2, nullable: true)]
     private ?string $amount = null;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'planPrices')]
     #[ORM\JoinColumn(name: 'currency', referencedColumnName: 'code')]
     private ?Currency $currency = null;
 

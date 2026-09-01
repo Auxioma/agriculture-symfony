@@ -17,15 +17,15 @@ class CouponRedemption
     #[ORM\Column(type: UuidType::NAME, unique: true)]
     private Uuid $id;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'couponRedemptions')]
     #[ORM\JoinColumn(nullable: false)]
     private Coupon $coupon;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'couponRedemptions')]
     #[ORM\JoinColumn(nullable: false)]
     private ProducerProfile $producer;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'couponRedemptions')]
     #[ORM\JoinColumn(nullable: false)]
     private Subscription $subscription;
 

@@ -12,7 +12,7 @@ use Doctrine\ORM\Mapping as ORM;
 class ProducerDailyMetric
 {
     #[ORM\Id]
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'producerDailyMetrics')]
     #[ORM\JoinColumn(nullable: false)]
     private ProducerProfile $producer;
 

@@ -18,7 +18,7 @@ class ProducerLabel
     private ProducerProfile $producer;
 
     #[ORM\Id]
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'producerLabels')]
     #[ORM\JoinColumn(nullable: false)]
     private Label $label;
 

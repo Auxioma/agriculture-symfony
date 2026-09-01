@@ -36,10 +36,10 @@ class ProducerReply
     #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2, nullable: true)]
     private ?string $priceAmount = null;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'producerReplies')]
     private ?Unit $priceUnit = null;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'producerReplies')]
     #[ORM\JoinColumn(name: 'currency', referencedColumnName: 'code')]
     private ?Currency $currency = null;
 

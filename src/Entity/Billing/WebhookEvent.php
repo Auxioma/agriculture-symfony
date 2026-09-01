@@ -16,7 +16,7 @@ class WebhookEvent
     #[ORM\Column(type: UuidType::NAME, unique: true)]
     private Uuid $id;
 
-    #[ORM\Column(length: 255, nullable: true)]
+    #[ORM\Column(length: 255, nullable: true, unique: true)]
     private ?string $providerEventId = null;
 
     #[ORM\Column(length: 120, nullable: true)]

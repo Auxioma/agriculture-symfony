@@ -16,7 +16,7 @@ class RecurringRequestRule
     #[ORM\Column(type: UuidType::NAME, unique: true)]
     private Uuid $id;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'recurringRequestRules')]
     #[ORM\JoinColumn(nullable: false)]
     private ClientRequest $request;
 
