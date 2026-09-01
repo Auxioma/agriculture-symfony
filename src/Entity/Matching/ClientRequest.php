@@ -460,7 +460,7 @@ class ClientRequest
     /**
      * @return Collection<int, RequestMatch>
      */
-    public function getmatches(): Collection
+    public function getMatches(): Collection
     {
         return $this->matches;
     }
@@ -477,7 +477,7 @@ class ClientRequest
 
     public function removeRequestMatch(RequestMatch $requestMatch): static
     {
-        if ($this->matches->removeElement($requestMatch));
+        $this->matches->removeElement($requestMatch);
 
         return $this;
     }
@@ -485,7 +485,7 @@ class ClientRequest
     /**
      * @return Collection<int, ProducerReply>
      */
-    public function getreplies(): Collection
+    public function getReplies(): Collection
     {
         return $this->replies;
     }
@@ -502,7 +502,7 @@ class ClientRequest
 
     public function removeProducerReply(ProducerReply $producerReply): static
     {
-        if ($this->replies->removeElement($producerReply));
+        $this->replies->removeElement($producerReply);
 
         return $this;
     }
@@ -527,7 +527,7 @@ class ClientRequest
 
     public function removeRequestEvent(RequestEvent $requestEvent): static
     {
-        if ($this->requestEvents->removeElement($requestEvent));
+        $this->requestEvents->removeElement($requestEvent);
 
         return $this;
     }
@@ -552,7 +552,7 @@ class ClientRequest
 
     public function removeRecurringRequestRule(RecurringRequestRule $recurringRequestRule): static
     {
-        if ($this->recurringRequestRules->removeElement($recurringRequestRule));
+        $this->recurringRequestRules->removeElement($recurringRequestRule);
 
         return $this;
     }
@@ -577,7 +577,7 @@ class ClientRequest
 
     public function removeDealOutcome(DealOutcome $dealOutcome): static
     {
-        if ($this->dealOutcomes->removeElement($dealOutcome));
+        $this->dealOutcomes->removeElement($dealOutcome);
 
         return $this;
     }

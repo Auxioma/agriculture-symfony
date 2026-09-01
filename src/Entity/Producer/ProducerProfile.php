@@ -482,7 +482,7 @@ class ProducerProfile
     /**
      * @return Collection<int, RequestMatch>
      */
-    public function getmatches(): Collection
+    public function getMatches(): Collection
     {
         return $this->matches;
     }
@@ -499,7 +499,7 @@ class ProducerProfile
 
     public function removeRequestMatch(RequestMatch $requestMatch): static
     {
-        if ($this->matches->removeElement($requestMatch));
+        $this->matches->removeElement($requestMatch);
 
         return $this;
     }
@@ -507,7 +507,7 @@ class ProducerProfile
     /**
      * @return Collection<int, ProducerReply>
      */
-    public function getreplies(): Collection
+    public function getReplies(): Collection
     {
         return $this->replies;
     }
@@ -524,7 +524,7 @@ class ProducerProfile
 
     public function removeProducerReply(ProducerReply $producerReply): static
     {
-        if ($this->replies->removeElement($producerReply));
+        $this->replies->removeElement($producerReply);
 
         return $this;
     }
@@ -549,7 +549,7 @@ class ProducerProfile
 
     public function removeDealOutcome(DealOutcome $dealOutcome): static
     {
-        if ($this->dealOutcomes->removeElement($dealOutcome));
+        $this->dealOutcomes->removeElement($dealOutcome);
 
         return $this;
     }

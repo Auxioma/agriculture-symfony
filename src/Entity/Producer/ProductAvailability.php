@@ -30,7 +30,7 @@ class ProductAvailability
     #[ORM\Column(type: Types::DECIMAL, precision: 14, scale: 3, nullable: true)]
     private ?string $quantityEstimate = null;
 
-    #[ORM\ManyToOne]
+    #[ORM\ManyToOne(inversedBy: 'productAvailabilities')]
     private ?Unit $unit = null;
 
     #[ORM\Column]

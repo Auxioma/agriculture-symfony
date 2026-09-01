@@ -196,7 +196,7 @@ class Label
 
     public function removeRequestLabel(RequestLabel $requestLabel): static
     {
-        if ($this->requestLabels->removeElement($requestLabel));
+        $this->requestLabels->removeElement($requestLabel);
 
         return $this;
     }

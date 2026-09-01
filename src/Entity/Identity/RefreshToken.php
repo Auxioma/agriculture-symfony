@@ -17,7 +17,7 @@ class RefreshToken
     private Uuid $id;
 
     #[ORM\ManyToOne(inversedBy: 'refreshTokens')]
-    #[ORM\JoinColumn(name: 'user_id', nullable: false)]
+    #[ORM\JoinColumn(name: 'user_id', referencedColumnName: 'id', nullable: false)]
     private User $idUser;
 
     #[ORM\Column(length: 255, nullable: true)]
