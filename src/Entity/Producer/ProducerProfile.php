@@ -2,6 +2,7 @@
 
 namespace App\Entity\Producer;
 
+use App\Entity\Matching\DealOutcome;
 use App\Entity\Matching\ProducerReply;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Trust\VerificationDocument;
@@ -122,6 +123,12 @@ class ProducerProfile
     #[ORM\OneToMany(targetEntity: ProducerReply::class, mappedBy: 'request', orphanRemoval: true)]
     private Collection $replies;
 
+    /**
+     * @var Collection<int, DealOutcome>
+     */
+    #[ORM\OneToMany(targetEntity: DealOutcome::class, mappedBy: 'producer', orphanRemoval: true)]
+    private Collection $dealOutcomes;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -135,6 +142,7 @@ class ProducerProfile
         $this->quickReplies = new ArrayCollection();
         $this->matches = new ArrayCollection();
         $this->replies = new ArrayCollection();
+        $this->dealOutcomes = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -517,6 +525,31 @@ class ProducerProfile
     public function removeProducerReply(ProducerReply $producerReply): static
     {
         if ($this->replies->removeElement($producerReply));
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, DealOutcome>
+     */
+    public function getDealOutcomes(): Collection
+    {
+        return $this->dealOutcomes;
+    }
+
+    public function addDealOutcome(DealOutcome $dealOutcome): static
+    {
+        if (!$this->dealOutcomes->contains($dealOutcome)) {
+            $this->dealOutcomes->add($dealOutcome);
+            $dealOutcome->setProducer($this);
+        }
+
+        return $this;
+    }
+
+    public function removeDealOutcome(DealOutcome $dealOutcome): static
+    {
+        if ($this->dealOutcomes->removeElement($dealOutcome));
 
         return $this;
     }

@@ -3,6 +3,7 @@
 namespace App\Entity\Identity;
 
 use App\Entity\Matching\ClientRequest;
+use App\Entity\Matching\DealOutcome;
 use App\Entity\Matching\RequestAttachment;
 use App\Entity\Matching\RequestEvent;
 use App\Entity\Producer\TeamMember;
@@ -127,6 +128,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: RequestEvent::class, mappedBy: 'actor')]
     private Collection $requestEvents;
 
+    /**
+     * @var Collection<int, DealOutcome>
+     */
+    #[ORM\OneToMany(targetEntity: DealOutcome::class, mappedBy: 'declaredBy')]
+    private Collection $dealOutcomes;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -142,6 +149,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->roles = ['ROLE_CLIENT'];
         $this->requestAttachments = new ArrayCollection();
         $this->requestEvents = new ArrayCollection();
+        $this->dealOutcomes = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -533,6 +541,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
             // set the owning side to null (unless already changed)
             if ($requestEvent->getActor() === $this) {
                 $requestEvent->setActor(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, DealOutcome>
+     */
+    public function getDealOutcomes(): Collection
+    {
+        return $this->dealOutcomes;
+    }
+
+    public function addDealOutcome(DealOutcome $dealOutcome): static
+    {
+        if (!$this->dealOutcomes->contains($dealOutcome)) {
+            $this->dealOutcomes->add($dealOutcome);
+            $dealOutcome->setDeclaredBy($this);
+        }
+
+        return $this;
+    }
+
+    public function removeDealOutcome(DealOutcome $dealOutcome): static
+    {
+        if ($this->dealOutcomes->removeElement($dealOutcome)) {
+            // set the owning side to null (unless already changed)
+            if ($dealOutcome->getDeclaredBy() === $this) {
+                $dealOutcome->setDeclaredBy(null);
             }
         }
 

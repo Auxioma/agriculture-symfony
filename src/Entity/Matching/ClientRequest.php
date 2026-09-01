@@ -131,6 +131,12 @@ class ClientRequest
     #[ORM\OneToMany(targetEntity: RecurringRequestRule::class, mappedBy: 'request', orphanRemoval: true)]
     private Collection $recurringRequestRules;
 
+    /**
+     * @var Collection<int, DealOutcome>
+     */
+    #[ORM\OneToMany(targetEntity: DealOutcome::class, mappedBy: 'request', orphanRemoval: true)]
+    private Collection $dealOutcomes;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -141,6 +147,7 @@ class ClientRequest
         $this->replies = new ArrayCollection();
         $this->requestEvents = new ArrayCollection();
         $this->recurringRequestRules = new ArrayCollection();
+        $this->dealOutcomes = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -545,6 +552,31 @@ class ClientRequest
     public function removeRecurringRequestRule(RecurringRequestRule $recurringRequestRule): static
     {
         if ($this->recurringRequestRules->removeElement($recurringRequestRule));
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, DealOutcome>
+     */
+    public function getDealOutcomes(): Collection
+    {
+        return $this->dealOutcomes;
+    }
+
+    public function addDealOutcome(DealOutcome $dealOutcome): static
+    {
+        if (!$this->dealOutcomes->contains($dealOutcome)) {
+            $this->dealOutcomes->add($dealOutcome);
+            $dealOutcome->setRequest($this);
+        }
+
+        return $this;
+    }
+
+    public function removeDealOutcome(DealOutcome $dealOutcome): static
+    {
+        if ($this->dealOutcomes->removeElement($dealOutcome));
 
         return $this;
     }
