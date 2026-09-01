@@ -6,6 +6,7 @@ use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\DealOutcome;
 use App\Entity\Matching\RequestAttachment;
 use App\Entity\Matching\RequestEvent;
+use App\Entity\Messaging\BlockedUser;
 use App\Entity\Messaging\Conversation;
 use App\Entity\Messaging\ConversationParticipant;
 use App\Entity\Messaging\Message;
@@ -168,6 +169,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToOne(mappedBy: 'idUser', cascade: ['persist', 'remove'])]
     private ?UserPresence $userPresence = null;
 
+    /**
+     * @var Collection<int, BlockedUser>
+     */
+    #[ORM\OneToMany(targetEntity: BlockedUser::class, mappedBy: 'blocker', orphanRemoval: true)]
+    private Collection $blockedUsers;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
@@ -188,6 +195,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->conversationParticipants = new ArrayCollection();
         $this->messages = new ArrayCollection();
         $this->messageReads = new ArrayCollection();
+        $this->blockedUsers = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -753,6 +761,36 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         }
 
         $this->userPresence = $userPresence;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, BlockedUser>
+     */
+    public function getBlockedUsers(): Collection
+    {
+        return $this->blockedUsers;
+    }
+
+    public function addBlockedUser(BlockedUser $blockedUser): static
+    {
+        if (!$this->blockedUsers->contains($blockedUser)) {
+            $this->blockedUsers->add($blockedUser);
+            $blockedUser->setBlocker($this);
+        }
+
+        return $this;
+    }
+
+    public function removeBlockedUser(BlockedUser $blockedUser): static
+    {
+        if ($this->blockedUsers->removeElement($blockedUser)) {
+            // set the owning side to null (unless already changed)
+            if ($blockedUser->getBlocker() === $this) {
+                $blockedUser->setBlocker(null);
+            }
+        }
 
         return $this;
     }
