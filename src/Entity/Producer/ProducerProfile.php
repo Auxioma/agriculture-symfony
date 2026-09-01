@@ -26,7 +26,7 @@ class ProducerProfile
     private Uuid $id;
 
     #[ORM\OneToOne(inversedBy: 'producerProfile', cascade: ['persist'])]
-    #[ORM\JoinColumn(name: 'owner_user_id', referencedColumnName: 'id', nullable: false)]
+    #[ORM\JoinColumn(name: 'owner_user_id', referencedColumnName: 'id', nullable: false, unique: true)]
     private User $owner;
 
     #[ORM\Column(length: 255)]
