@@ -512,9 +512,7 @@ class ProducerProfile
 
     public function setSettings(ProducerSetting $settings): static
     {
-        if ($settings->getProducer() !== $this) {
-            $settings->setProducer($this);
-        }
+        $settings->setProducer($this);
         $this->settings = $settings;
 
         return $this;
