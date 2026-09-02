@@ -20,31 +20,55 @@ final class Version20260901130245 extends AbstractMigration
     public function up(Schema $schema): void
     {
         $this->addSql('CREATE EXTENSION IF NOT EXISTS citext;');
+        $this->addSql('CREATE EXTENSION IF NOT EXISTS postgis;');
+        $this->addSql('CREATE EXTENSION IF NOT EXISTS unaccent;');
+        $this->addSql('CREATE EXTENSION IF NOT EXISTS pg_trgm;');
         // this up() migration is auto-generated, please modify it to your needs
-        $this->addSql('CREATE SCHEMA audit');
-        $this->addSql('CREATE SCHEMA messaging');
-        $this->addSql('CREATE SCHEMA catalog');
-        $this->addSql('CREATE SCHEMA matching');
-        $this->addSql('CREATE SCHEMA billing');
-        $this->addSql('CREATE SCHEMA identity');
-        $this->addSql('CREATE SCHEMA producer');
-        $this->addSql('CREATE SCHEMA content');
-        $this->addSql('CREATE SCHEMA engagement');
-        $this->addSql('CREATE SCHEMA trust');
-        $this->addSql('CREATE SCHEMA notification');
-        $this->addSql('CREATE SCHEMA analytics');
-        $this->addSql('CREATE SCHEMA support');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS audit');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS messaging');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS catalog');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS matching');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS billing');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS identity');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS producer');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS content');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS engagement');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS trust');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS notification');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS analytics');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS support');
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION public.immutable_unaccent(input text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $$ SELECT public.unaccent('public.unaccent', input) $$;
+SQL);
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$;
+SQL);
         $this->addSql('CREATE TABLE audit.audit_logs (id UUID NOT NULL, schema_name VARCHAR(120) DEFAULT NULL, table_name VARCHAR(120) DEFAULT NULL, record_id TEXT DEFAULT NULL, action VARCHAR(120) DEFAULT NULL, old_data JSON DEFAULT NULL, new_data JSON DEFAULT NULL, ip_address INET, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, actor_id UUID DEFAULT NULL, PRIMARY KEY (id))');
         $this->addSql('CREATE INDEX IDX_945DBD9410DAF24A ON audit.audit_logs (actor_id)');
         $this->addSql('CREATE TABLE messaging.blocked_users (reason TEXT DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, blocker_id UUID NOT NULL, blocked_id UUID NOT NULL, PRIMARY KEY (blocker_id, blocked_id))');
         $this->addSql('CREATE INDEX IDX_16942404548D5975 ON messaging.blocked_users (blocker_id)');
         $this->addSql('CREATE INDEX IDX_1694240421FF5136 ON messaging.blocked_users (blocked_id)');
-        $this->addSql('CREATE TABLE catalog.categories (id UUID NOT NULL, slug CITEXT DEFAULT NULL, name VARCHAR(120) NOT NULL, icon VARCHAR(255) DEFAULT NULL, image_url VARCHAR(255) DEFAULT NULL, position INT DEFAULT NULL, is_active BOOLEAN NOT NULL, parent_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql("CREATE TABLE catalog.categories (id UUID NOT NULL, slug CITEXT DEFAULT NULL, name VARCHAR(120) NOT NULL, icon VARCHAR(255) DEFAULT NULL, image_url VARCHAR(255) DEFAULT NULL, position INT DEFAULT NULL, is_active BOOLEAN NOT NULL, parent_id UUID DEFAULT NULL, search_vector TSVECTOR GENERATED ALWAYS AS (setweight(to_tsvector('simple', coalesce(public.immutable_unaccent(name), '')), 'A')) STORED, PRIMARY KEY (id))");
         $this->addSql('CREATE UNIQUE INDEX UNIQ_B0753980989D9B62 ON catalog.categories (slug)');
         $this->addSql('CREATE INDEX IDX_B0753980727ACA70 ON catalog.categories (parent_id)');
+        $this->addSql('CREATE INDEX idx_categories_search_gin ON catalog.categories USING gin (search_vector)');
+        $this->addSql('CREATE INDEX idx_categories_name_trgm ON catalog.categories USING gin (name gin_trgm_ops)');
         $this->addSql('CREATE TABLE catalog.category_translations (locale VARCHAR(10) NOT NULL, name VARCHAR(120) NOT NULL, description TEXT DEFAULT NULL, seo_title TEXT DEFAULT NULL, seo_description TEXT DEFAULT NULL, category_id UUID NOT NULL, PRIMARY KEY (category_id, locale))');
         $this->addSql('CREATE INDEX IDX_5160853512469DE2 ON catalog.category_translations (category_id)');
-        $this->addSql('CREATE TABLE matching.client_requests (id UUID NOT NULL, custom_product TEXT DEFAULT NULL, need_type VARCHAR(255) NOT NULL, quantity NUMERIC(14, 3) DEFAULT NULL, budget_min NUMERIC(12, 2) DEFAULT NULL, budget_max NUMERIC(12, 2) DEFAULT NULL, desired_date DATE DEFAULT NULL, urgency_level SMALLINT NOT NULL, city TEXT DEFAULT NULL, postal_code VARCHAR(20) DEFAULT NULL, radius_km NUMERIC(8, 2) NOT NULL, pickup_wanted BOOLEAN NOT NULL, delivery_wanted BOOLEAN NOT NULL, message TEXT DEFAULT NULL, status VARCHAR(255) NOT NULL, expires_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, client_id UUID NOT NULL, category_id UUID DEFAULT NULL, product_id UUID DEFAULT NULL, unit_id UUID DEFAULT NULL, currency VARCHAR(3) DEFAULT NULL, country_code VARCHAR(2) DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE TABLE matching.client_requests (id UUID NOT NULL, custom_product TEXT DEFAULT NULL, need_type VARCHAR(255) NOT NULL, quantity NUMERIC(14, 3) DEFAULT NULL, budget_min NUMERIC(12, 2) DEFAULT NULL, budget_max NUMERIC(12, 2) DEFAULT NULL, desired_date DATE DEFAULT NULL, urgency_level SMALLINT NOT NULL, city TEXT DEFAULT NULL, postal_code VARCHAR(20) DEFAULT NULL, radius_km NUMERIC(8, 2) NOT NULL, pickup_wanted BOOLEAN NOT NULL, delivery_wanted BOOLEAN NOT NULL, message TEXT DEFAULT NULL, status VARCHAR(255) NOT NULL, expires_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, client_id UUID NOT NULL, category_id UUID DEFAULT NULL, product_id UUID DEFAULT NULL, unit_id UUID DEFAULT NULL, currency VARCHAR(3) DEFAULT NULL, country_code VARCHAR(2) DEFAULT NULL, location geography(Point,4326) DEFAULT NULL, PRIMARY KEY (id))');
         $this->addSql('CREATE INDEX IDX_6D85CCAD19EB6921 ON matching.client_requests (client_id)');
         $this->addSql('CREATE INDEX IDX_6D85CCAD12469DE2 ON matching.client_requests (category_id)');
         $this->addSql('CREATE INDEX IDX_6D85CCAD4584665A ON matching.client_requests (product_id)');
@@ -53,6 +77,9 @@ final class Version20260901130245 extends AbstractMigration
         $this->addSql('CREATE INDEX IDX_6D85CCADF026BB7C ON matching.client_requests (country_code)');
         $this->addSql('ALTER TABLE matching.client_requests ADD CONSTRAINT chk_client_requests_urgency_level CHECK (urgency_level BETWEEN 0 AND 5)');
         $this->addSql('ALTER TABLE matching.client_requests ADD CONSTRAINT chk_client_requests_product_or_custom CHECK (product_id IS NOT NULL OR custom_product IS NOT NULL)');
+        $this->addSql('ALTER TABLE matching.client_requests ADD CONSTRAINT chk_client_requests_budget_order CHECK (budget_min IS NULL OR budget_max IS NULL OR budget_min <= budget_max)');
+        $this->addSql('ALTER TABLE matching.client_requests ADD CONSTRAINT chk_client_requests_radius_positive CHECK (radius_km > 0)');
+        $this->addSql('CREATE INDEX idx_client_requests_location_gist ON matching.client_requests USING gist (location)');
         $this->addSql('CREATE TABLE messaging.conversation_participants (role VARCHAR(120) DEFAULT NULL, last_seen_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, conversation_id UUID NOT NULL, user_id UUID NOT NULL, PRIMARY KEY (conversation_id, user_id))');
         $this->addSql('CREATE INDEX IDX_A16FE0ED9AC0396 ON messaging.conversation_participants (conversation_id)');
         $this->addSql('CREATE INDEX IDX_A16FE0EDA76ED395 ON messaging.conversation_participants (user_id)');
@@ -73,8 +100,9 @@ final class Version20260901130245 extends AbstractMigration
         $this->addSql('CREATE INDEX IDX_B59B887427EB8A5 ON matching.deal_outcomes (request_id)');
         $this->addSql('CREATE INDEX IDX_B59B88789B658FE ON matching.deal_outcomes (producer_id)');
         $this->addSql('CREATE INDEX IDX_B59B887C48B85B0 ON matching.deal_outcomes (declared_by_id)');
-        $this->addSql('CREATE TABLE producer.delivery_zones (id UUID NOT NULL, radius_km NUMERIC(12, 2) DEFAULT NULL, rules JSON DEFAULT NULL, producer_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE TABLE producer.delivery_zones (id UUID NOT NULL, radius_km NUMERIC(12, 2) DEFAULT NULL, zone geography(Polygon,4326) DEFAULT NULL, rules JSON DEFAULT NULL, producer_id UUID NOT NULL, PRIMARY KEY (id))');
         $this->addSql('CREATE INDEX IDX_4A1665B689B658FE ON producer.delivery_zones (producer_id)');
+        $this->addSql('CREATE INDEX idx_delivery_zones_zone_gist ON producer.delivery_zones USING gist (zone)');
         $this->addSql('CREATE TABLE content.faq_articles (id UUID NOT NULL, category VARCHAR(255) DEFAULT NULL, locale VARCHAR(10) NOT NULL, question TEXT DEFAULT NULL, answer TEXT DEFAULT NULL, position INT DEFAULT NULL, is_active BOOLEAN NOT NULL, PRIMARY KEY (id))');
         $this->addSql('CREATE TABLE engagement.favorites (id UUID NOT NULL, target_type VARCHAR(120) DEFAULT NULL, target_id UUID DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, user_id UUID NOT NULL, PRIMARY KEY (id))');
         $this->addSql('CREATE INDEX IDX_479AA8A6A76ED395 ON engagement.favorites (user_id)');
@@ -130,10 +158,13 @@ final class Version20260901130245 extends AbstractMigration
         $this->addSql('CREATE INDEX IDX_AA465DA189B658FE ON producer.producer_products (producer_id)');
         $this->addSql('CREATE INDEX IDX_AA465DA14584665A ON producer.producer_products (product_id)');
         $this->addSql('CREATE INDEX IDX_AA465DA16956883F ON producer.producer_products (currency)');
-        $this->addSql('CREATE TABLE producer.producer_profiles (id UUID NOT NULL, farm_name VARCHAR(255) NOT NULL, slug CITEXT NOT NULL, description TEXT DEFAULT NULL, story TEXT DEFAULT NULL, city TEXT DEFAULT NULL, postal_code VARCHAR(20) DEFAULT NULL, address_visibility VARCHAR(120) DEFAULT NULL, verification_status VARCHAR(255) NOT NULL, is_active BOOLEAN NOT NULL, owner_user_id UUID NOT NULL, country_code VARCHAR(2) NOT NULL, PRIMARY KEY (id))');
+        $this->addSql("CREATE TABLE producer.producer_profiles (id UUID NOT NULL, farm_name VARCHAR(255) NOT NULL, slug CITEXT NOT NULL, description TEXT DEFAULT NULL, story TEXT DEFAULT NULL, city TEXT DEFAULT NULL, postal_code VARCHAR(20) DEFAULT NULL, address_visibility VARCHAR(120) DEFAULT NULL, location geography(Point,4326) DEFAULT NULL, verification_status VARCHAR(255) NOT NULL, is_active BOOLEAN NOT NULL, owner_user_id UUID NOT NULL, country_code VARCHAR(2) NOT NULL, search_vector TSVECTOR GENERATED ALWAYS AS (setweight(to_tsvector('simple', coalesce(public.immutable_unaccent(farm_name), '')), 'A') || setweight(to_tsvector('simple', coalesce(public.immutable_unaccent(city), '')), 'B') || setweight(to_tsvector('simple', coalesce(public.immutable_unaccent(description), '')), 'C')) STORED, PRIMARY KEY (id))");
         $this->addSql('CREATE UNIQUE INDEX UNIQ_92CC82CB989D9B62 ON producer.producer_profiles (slug)');
         $this->addSql('CREATE UNIQUE INDEX UNIQ_92CC82CB2B18554A ON producer.producer_profiles (owner_user_id)');
         $this->addSql('CREATE INDEX IDX_92CC82CBF026BB7C ON producer.producer_profiles (country_code)');
+        $this->addSql('CREATE INDEX idx_producer_profiles_location_gist ON producer.producer_profiles USING gist (location)');
+        $this->addSql('CREATE INDEX idx_producer_profiles_search_gin ON producer.producer_profiles USING gin (search_vector)');
+        $this->addSql('CREATE INDEX idx_producer_profiles_farm_name_trgm ON producer.producer_profiles USING gin (farm_name gin_trgm_ops)');
         $this->addSql('CREATE TABLE matching.producer_replies (id UUID NOT NULL, reply_text TEXT DEFAULT NULL, price_amount NUMERIC(12, 2) DEFAULT NULL, availability_date DATE DEFAULT NULL, valid_until DATE DEFAULT NULL, conditions TEXT DEFAULT NULL, status VARCHAR(255) NOT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, request_id UUID NOT NULL, producer_id UUID NOT NULL, price_unit_id UUID DEFAULT NULL, currency VARCHAR(3) DEFAULT NULL, PRIMARY KEY (id))');
         $this->addSql('CREATE INDEX IDX_FB170DC0427EB8A5 ON matching.producer_replies (request_id)');
         $this->addSql('CREATE INDEX IDX_FB170DC089B658FE ON matching.producer_replies (producer_id)');
@@ -145,10 +176,12 @@ final class Version20260901130245 extends AbstractMigration
         $this->addSql('CREATE INDEX IDX_C1C59805F8BD700D ON producer.product_availabilities (unit_id)');
         $this->addSql('CREATE TABLE catalog.product_translations (locale VARCHAR(10) NOT NULL, name VARCHAR(120) NOT NULL, description TEXT DEFAULT NULL, keywords TEXT DEFAULT NULL, product_id UUID NOT NULL, PRIMARY KEY (product_id, locale))');
         $this->addSql('CREATE INDEX IDX_F90E808C4584665A ON catalog.product_translations (product_id)');
-        $this->addSql('CREATE TABLE catalog.products (id UUID NOT NULL, slug CITEXT DEFAULT NULL, name VARCHAR(120) NOT NULL, season_start_month SMALLINT DEFAULT NULL, season_end_month SMALLINT DEFAULT NULL, is_active BOOLEAN NOT NULL, category_id UUID NOT NULL, default_unit_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql("CREATE TABLE catalog.products (id UUID NOT NULL, slug CITEXT DEFAULT NULL, name VARCHAR(120) NOT NULL, season_start_month SMALLINT DEFAULT NULL, season_end_month SMALLINT DEFAULT NULL, is_active BOOLEAN NOT NULL, category_id UUID NOT NULL, default_unit_id UUID DEFAULT NULL, search_vector TSVECTOR GENERATED ALWAYS AS (setweight(to_tsvector('simple', coalesce(public.immutable_unaccent(name), '')), 'A')) STORED, PRIMARY KEY (id))");
         $this->addSql('CREATE UNIQUE INDEX UNIQ_66B553D2989D9B62 ON catalog.products (slug)');
         $this->addSql('CREATE INDEX IDX_66B553D212469DE2 ON catalog.products (category_id)');
         $this->addSql('CREATE INDEX IDX_66B553D2A382148 ON catalog.products (default_unit_id)');
+        $this->addSql('CREATE INDEX idx_products_search_gin ON catalog.products USING gin (search_vector)');
+        $this->addSql('CREATE INDEX idx_products_name_trgm ON catalog.products USING gin (name gin_trgm_ops)');
         $this->addSql('CREATE TABLE producer.quick_replies (id UUID NOT NULL, title VARCHAR(120) DEFAULT NULL, content TEXT DEFAULT NULL, position INT DEFAULT NULL, is_active BOOLEAN NOT NULL, producer_id UUID NOT NULL, PRIMARY KEY (id))');
         $this->addSql('CREATE INDEX IDX_1D37CB4289B658FE ON producer.quick_replies (producer_id)');
         $this->addSql('CREATE TABLE matching.recurring_request_rules (id UUID NOT NULL, frequency VARCHAR(120) DEFAULT NULL, next_run_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, end_at DATE DEFAULT NULL, is_active BOOLEAN NOT NULL, request_id UUID NOT NULL, PRIMARY KEY (id))');
@@ -210,13 +243,13 @@ final class Version20260901130245 extends AbstractMigration
         $this->addSql('CREATE TABLE trust.user_sanctions (id UUID NOT NULL, action_type VARCHAR(120) DEFAULT NULL, reason TEXT DEFAULT NULL, starts_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, ends_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, user_id UUID NOT NULL, created_by_id UUID DEFAULT NULL, PRIMARY KEY (id))');
         $this->addSql('CREATE INDEX IDX_7A8CD4C6A76ED395 ON trust.user_sanctions (user_id)');
         $this->addSql('CREATE INDEX IDX_7A8CD4C6B03A8386 ON trust.user_sanctions (created_by_id)');
-        $this->addSql('CREATE TABLE identity.users (id UUID NOT NULL, email CITEXT NOT NULL, password_hash TEXT NOT NULL, roles TEXT NOT NULL, first_name VARCHAR(255) DEFAULT NULL, last_name VARCHAR(255) DEFAULT NULL, phone VARCHAR(32) DEFAULT NULL, locale VARCHAR(10) NOT NULL, status VARCHAR(255) NOT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, updated_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, last_login_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, PRIMARY KEY (id))');
-        $this->addSql('CREATE UNIQUE INDEX UNIQ_3EA6317DE7927C74 ON identity.users (email)');
         $this->addSql('CREATE TABLE trust.verification_documents (id UUID NOT NULL, type VARCHAR(120) DEFAULT NULL, file_url TEXT DEFAULT NULL, status VARCHAR(255) NOT NULL, reviewed_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, expires_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, producer_id UUID NOT NULL, reviewed_by_id UUID DEFAULT NULL, PRIMARY KEY (id))');
         $this->addSql('CREATE INDEX IDX_C9138BBF89B658FE ON trust.verification_documents (producer_id)');
         $this->addSql('CREATE INDEX IDX_C9138BBFFC6B21F1 ON trust.verification_documents (reviewed_by_id)');
         $this->addSql('CREATE TABLE billing.webhook_events (id UUID NOT NULL, provider_event_id VARCHAR(255) DEFAULT NULL, event_type VARCHAR(120) DEFAULT NULL, payload JSON DEFAULT NULL, status VARCHAR(255) NOT NULL, received_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, processed_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, PRIMARY KEY (id))');
         $this->addSql('CREATE UNIQUE INDEX UNIQ_4DB677C439B58662 ON billing.webhook_events (provider_event_id)');
+        $this->addSql('CREATE TABLE identity.users (id UUID NOT NULL, email CITEXT NOT NULL, password_hash TEXT NOT NULL, roles TEXT NOT NULL, first_name VARCHAR(255) DEFAULT NULL, last_name VARCHAR(255) DEFAULT NULL, phone VARCHAR(32) DEFAULT NULL, locale VARCHAR(10) NOT NULL, status VARCHAR(255) NOT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, updated_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, last_login_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE UNIQUE INDEX UNIQ_3EA6317DE7927C74 ON identity.users (email)');
         $this->addSql('CREATE TABLE messenger_messages (id BIGINT GENERATED BY DEFAULT AS IDENTITY NOT NULL, body TEXT NOT NULL, headers TEXT NOT NULL, queue_name VARCHAR(190) NOT NULL, created_at TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL, available_at TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL, delivered_at TIMESTAMP(0) WITHOUT TIME ZONE DEFAULT NULL, PRIMARY KEY (id))');
         $this->addSql('CREATE INDEX IDX_75EA56E0FB7336F0E3BD61CE16BA31DBBF396750 ON messenger_messages (queue_name, available_at, delivered_at, id)');
         $this->addSql('ALTER TABLE audit.audit_logs ADD CONSTRAINT FK_945DBD9410DAF24A FOREIGN KEY (actor_id) REFERENCES identity.users (id)');
@@ -321,6 +354,201 @@ final class Version20260901130245 extends AbstractMigration
         $this->addSql('ALTER TABLE trust.user_sanctions ADD CONSTRAINT FK_7A8CD4C6B03A8386 FOREIGN KEY (created_by_id) REFERENCES identity.users (id)');
         $this->addSql('ALTER TABLE trust.verification_documents ADD CONSTRAINT FK_C9138BBF89B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
         $this->addSql('ALTER TABLE trust.verification_documents ADD CONSTRAINT FK_C9138BBFFC6B21F1 FOREIGN KEY (reviewed_by_id) REFERENCES identity.users (id)');
+
+        $this->addSql('CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON identity.users FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()');
+        $this->addSql('CREATE TRIGGER trg_subscriptions_updated_at BEFORE UPDATE ON billing.subscriptions FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()');
+        $this->addSql('CREATE TRIGGER trg_user_presence_updated_at BEFORE UPDATE ON messaging.user_presence FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()');
+
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION matching.find_matching_producers(
+    p_request_id uuid,
+    p_limit integer DEFAULT 50
+)
+RETURNS TABLE (
+    producer_id uuid,
+    score numeric,
+    distance_km numeric,
+    reasons jsonb
+)
+LANGUAGE sql
+STABLE
+AS $$
+WITH req AS (
+    SELECT r.*
+    FROM matching.client_requests r
+    WHERE r.id = p_request_id
+), candidates AS (
+    SELECT
+        pp.id AS producer_id,
+        ST_Distance(pp.location, req.location) / 1000.0 AS distance_km,
+        pp.verification_status,
+        pp.is_active,
+        EXISTS (
+            SELECT 1
+            FROM producer.producer_products prp
+            WHERE prp.producer_id = pp.id
+            AND prp.product_id = req.product_id
+            AND prp.is_active = true
+        ) AS has_product,
+        EXISTS (
+            SELECT 1
+            FROM billing.subscriptions s
+            WHERE s.producer_id = pp.id
+            AND s.status IN ('trialing', 'active')
+            AND now() BETWEEN s.current_period_start AND s.current_period_end
+        ) AS has_active_subscription
+    FROM producer.producer_profiles pp
+    CROSS JOIN req
+    WHERE pp.is_active = true
+    AND pp.location IS NOT NULL
+    AND req.location IS NOT NULL
+    AND ST_DWithin(pp.location, req.location, COALESCE(req.radius_km, 50) * 1000)
+)
+SELECT
+    producer_id,
+    (
+        CASE WHEN has_product THEN 50 ELSE 0 END +
+        CASE WHEN has_active_subscription THEN 20 ELSE 0 END +
+        CASE WHEN verification_status = 'verified' THEN 15 ELSE 0 END +
+        GREATEST(0, 15 - distance_km / 5)
+    )::numeric(10,2) AS score,
+    distance_km::numeric(10,2),
+    jsonb_build_object(
+        'has_product', has_product,
+        'active_subscription', has_active_subscription,
+        'verified', verification_status = 'verified',
+        'distance_km', round(distance_km::numeric, 2)
+    ) AS reasons
+FROM candidates
+WHERE has_product = true
+ORDER BY score DESC, distance_km ASC
+LIMIT p_limit;
+$$;
+SQL);
+
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION matching.populate_request_matches(p_request_id uuid)
+RETURNS integer
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    inserted_count integer;
+BEGIN
+    INSERT INTO matching.request_matches (id, request_id, producer_id, score, distance_km, reasons, status, created_at)
+    SELECT gen_random_uuid(), p_request_id, producer_id, score, distance_km, reasons, 'proposed', now()
+    FROM matching.find_matching_producers(p_request_id, 100)
+    ON CONFLICT (request_id, producer_id) DO UPDATE
+    SET score = EXCLUDED.score,
+        distance_km = EXCLUDED.distance_km,
+        reasons = EXCLUDED.reasons;
+
+    GET DIAGNOSTICS inserted_count = ROW_COUNT;
+    RETURN inserted_count;
+END;
+$$;
+SQL);
+
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION billing.producer_has_feature(
+    p_producer_id uuid,
+    p_feature text
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+AS $$
+SELECT EXISTS (
+    SELECT 1
+    FROM billing.subscriptions s
+    JOIN billing.plan_prices pp ON pp.id = s.plan_price_id
+    JOIN billing.subscription_plans sp ON sp.id = pp.plan_id
+    WHERE s.producer_id = p_producer_id
+    AND s.status IN ('trialing', 'active')
+    AND now() BETWEEN s.current_period_start AND s.current_period_end
+    AND COALESCE((sp.features ->> p_feature)::boolean, false) = true
+);
+$$;
+SQL);
+
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION audit.log_row_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    actor uuid;
+BEGIN
+    actor := NULLIF(current_setting('app.current_user_id', true), '')::uuid;
+
+    INSERT INTO audit.audit_logs (
+        actor_id, schema_name, table_name, record_id, action,
+        old_data, new_data, ip_address, created_at
+    ) VALUES (
+        actor, TG_TABLE_SCHEMA, TG_TABLE_NAME,
+        COALESCE(NEW.id, OLD.id)::text,
+        TG_OP,
+        CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN to_jsonb(OLD) ELSE NULL END,
+        CASE WHEN TG_OP IN ('INSERT', 'UPDATE') THEN to_jsonb(NEW) ELSE NULL END,
+        NULLIF(current_setting('app.request_ip', true), '')::inet,
+        now()
+    );
+    RETURN COALESCE(NEW, OLD);
+END;
+$$;
+SQL);
+
+        $this->addSql('CREATE TRIGGER trg_users_audit AFTER INSERT OR UPDATE OR DELETE ON identity.users FOR EACH ROW EXECUTE FUNCTION audit.log_row_change()');
+        $this->addSql('CREATE TRIGGER trg_producer_profiles_audit AFTER INSERT OR UPDATE OR DELETE ON producer.producer_profiles FOR EACH ROW EXECUTE FUNCTION audit.log_row_change()');
+        $this->addSql('CREATE TRIGGER trg_subscriptions_audit AFTER INSERT OR UPDATE OR DELETE ON billing.subscriptions FOR EACH ROW EXECUTE FUNCTION audit.log_row_change()');
+        $this->addSql('CREATE TRIGGER trg_verification_documents_audit AFTER INSERT OR UPDATE OR DELETE ON trust.verification_documents FOR EACH ROW EXECUTE FUNCTION audit.log_row_change()');
+
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION audit.enqueue_event(
+    p_event_type text,
+    p_aggregate_type text,
+    p_aggregate_id uuid,
+    p_payload jsonb DEFAULT '{}'::jsonb
+)
+RETURNS uuid
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_id uuid := gen_random_uuid();
+BEGIN
+    INSERT INTO audit.outbox_events (
+        id, event_type, aggregate_type, aggregate_id, payload, status, available_at
+    ) VALUES (
+        v_id, p_event_type, p_aggregate_type, p_aggregate_id, p_payload, 'pending', now()
+    );
+    PERFORM pg_notify('outbox_events', jsonb_build_object('id', v_id, 'type', p_event_type)::text);
+    RETURN v_id;
+END;
+$$;
+SQL);
+
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION identity.anonymize_user(p_user_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    UPDATE identity.users
+    SET email = ('deleted+' || id || '@anonymized.local')::citext,
+        first_name = NULL,
+        last_name = NULL,
+        phone = NULL,
+        password_hash = '',
+        status = 'deleted',
+        updated_at = now()
+    WHERE id = p_user_id;
+
+    UPDATE matching.client_requests
+    SET message = NULL
+    WHERE client_id = p_user_id;
+END;
+$$;
+SQL);
     }
 
     public function down(Schema $schema): void
@@ -501,9 +729,17 @@ final class Version20260901130245 extends AbstractMigration
         $this->addSql('DROP TABLE identity.user_preferences');
         $this->addSql('DROP TABLE messaging.user_presence');
         $this->addSql('DROP TABLE trust.user_sanctions');
-        $this->addSql('DROP TABLE identity.users');
         $this->addSql('DROP TABLE trust.verification_documents');
         $this->addSql('DROP TABLE billing.webhook_events');
+        $this->addSql('DROP TABLE identity.users');
         $this->addSql('DROP TABLE messenger_messages');
+        $this->addSql('DROP FUNCTION IF EXISTS identity.anonymize_user(uuid)');
+        $this->addSql('DROP FUNCTION IF EXISTS audit.enqueue_event(text, text, uuid, jsonb)');
+        $this->addSql('DROP FUNCTION IF EXISTS audit.log_row_change()');
+        $this->addSql('DROP FUNCTION IF EXISTS billing.producer_has_feature(uuid, text)');
+        $this->addSql('DROP FUNCTION IF EXISTS matching.populate_request_matches(uuid)');
+        $this->addSql('DROP FUNCTION IF EXISTS matching.find_matching_producers(uuid, integer)');
+        $this->addSql('DROP FUNCTION IF EXISTS public.set_updated_at()');
+        $this->addSql('DROP FUNCTION IF EXISTS public.immutable_unaccent(text)');
     }
 }

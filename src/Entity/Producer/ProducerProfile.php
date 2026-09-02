@@ -60,6 +60,9 @@ class ProducerProfile
     #[ORM\Column(length: 120, nullable: true)]
     private ?string $addressVisibility = null;
 
+    #[ORM\Column(type: 'geography', options: ['geometry_type' => 'point', 'srid' => 4326], nullable: true)]
+    private mixed $location = null;
+
     #[ORM\Column(enumType: VerificationStatus::class)]
     private VerificationStatus $verificationStatus = VerificationStatus::Pending;
 
@@ -302,6 +305,18 @@ class ProducerProfile
     public function setAddressVisibility(?string $addressVisibility): static
     {
         $this->addressVisibility = $addressVisibility;
+
+        return $this;
+    }
+
+    public function getLocation(): mixed
+    {
+        return $this->location;
+    }
+
+    public function setLocation(mixed $location): static
+    {
+        $this->location = $location;
 
         return $this;
     }

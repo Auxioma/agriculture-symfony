@@ -76,6 +76,9 @@ class ClientRequest
     #[ORM\Column(length: 20, nullable: true)]
     private ?string $postalCode = null;
 
+    #[ORM\Column(type: 'geography', options: ['geometry_type' => 'point', 'srid' => 4326], nullable: true)]
+    private mixed $location = null;
+
     #[ORM\Column(type: Types::DECIMAL, precision: 8, scale: 2)]
     private string $radiusKm;
 
@@ -348,6 +351,18 @@ class ClientRequest
     public function setPostalCode(?string $postalCode): static
     {
         $this->postalCode = $postalCode;
+
+        return $this;
+    }
+
+    public function getLocation(): mixed
+    {
+        return $this->location;
+    }
+
+    public function setLocation(mixed $location): static
+    {
+        $this->location = $location;
 
         return $this;
     }

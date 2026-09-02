@@ -23,6 +23,9 @@ class DeliveryZone
     #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2, nullable: true)]
     private ?string $radiusKm = null;
 
+    #[ORM\Column(type: 'geography', options: ['geometry_type' => 'polygon', 'srid' => 4326], nullable: true)]
+    private mixed $zone = null;
+
     #[ORM\Column(type: 'json', nullable: true)]
     private ?array $rules = null;
 
@@ -56,6 +59,18 @@ class DeliveryZone
     public function setRadiusKm(?string $radiusKm): static
     {
         $this->radiusKm = $radiusKm;
+
+        return $this;
+    }
+
+    public function getZone(): mixed
+    {
+        return $this->zone;
+    }
+
+    public function setZone(mixed $zone): static
+    {
+        $this->zone = $zone;
 
         return $this;
     }

@@ -4,8 +4,10 @@ doctrine:
         types:
             uuid: Symfony\Bridge\Doctrine\Types\UuidType
             citext: App\Doctrine\CitextType
+            geography: Jsor\Doctrine\PostGIS\Types\GeographyType
         mapping_types:
             citext: citext
+            geography: geography
 
         #server_version: '16'
         profiling_collect_backtrace: '%kernel.debug%'
