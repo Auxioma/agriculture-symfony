@@ -178,23 +178,37 @@ final class MatchingSqlFunctionsTest extends DatabaseTestCase
         self::assertFalse((bool) $hasFeature, 'producer_has_feature should be false for a feature not present in the plan');
     }
 
-    public function testAnonymizeUserClearsPersonalData(): void
+    public function testAnonymizeUserClearsPersonalDataAndClientRequest(): void
     {
+        $category = $this->makeCategory();
+        $product = $this->makeProduct($category);
+
+        // *Créationn de user et de demande pour vérifier suppression données personnelles
         $user = $this->makeUser('to-delete');
         $user->setFirstName('Jean');
         $user->setLastName('Dupont');
+
+        $request = $this->makeClientRequest($user, $product);
+        $request->setMessage("Je veux faire des tests !");
+
         $this->em->flush();
 
         $id = $user->getId()->toRfc4122();
+        $requestId = $request->getId()->toRfc4122();
         $connection = $this->em->getConnection();
+        
+        // Annonimisation données personnelles
         $connection->executeStatement('SELECT identity.anonymize_user(:id)', ['id' => $id]);
 
         $row = $connection->fetchAssociative('SELECT * FROM identity.users WHERE id = :id', ['id' => $id]);
+        $rowRequest = $connection->fetchAssociative('SELECT * FROM matching.client_requests WHERE id = :id', ['id' => $requestId]);
 
         self::assertStringStartsWith('deleted+', (string) $row['email']);
         self::assertSame('', $row['password_hash']);
         self::assertNull($row['first_name']);
         self::assertNull($row['last_name']);
         self::assertSame('deleted', $row['status']);
+
+        self::assertNull($rowRequest['message']);
     }
 }
