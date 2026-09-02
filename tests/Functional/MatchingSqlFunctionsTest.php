@@ -2,7 +2,7 @@
 
 namespace App\Tests\Functional;
 
-use App\Enum\SubscriptionStatus;
+// use App\Enum\SubscriptionStatus;
 use App\Enum\VerificationStatus;
 use App\Tests\DatabaseTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
