@@ -5,6 +5,11 @@ namespace App\Tests\Functional;
 use App\Tests\DatabaseTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
+
+// Tests fonctionnels pour vérifier l'intégrité référentielle lors de la suppression des demandes clients, 
+// y compris la validation des cascades et des contraintes de clé étrangère.
+
+
 final class ReferentialIntegrityTest extends DatabaseTestCase
 {
     use EntityFactoryTrait;
