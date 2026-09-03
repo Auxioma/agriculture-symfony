@@ -1,0 +1,583 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Method App\\Entity\\Audit\\AuditLog\:\:getNewData\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Audit/AuditLog.php
+
+		-
+			message: '#^Method App\\Entity\\Audit\\AuditLog\:\:getOldData\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Audit/AuditLog.php
+
+		-
+			message: '#^Method App\\Entity\\Audit\\AuditLog\:\:setNewData\(\) has parameter \$newData with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Audit/AuditLog.php
+
+		-
+			message: '#^Method App\\Entity\\Audit\\AuditLog\:\:setOldData\(\) has parameter \$oldData with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Audit/AuditLog.php
+
+		-
+			message: '#^Property App\\Entity\\Audit\\AuditLog\:\:\$newData type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Audit/AuditLog.php
+
+		-
+			message: '#^Property App\\Entity\\Audit\\AuditLog\:\:\$oldData type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Audit/AuditLog.php
+
+		-
+			message: '#^Method App\\Entity\\Audit\\OutboxEvent\:\:getPayload\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Audit/OutboxEvent.php
+
+		-
+			message: '#^Method App\\Entity\\Audit\\OutboxEvent\:\:setPayload\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Audit/OutboxEvent.php
+
+		-
+			message: '#^Property App\\Entity\\Audit\\OutboxEvent\:\:\$payload type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Audit/OutboxEvent.php
+
+		-
+			message: '#^Method App\\Entity\\Billing\\Coupon\:\:getMetadata\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Billing/Coupon.php
+
+		-
+			message: '#^Method App\\Entity\\Billing\\Coupon\:\:setMetadata\(\) has parameter \$metadata with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Billing/Coupon.php
+
+		-
+			message: '#^Property App\\Entity\\Billing\\Coupon\:\:\$metadata type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Billing/Coupon.php
+
+		-
+			message: '#^Method App\\Entity\\Billing\\SubscriptionPlan\:\:getFeatures\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Billing/SubscriptionPlan.php
+
+		-
+			message: '#^Method App\\Entity\\Billing\\SubscriptionPlan\:\:getLimits\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Billing/SubscriptionPlan.php
+
+		-
+			message: '#^Method App\\Entity\\Billing\\SubscriptionPlan\:\:setFeatures\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Billing/SubscriptionPlan.php
+
+		-
+			message: '#^Method App\\Entity\\Billing\\SubscriptionPlan\:\:setLimits\(\) has parameter \$limits with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Billing/SubscriptionPlan.php
+
+		-
+			message: '#^Property App\\Entity\\Billing\\SubscriptionPlan\:\:\$features type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Billing/SubscriptionPlan.php
+
+		-
+			message: '#^Property App\\Entity\\Billing\\SubscriptionPlan\:\:\$limits type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Billing/SubscriptionPlan.php
+
+		-
+			message: '#^Method App\\Entity\\Billing\\WebhookEvent\:\:getPayload\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Billing/WebhookEvent.php
+
+		-
+			message: '#^Method App\\Entity\\Billing\\WebhookEvent\:\:setPayload\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Billing/WebhookEvent.php
+
+		-
+			message: '#^Property App\\Entity\\Billing\\WebhookEvent\:\:\$payload type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Billing/WebhookEvent.php
+
+		-
+			message: '#^Method App\\Entity\\Catalog\\Label\:\:getCountryScope\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Catalog/Label.php
+
+		-
+			message: '#^Method App\\Entity\\Catalog\\Label\:\:setCountryScope\(\) has parameter \$countryScope with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Catalog/Label.php
+
+		-
+			message: '#^Property App\\Entity\\Catalog\\Label\:\:\$countryScope type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Catalog/Label.php
+
+		-
+			message: '#^Property App\\Entity\\Catalog\\Label\:\:\$countryScope type mapping mismatch\: property can contain array\|null but database expects array\<string\>\|null\.$#'
+			identifier: doctrine.columnType
+			count: 1
+			path: src/Entity/Catalog/Label.php
+
+		-
+			message: '#^Method App\\Entity\\Catalog\\ProductTranslation\:\:getKeywords\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Catalog/ProductTranslation.php
+
+		-
+			message: '#^Method App\\Entity\\Catalog\\ProductTranslation\:\:setKeywords\(\) has parameter \$keywords with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Catalog/ProductTranslation.php
+
+		-
+			message: '#^Property App\\Entity\\Catalog\\ProductTranslation\:\:\$keywords type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Catalog/ProductTranslation.php
+
+		-
+			message: '#^Property App\\Entity\\Catalog\\ProductTranslation\:\:\$keywords type mapping mismatch\: property can contain array\|null but database expects array\<string\>\|null\.$#'
+			identifier: doctrine.columnType
+			count: 1
+			path: src/Entity/Catalog/ProductTranslation.php
+
+		-
+			message: '#^Method App\\Entity\\Catalog\\Unit\:\:getLocaleLabels\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Catalog/Unit.php
+
+		-
+			message: '#^Method App\\Entity\\Catalog\\Unit\:\:setLocaleLabels\(\) has parameter \$localeLabels with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Catalog/Unit.php
+
+		-
+			message: '#^Property App\\Entity\\Catalog\\Unit\:\:\$localeLabels type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Catalog/Unit.php
+
+		-
+			message: '#^Method App\\Entity\\Engagement\\SavedSearch\:\:getCriteria\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Engagement/SavedSearch.php
+
+		-
+			message: '#^Method App\\Entity\\Engagement\\SavedSearch\:\:setCriteria\(\) has parameter \$criteria with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Engagement/SavedSearch.php
+
+		-
+			message: '#^Property App\\Entity\\Engagement\\SavedSearch\:\:\$criteria type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Engagement/SavedSearch.php
+
+		-
+			message: '#^Method App\\Entity\\Identity\\User\:\:getTeamMemberships\(\) return type with generic interface Doctrine\\Common\\Collections\\Collection does not specify its types\: TKey, T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Entity/Identity/User.php
+
+		-
+			message: '#^Method App\\Entity\\Identity\\User\:\:setRoles\(\) has parameter \$roles with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Identity/User.php
+
+		-
+			message: '#^Property App\\Entity\\Identity\\User\:\:\$roles type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Identity/User.php
+
+		-
+			message: '#^Property App\\Entity\\Identity\\User\:\:\$roles type mapping mismatch\: property can contain array but database expects array\<string\>\.$#'
+			identifier: doctrine.columnType
+			count: 1
+			path: src/Entity/Identity/User.php
+
+		-
+			message: '#^Method App\\Entity\\Identity\\UserPreference\:\:getNotificationSettings\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Identity/UserPreference.php
+
+		-
+			message: '#^Method App\\Entity\\Identity\\UserPreference\:\:setNotificationSettings\(\) has parameter \$notificationSettings with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Identity/UserPreference.php
+
+		-
+			message: '#^Property App\\Entity\\Identity\\UserPreference\:\:\$notificationSettings type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Identity/UserPreference.php
+
+		-
+			message: '#^Method App\\Entity\\Matching\\ClientRequest\:\:getAttachments\(\) return type with generic interface Doctrine\\Common\\Collections\\Collection does not specify its types\: TKey, T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Entity/Matching/ClientRequest.php
+
+		-
+			message: '#^Method App\\Entity\\Matching\\ClientRequest\:\:getLabels\(\) return type with generic interface Doctrine\\Common\\Collections\\Collection does not specify its types\: TKey, T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Entity/Matching/ClientRequest.php
+
+		-
+			message: '#^Method App\\Entity\\Matching\\ProducerReply\:\:getAttachments\(\) return type with generic interface Doctrine\\Common\\Collections\\Collection does not specify its types\: TKey, T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Entity/Matching/ProducerReply.php
+
+		-
+			message: '#^Method App\\Entity\\Matching\\RequestEvent\:\:getPayload\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Matching/RequestEvent.php
+
+		-
+			message: '#^Method App\\Entity\\Matching\\RequestEvent\:\:setPayload\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Matching/RequestEvent.php
+
+		-
+			message: '#^Property App\\Entity\\Matching\\RequestEvent\:\:\$payload type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Matching/RequestEvent.php
+
+		-
+			message: '#^Method App\\Entity\\Matching\\RequestMatch\:\:getReasons\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Matching/RequestMatch.php
+
+		-
+			message: '#^Method App\\Entity\\Matching\\RequestMatch\:\:setReasons\(\) has parameter \$reasons with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Matching/RequestMatch.php
+
+		-
+			message: '#^Property App\\Entity\\Matching\\RequestMatch\:\:\$reasons type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Matching/RequestMatch.php
+
+		-
+			message: '#^Property App\\Entity\\Messaging\\BlockedUser\:\:\$blocked type mapping mismatch\: property can contain App\\Entity\\Identity\\User\|null but database expects App\\Entity\\Identity\\User\.$#'
+			identifier: doctrine.associationType
+			count: 1
+			path: src/Entity/Messaging/BlockedUser.php
+
+		-
+			message: '#^Property App\\Entity\\Messaging\\BlockedUser\:\:\$blocker type mapping mismatch\: property can contain App\\Entity\\Identity\\User\|null but database expects App\\Entity\\Identity\\User\.$#'
+			identifier: doctrine.associationType
+			count: 1
+			path: src/Entity/Messaging/BlockedUser.php
+
+		-
+			message: '#^Property App\\Entity\\Messaging\\BlockedUser\:\:\$createdAt type mapping mismatch\: property can contain DateTimeImmutable\|null but database expects DateTimeImmutable\.$#'
+			identifier: doctrine.columnType
+			count: 1
+			path: src/Entity/Messaging/BlockedUser.php
+
+		-
+			message: '#^Method App\\Entity\\Messaging\\Message\:\:getMetadata\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Messaging/Message.php
+
+		-
+			message: '#^Method App\\Entity\\Messaging\\Message\:\:setMetadata\(\) has parameter \$metadata with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Messaging/Message.php
+
+		-
+			message: '#^Property App\\Entity\\Messaging\\Message\:\:\$metadata type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Messaging/Message.php
+
+		-
+			message: '#^Method App\\Entity\\Notification\\Notification\:\:getData\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Notification/Notification.php
+
+		-
+			message: '#^Method App\\Entity\\Notification\\Notification\:\:setData\(\) has parameter \$data with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Notification/Notification.php
+
+		-
+			message: '#^Property App\\Entity\\Notification\\Notification\:\:\$data type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Notification/Notification.php
+
+		-
+			message: '#^Method App\\Entity\\Producer\\DeliveryZone\:\:getRules\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Producer/DeliveryZone.php
+
+		-
+			message: '#^Method App\\Entity\\Producer\\DeliveryZone\:\:setRules\(\) has parameter \$rules with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Producer/DeliveryZone.php
+
+		-
+			message: '#^Property App\\Entity\\Producer\\DeliveryZone\:\:\$rules type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Producer/DeliveryZone.php
+
+		-
+			message: '#^Method App\\Entity\\Producer\\ProducerProduct\:\:getMetadata\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Producer/ProducerProduct.php
+
+		-
+			message: '#^Method App\\Entity\\Producer\\ProducerProduct\:\:setMetadata\(\) has parameter \$metadata with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Producer/ProducerProduct.php
+
+		-
+			message: '#^Property App\\Entity\\Producer\\ProducerProduct\:\:\$metadata type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Producer/ProducerProduct.php
+
+		-
+			message: '#^Method App\\Entity\\Producer\\ProducerProfile\:\:getDeliveryZones\(\) return type with generic interface Doctrine\\Common\\Collections\\Collection does not specify its types\: TKey, T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Entity/Producer/ProducerProfile.php
+
+		-
+			message: '#^Method App\\Entity\\Producer\\ProducerProfile\:\:getLabels\(\) return type with generic interface Doctrine\\Common\\Collections\\Collection does not specify its types\: TKey, T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Entity/Producer/ProducerProfile.php
+
+		-
+			message: '#^Method App\\Entity\\Producer\\ProducerProfile\:\:getOpeningHours\(\) return type with generic interface Doctrine\\Common\\Collections\\Collection does not specify its types\: TKey, T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Entity/Producer/ProducerProfile.php
+
+		-
+			message: '#^Method App\\Entity\\Producer\\ProducerProfile\:\:getQuickReplies\(\) return type with generic interface Doctrine\\Common\\Collections\\Collection does not specify its types\: TKey, T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Entity/Producer/ProducerProfile.php
+
+		-
+			message: '#^Method App\\Entity\\Producer\\ProducerProfile\:\:getTeamMembers\(\) return type with generic interface Doctrine\\Common\\Collections\\Collection does not specify its types\: TKey, T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Entity/Producer/ProducerProfile.php
+
+		-
+			message: '#^Method App\\Entity\\Producer\\ProducerProfile\:\:getVerificationDocuments\(\) return type with generic interface Doctrine\\Common\\Collections\\Collection does not specify its types\: TKey, T$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Entity/Producer/ProducerProfile.php
+
+		-
+			message: '#^Property App\\Entity\\Producer\\ProducerProfile\:\:\$country type mapping mismatch\: property can contain App\\Entity\\Catalog\\Country\|null but database expects App\\Entity\\Catalog\\Country\.$#'
+			identifier: doctrine.associationType
+			count: 1
+			path: src/Entity/Producer/ProducerProfile.php
+
+		-
+			message: '#^Method App\\Entity\\Producer\\ProducerSetting\:\:getSettings\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Producer/ProducerSetting.php
+
+		-
+			message: '#^Method App\\Entity\\Producer\\ProducerSetting\:\:setSettings\(\) has parameter \$settings with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Producer/ProducerSetting.php
+
+		-
+			message: '#^Property App\\Entity\\Producer\\ProducerSetting\:\:\$settings type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Producer/ProducerSetting.php
+
+		-
+			message: '#^Method App\\Entity\\Producer\\TeamMember\:\:getPermissions\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Producer/TeamMember.php
+
+		-
+			message: '#^Method App\\Entity\\Producer\\TeamMember\:\:setPermissions\(\) has parameter \$permissions with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Producer/TeamMember.php
+
+		-
+			message: '#^Property App\\Entity\\Producer\\TeamMember\:\:\$permissions type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Producer/TeamMember.php
+
+		-
+			message: '#^Property App\\Entity\\Producer\\TeamMember\:\:\$permissions type mapping mismatch\: property can contain array\|null but database expects array\<string\>\|null\.$#'
+			identifier: doctrine.columnType
+			count: 1
+			path: src/Entity/Producer/TeamMember.php
+
+		-
+			message: '#^Method App\\Entity\\Trust\\ModerationAction\:\:getPayload\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Trust/ModerationAction.php
+
+		-
+			message: '#^Method App\\Entity\\Trust\\ModerationAction\:\:setPayload\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Trust/ModerationAction.php
+
+		-
+			message: '#^Property App\\Entity\\Trust\\ModerationAction\:\:\$payload type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Trust/ModerationAction.php
+
+		-
+			message: '#^Method App\\Kernel\:\:getAllowedEnvs\(\) is unused\.$#'
+			identifier: method.unused
+			count: 1
+			path: src/Kernel.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\BlockedUserTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/BlockedUserTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\ConstraintsTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/ConstraintsTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\EntityPersistenceTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/EntityPersistenceTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\MatchingSqlFunctionsTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/MatchingSqlFunctionsTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\PostGisMappingTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/PostGisMappingTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\ProducerHasFeatureTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/ProducerHasFeatureTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\ReferentialIntegrityTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/ReferentialIntegrityTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\RelationBehaviorTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/RelationBehaviorTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\TriggersTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/TriggersTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\UserSecurityTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/UserSecurityTest.php
+
+		-
+			message: '#^Method Symfony\\Component\\Security\\Core\\User\\PasswordAuthenticatedUserInterface@anonymous/tests/Functional/UserSecurityTest\.php\:67\:\:getPassword\(\) never returns null so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: tests/Functional/UserSecurityTest.php
+
+		-
+			message: '#^PHPDoc tag @var for variable \$provider contains generic interface Symfony\\Component\\Security\\Core\\User\\UserProviderInterface but does not specify its types\: TUser$#'
+			identifier: missingType.generics
+			count: 2
+			path: tests/Functional/UserSecurityTest.php
+
+		-
+			message: '#^Call to function method_exists\(\) with ''Symfony\\\\Component\\\\Dotenv\\\\Dotenv'' and ''bootEnv'' will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: tests/bootstrap.php
