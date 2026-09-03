@@ -1,5 +1,15 @@
 <?php
 
+/**
+ * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
+ *
+ * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
+ * Tous droits réservés.
+ *
+ * Ce code source est la propriété exclusive de Auxioma Web Agency et.
+ * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ */
+
 namespace App\Entity\Identity;
 
 use App\Entity\Audit\AuditLog;
@@ -17,6 +27,7 @@ use App\Entity\Messaging\Message;
 use App\Entity\Messaging\MessageRead;
 use App\Entity\Messaging\UserPresence;
 use App\Entity\Notification\Notification;
+use App\Entity\Producer\ProducerProfile;
 use App\Entity\Producer\TeamMember;
 use App\Entity\Support\Ticket;
 use App\Entity\Support\TicketMessage;
@@ -24,18 +35,16 @@ use App\Entity\Trust\ModerationAction;
 use App\Entity\Trust\Report;
 use App\Entity\Trust\Review;
 use App\Entity\Trust\UserSanction;
+use App\Enum\UserStatus;
 use App\Repository\Identity\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Uid\Uuid;
-use App\Enum\UserStatus;
-use App\Entity\Producer\ProducerProfile;
-use Doctrine\DBAL\Types\Types;
-
 
 #[ORM\Entity(repositoryClass: UserRepository::class)]
 #[ORM\Table(name: 'users', schema: 'identity')]
@@ -54,7 +63,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: UuidType::NAME, unique: true)]
     private Uuid $id;
 
-    #[ORM\Column(type: 'citext', unique: true)] //* Equivalent JS ToLowerCase
+    #[ORM\Column(type: 'citext', unique: true)] // * Equivalent JS ToLowerCase
     private string $email;
 
     #[ORM\Column(type: Types::TEXT)]
@@ -299,6 +308,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setEmail(string $email): static
     {
         $this->email = $email;
+
         return $this;
     }
 
@@ -315,13 +325,14 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setPasswordHash(string $passwordHash): static
     {
         $this->passwordHash = $passwordHash;
+
         return $this;
     }
 
     public function getPassword(): string
-{
-    return $this->passwordHash;
-}
+    {
+        return $this->passwordHash;
+    }
 
     public function getRoles(): array
     {
@@ -331,6 +342,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setRoles(array $roles): static
     {
         $this->roles = $roles;
+
         return $this;
     }
 
@@ -342,6 +354,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setFirstName(?string $firstName): static
     {
         $this->firstName = $firstName;
+
         return $this;
     }
 
@@ -353,6 +366,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setLastName(?string $lastName): static
     {
         $this->lastName = $lastName;
+
         return $this;
     }
 
@@ -364,6 +378,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setPhone(?string $phone): static
     {
         $this->phone = $phone;
+
         return $this;
     }
 
@@ -375,6 +390,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setLocale(string $locale): static
     {
         $this->locale = $locale;
+
         return $this;
     }
 
@@ -386,6 +402,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setStatus(UserStatus $status): static
     {
         $this->status = $status;
+
         return $this;
     }
 
@@ -407,6 +424,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setLastLoginAt(?\DateTimeImmutable $lastLoginAt): static
     {
         $this->lastLoginAt = $lastLoginAt;
+
         return $this;
     }
 
@@ -538,7 +556,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
-
     /**
      * @return Collection<int, DataRequest>
      */
@@ -563,7 +580,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
         return $this;
     }
-    
+
     public function getProducerProfile(): ?ProducerProfile
     {
         return $this->producerProfile;
@@ -600,7 +617,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
         return $this;
     }
-    
+
     /**
      * @return Collection<int, ClientRequest>
      */
@@ -1177,5 +1194,4 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
         return $this;
     }
-    
 }

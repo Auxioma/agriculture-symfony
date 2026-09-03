@@ -1,5 +1,15 @@
 <?php
 
+/**
+ * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
+ *
+ * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
+ * Tous droits réservés.
+ *
+ * Ce code source est la propriété exclusive de Auxioma Web Agency et.
+ * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ */
+
 namespace App\Tests\Functional;
 
 // use App\Enum\SubscriptionStatus;
@@ -189,14 +199,14 @@ final class MatchingSqlFunctionsTest extends DatabaseTestCase
         $user->setLastName('Dupont');
 
         $request = $this->makeClientRequest($user, $product);
-        $request->setMessage("Je veux faire des tests !");
+        $request->setMessage('Je veux faire des tests !');
 
         $this->em->flush();
 
         $id = $user->getId()->toRfc4122();
         $requestId = $request->getId()->toRfc4122();
         $connection = $this->em->getConnection();
-        
+
         // Annonimisation données personnelles
         $connection->executeStatement('SELECT identity.anonymize_user(:id)', ['id' => $id]);
 

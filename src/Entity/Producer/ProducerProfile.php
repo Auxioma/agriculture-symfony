@@ -1,19 +1,29 @@
 <?php
 
+/**
+ * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
+ *
+ * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
+ * Tous droits réservés.
+ *
+ * Ce code source est la propriété exclusive de Auxioma Web Agency et.
+ * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ */
+
 namespace App\Entity\Producer;
 
 use App\Entity\Analytics\ProducerDailyMetric;
 use App\Entity\Billing\CouponRedemption;
 use App\Entity\Billing\PaymentMethod;
 use App\Entity\Billing\Subscription;
+use App\Entity\Catalog\Country;
+use App\Entity\Identity\User;
 use App\Entity\Matching\DealOutcome;
 use App\Entity\Matching\ProducerReply;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
 use App\Entity\Trust\Review;
 use App\Entity\Trust\VerificationDocument;
-use App\Entity\Catalog\Country;
-use App\Entity\Identity\User;
 use App\Enum\VerificationStatus;
 use App\Repository\Producer\ProducerProfileRepository;
 use Doctrine\Common\Collections\ArrayCollection;

@@ -1,5 +1,15 @@
 <?php
 
+/**
+ * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
+ *
+ * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
+ * Tous droits réservés.
+ *
+ * Ce code source est la propriété exclusive de Auxioma Web Agency et.
+ * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ */
+
 namespace App\Entity\Identity;
 
 use App\Repository\Identity\RefreshTokenRepository;
@@ -32,7 +42,7 @@ class RefreshToken
     #[ORM\Column(name: 'created_at', type: Types::DATETIMETZ_IMMUTABLE)]
     private \DateTimeImmutable $createdAt;
 
-    #[ORM\Column(type: 'string', columnDefinition: 'INET', length: 45, nullable: true)] //* IPv4 ou IPv6
+    #[ORM\Column(type: 'string', columnDefinition: 'INET', length: 45, nullable: true)] // * IPv4 ou IPv6
     private ?string $ipAddress = null;
 
     public function __construct()
@@ -40,7 +50,7 @@ class RefreshToken
         $this->id = Uuid::v4();
         $this->createdAt = new \DateTimeImmutable();
     }
-    
+
     public function getId(): Uuid
     {
         return $this->id;

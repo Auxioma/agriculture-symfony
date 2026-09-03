@@ -11,7 +11,7 @@ Toute reproduction, modification, distribution ou utilisation sans autorisation 
 COMMENT;
 
 $finder = PhpCsFixer\Finder::create()
-    ->in(_DIR_)
+    ->in(__DIR__)
     ->exclude('config')
     ->exclude('var')
     ->exclude('public/bundles')
@@ -42,4 +42,4 @@ return (new PhpCsFixer\Config())
         'blank_line_between_import_groups' => false,
     ])
     ->setFinder($finder)
-    ->setCacheFile(_DIR_ . '/var/.php-cs-fixer.cache');
+    ->setCacheFile(__DIR__ . '/var/.php-cs-fixer.cache');
