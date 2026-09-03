@@ -1,0 +1,41 @@
+name: CD # Déloiement continu
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      SSHPASS: ${{ secrets.APP_PASS }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install sshpass
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+
+      - name: Deploy to preprod
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no -p 5022 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
+            set -e
+
+            cd ~/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
+            git pull origin master
+            composer install --no-interaction --prefer-dist --optimize-autoloader
+            composer dump-env dev
+            bin/console cache:clear --no-interaction
+            bin/console cache:warmup --no-interaction
+            bin/console assets:install public --no-interaction
+            bin/console importmap:install --no-interaction
+            composer dump-env dev
+            bin/console cache:clear --no-interaction --env=dev
+            bin/console cache:warmup --no-interaction --env=dev
+            bin/console asset-map:compile
+          EOF

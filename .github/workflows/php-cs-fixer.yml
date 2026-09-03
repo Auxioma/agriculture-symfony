@@ -1,0 +1,41 @@
+name: PHP CS Fixer
+
+on:
+  push:
+    branches: [ tests, main, master ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  php-cs-fixer:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer
+          coverage: none
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache/files
+          key: ${{ runner.os }}-composer-php-8.4-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-php-8.4-
+
+      - name: Installer les dépendances
+        env:
+          APP_ENV: test
+          DEFAULT_URI: "http://localhost"
+        run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
+
+      - name: Lancer PHP CS Fixer en vérification
+        run: vendor/bin/php-cs-fixer fix
