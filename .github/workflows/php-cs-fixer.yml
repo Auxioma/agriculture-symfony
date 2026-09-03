@@ -62,7 +62,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: app_test
+          POSTGRES_DB: app
         ports:
           - 5432:5432
         options: >-
@@ -72,8 +72,11 @@ jobs:
           --health-retries=10
 
     env:
+      # !APP_ENV=test déclenche dbname_suffix ("_test") dans config/packages/doctrine.yaml : on pointe donc sur
+      # !la base "app" pour que Doctrine résolve lui-même vers "app_test", plutôt que de nommer la base
+      # !"app_test" ici et se retrouver avec "app_test_test"
       APP_ENV: test
-      DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/app_test?serverVersion=16&charset=utf8"
+      DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/app?serverVersion=16&charset=utf8"
 
     steps:
       - uses: actions/checkout@v4
