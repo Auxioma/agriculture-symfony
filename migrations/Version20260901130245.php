@@ -482,10 +482,10 @@ BEGIN
     actor := NULLIF(current_setting('app.current_user_id', true), '')::uuid;
 
     INSERT INTO audit.audit_logs (
-        actor_id, schema_name, table_name, record_id, action,
+        id, actor_id, schema_name, table_name, record_id, action,
         old_data, new_data, ip_address, created_at
     ) VALUES (
-        actor, TG_TABLE_SCHEMA, TG_TABLE_NAME,
+        gen_random_uuid(), actor, TG_TABLE_SCHEMA, TG_TABLE_NAME,
         COALESCE(NEW.id, OLD.id)::text,
         TG_OP,
         CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN to_jsonb(OLD) ELSE NULL END,
