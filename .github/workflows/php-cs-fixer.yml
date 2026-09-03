@@ -39,3 +39,56 @@ jobs:
 
       - name: Lancer PHP CS Fixer en vérification
         run: vendor/bin/php-cs-fixer fix
+
+  phpstan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: php bin/console cache:warmup --env=dev
+      - run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+
+  phpunit:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          # * Le conteneur crée physiquement une base nommée "app_test" : c'est ce nom-là qui doit exister,
+          # * puisque DATABASE_URL pointe sur "app" et que Doctrine y ajoute lui-même "_test" (cf. note ci-dessous).
+          POSTGRES_DB: app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      # !APP_ENV=test déclenche dbname_suffix ("_test") dans config/packages/doctrine.yaml : on pointe donc sur
+      # !la base "app" pour que Doctrine résolve lui-même vers "app_test", plutôt que de nommer la base
+      # !"app_test" ici et se retrouver avec "app_test_test"
+      APP_ENV: test
+      DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/app?serverVersion=16&charset=utf8"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Exécuter la migration sur la base de CI
+        run: php bin/console doctrine:migrations:migrate --no-interaction
+      - name: Lancer la suite de tests
+        run: vendor/bin/phpunit
