@@ -35,6 +35,18 @@
             "./migrations/.gitignore"
         ]
     },
+    "jsor/doctrine-postgis": {
+        "version": "2.4",
+        "recipe": {
+            "repo": "github.com/symfony/recipes-contrib",
+            "branch": "main",
+            "version": "1.7",
+            "ref": "211979f7917bf6edb8fc5006a17b2e84e8e84d50"
+        },
+        "files": [
+            "./config/packages/jsor_doctrine_postgis.yaml"
+        ]
+    },
     "phpunit/phpunit": {
         "version": "13.3",
         "recipe": {
@@ -269,6 +281,15 @@
             "./config/packages/twig.yaml",
             "./templates/base.html.twig"
         ]
+    },
+    "symfony/uid": {
+        "version": "8.1",
+        "recipe": {
+            "repo": "github.com/symfony/recipes",
+            "branch": "main",
+            "version": "7.0",
+            "ref": "0df5844274d871b37fc3816c57a768ffc60a43a5"
+        }
     },
     "symfony/ux-turbo": {
         "version": "3.4",

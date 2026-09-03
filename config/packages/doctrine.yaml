@@ -1,11 +1,15 @@
 doctrine:
     dbal:
         url: '%env(resolve:DATABASE_URL)%'
+        types:
+            uuid: Symfony\Bridge\Doctrine\Types\UuidType
+            citext: App\Doctrine\CitextType
+            geography: Jsor\Doctrine\PostGIS\Types\GeographyType
+        mapping_types:
+            citext: citext
+            geography: geography
 
-        # IMPORTANT: You MUST configure your server version,
-        # either here or in the DATABASE_URL env var (see .env file)
         #server_version: '16'
-
         profiling_collect_backtrace: '%kernel.debug%'
     orm:
         validate_xml_mapping: true

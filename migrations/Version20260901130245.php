@@ -1,0 +1,745 @@
+<?php
+
+declare(strict_types=1);
+
+namespace DoctrineMigrations;
+
+use Doctrine\DBAL\Schema\Schema;
+use Doctrine\Migrations\AbstractMigration;
+
+/**
+ * Auto-generated Migration: Please modify to your needs!
+ */
+final class Version20260901130245 extends AbstractMigration
+{
+    public function getDescription(): string
+    {
+        return '';
+    }
+
+    public function up(Schema $schema): void
+    {
+        $this->addSql('CREATE EXTENSION IF NOT EXISTS citext;');
+        $this->addSql('CREATE EXTENSION IF NOT EXISTS postgis;');
+        $this->addSql('CREATE EXTENSION IF NOT EXISTS unaccent;');
+        $this->addSql('CREATE EXTENSION IF NOT EXISTS pg_trgm;');
+        // this up() migration is auto-generated, please modify it to your needs
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS audit');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS messaging');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS catalog');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS matching');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS billing');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS identity');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS producer');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS content');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS engagement');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS trust');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS notification');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS analytics');
+        $this->addSql('CREATE SCHEMA IF NOT EXISTS support');
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION public.immutable_unaccent(input text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $$ SELECT public.unaccent('public.unaccent', input) $$;
+SQL);
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$;
+SQL);
+        $this->addSql('CREATE TABLE audit.audit_logs (id UUID NOT NULL, schema_name VARCHAR(120) DEFAULT NULL, table_name VARCHAR(120) DEFAULT NULL, record_id TEXT DEFAULT NULL, action VARCHAR(120) DEFAULT NULL, old_data JSON DEFAULT NULL, new_data JSON DEFAULT NULL, ip_address INET, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, actor_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_945DBD9410DAF24A ON audit.audit_logs (actor_id)');
+        $this->addSql('CREATE TABLE messaging.blocked_users (reason TEXT DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, blocker_id UUID NOT NULL, blocked_id UUID NOT NULL, PRIMARY KEY (blocker_id, blocked_id))');
+        $this->addSql('CREATE INDEX IDX_16942404548D5975 ON messaging.blocked_users (blocker_id)');
+        $this->addSql('CREATE INDEX IDX_1694240421FF5136 ON messaging.blocked_users (blocked_id)');
+        $this->addSql("CREATE TABLE catalog.categories (id UUID NOT NULL, slug CITEXT DEFAULT NULL, name VARCHAR(120) NOT NULL, icon VARCHAR(255) DEFAULT NULL, image_url VARCHAR(255) DEFAULT NULL, position INT DEFAULT NULL, is_active BOOLEAN NOT NULL, parent_id UUID DEFAULT NULL, search_vector TSVECTOR GENERATED ALWAYS AS (setweight(to_tsvector('simple', coalesce(public.immutable_unaccent(name), '')), 'A')) STORED, PRIMARY KEY (id))");
+        $this->addSql('CREATE UNIQUE INDEX UNIQ_B0753980989D9B62 ON catalog.categories (slug)');
+        $this->addSql('CREATE INDEX IDX_B0753980727ACA70 ON catalog.categories (parent_id)');
+        $this->addSql('CREATE INDEX idx_categories_search_gin ON catalog.categories USING gin (search_vector)');
+        $this->addSql('CREATE INDEX idx_categories_name_trgm ON catalog.categories USING gin (name gin_trgm_ops)');
+        $this->addSql('CREATE TABLE catalog.category_translations (locale VARCHAR(10) NOT NULL, name VARCHAR(120) NOT NULL, description TEXT DEFAULT NULL, seo_title TEXT DEFAULT NULL, seo_description TEXT DEFAULT NULL, category_id UUID NOT NULL, PRIMARY KEY (category_id, locale))');
+        $this->addSql('CREATE INDEX IDX_5160853512469DE2 ON catalog.category_translations (category_id)');
+        $this->addSql('CREATE TABLE matching.client_requests (id UUID NOT NULL, custom_product TEXT DEFAULT NULL, need_type VARCHAR(255) NOT NULL, quantity NUMERIC(14, 3) DEFAULT NULL, budget_min NUMERIC(12, 2) DEFAULT NULL, budget_max NUMERIC(12, 2) DEFAULT NULL, desired_date DATE DEFAULT NULL, urgency_level SMALLINT NOT NULL, city TEXT DEFAULT NULL, postal_code VARCHAR(20) DEFAULT NULL, radius_km NUMERIC(8, 2) NOT NULL, pickup_wanted BOOLEAN NOT NULL, delivery_wanted BOOLEAN NOT NULL, message TEXT DEFAULT NULL, status VARCHAR(255) NOT NULL, expires_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, client_id UUID NOT NULL, category_id UUID DEFAULT NULL, product_id UUID DEFAULT NULL, unit_id UUID DEFAULT NULL, currency VARCHAR(3) DEFAULT NULL, country_code VARCHAR(2) DEFAULT NULL, location geography(Point,4326) DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_6D85CCAD19EB6921 ON matching.client_requests (client_id)');
+        $this->addSql('CREATE INDEX IDX_6D85CCAD12469DE2 ON matching.client_requests (category_id)');
+        $this->addSql('CREATE INDEX IDX_6D85CCAD4584665A ON matching.client_requests (product_id)');
+        $this->addSql('CREATE INDEX IDX_6D85CCADF8BD700D ON matching.client_requests (unit_id)');
+        $this->addSql('CREATE INDEX IDX_6D85CCAD6956883F ON matching.client_requests (currency)');
+        $this->addSql('CREATE INDEX IDX_6D85CCADF026BB7C ON matching.client_requests (country_code)');
+        $this->addSql('ALTER TABLE matching.client_requests ADD CONSTRAINT chk_client_requests_urgency_level CHECK (urgency_level BETWEEN 0 AND 5)');
+        $this->addSql('ALTER TABLE matching.client_requests ADD CONSTRAINT chk_client_requests_product_or_custom CHECK (product_id IS NOT NULL OR custom_product IS NOT NULL)');
+        $this->addSql('ALTER TABLE matching.client_requests ADD CONSTRAINT chk_client_requests_budget_order CHECK (budget_min IS NULL OR budget_max IS NULL OR budget_min <= budget_max)');
+        $this->addSql('ALTER TABLE matching.client_requests ADD CONSTRAINT chk_client_requests_radius_positive CHECK (radius_km > 0)');
+        $this->addSql('CREATE INDEX idx_client_requests_location_gist ON matching.client_requests USING gist (location)');
+        $this->addSql('CREATE TABLE messaging.conversation_participants (role VARCHAR(120) DEFAULT NULL, last_seen_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, conversation_id UUID NOT NULL, user_id UUID NOT NULL, PRIMARY KEY (conversation_id, user_id))');
+        $this->addSql('CREATE INDEX IDX_A16FE0ED9AC0396 ON messaging.conversation_participants (conversation_id)');
+        $this->addSql('CREATE INDEX IDX_A16FE0EDA76ED395 ON messaging.conversation_participants (user_id)');
+        $this->addSql('CREATE TABLE messaging.conversations (id UUID NOT NULL, status VARCHAR(255) NOT NULL, last_message_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, request_id UUID NOT NULL, client_id UUID DEFAULT NULL, producer_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_7704DBE0427EB8A5 ON messaging.conversations (request_id)');
+        $this->addSql('CREATE INDEX IDX_7704DBE019EB6921 ON messaging.conversations (client_id)');
+        $this->addSql('CREATE INDEX IDX_7704DBE089B658FE ON messaging.conversations (producer_id)');
+        $this->addSql('CREATE TABLE catalog.countries (code VARCHAR(2) NOT NULL, name VARCHAR(120) NOT NULL, currency VARCHAR(3) DEFAULT NULL, distance_unit VARCHAR(120) DEFAULT NULL, is_active BOOLEAN NOT NULL, PRIMARY KEY (code))');
+        $this->addSql('CREATE TABLE billing.coupon_redemptions (id UUID NOT NULL, redeemed_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, coupon_id UUID NOT NULL, producer_id UUID NOT NULL, subscription_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_9E3C879666C5951B ON billing.coupon_redemptions (coupon_id)');
+        $this->addSql('CREATE INDEX IDX_9E3C879689B658FE ON billing.coupon_redemptions (producer_id)');
+        $this->addSql('CREATE INDEX IDX_9E3C87969A1887DC ON billing.coupon_redemptions (subscription_id)');
+        $this->addSql('CREATE TABLE billing.coupons (id UUID NOT NULL, code CITEXT NOT NULL, discount_percent NUMERIC(12, 2) DEFAULT NULL, valid_from DATE DEFAULT NULL, valid_until DATE DEFAULT NULL, max_redemptions INT DEFAULT NULL, metadata JSON DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE TABLE catalog.currencies (code VARCHAR(3) NOT NULL, name VARCHAR(120) NOT NULL, symbol VARCHAR(120) DEFAULT NULL, decimals INT DEFAULT NULL, is_active BOOLEAN NOT NULL, PRIMARY KEY (code))');
+        $this->addSql('CREATE TABLE identity.data_requests (id UUID NOT NULL, request_type VARCHAR(120) DEFAULT NULL, status VARCHAR(255) NOT NULL, requested_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, processed_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, user_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_DD065489A76ED395 ON identity.data_requests (user_id)');
+        $this->addSql('CREATE TABLE matching.deal_outcomes (id UUID NOT NULL, outcome VARCHAR(120) DEFAULT NULL, declared_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, notes TEXT DEFAULT NULL, request_id UUID NOT NULL, producer_id UUID NOT NULL, declared_by_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_B59B887427EB8A5 ON matching.deal_outcomes (request_id)');
+        $this->addSql('CREATE INDEX IDX_B59B88789B658FE ON matching.deal_outcomes (producer_id)');
+        $this->addSql('CREATE INDEX IDX_B59B887C48B85B0 ON matching.deal_outcomes (declared_by_id)');
+        $this->addSql('CREATE TABLE producer.delivery_zones (id UUID NOT NULL, radius_km NUMERIC(12, 2) DEFAULT NULL, zone geography(Polygon,4326) DEFAULT NULL, rules JSON DEFAULT NULL, producer_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_4A1665B689B658FE ON producer.delivery_zones (producer_id)');
+        $this->addSql('CREATE INDEX idx_delivery_zones_zone_gist ON producer.delivery_zones USING gist (zone)');
+        $this->addSql('CREATE TABLE content.faq_articles (id UUID NOT NULL, category VARCHAR(255) DEFAULT NULL, locale VARCHAR(10) NOT NULL, question TEXT DEFAULT NULL, answer TEXT DEFAULT NULL, position INT DEFAULT NULL, is_active BOOLEAN NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE TABLE engagement.favorites (id UUID NOT NULL, target_type VARCHAR(120) DEFAULT NULL, target_id UUID DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, user_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_479AA8A6A76ED395 ON engagement.favorites (user_id)');
+        $this->addSql('CREATE TABLE billing.invoices (id UUID NOT NULL, amount NUMERIC(12, 2) DEFAULT NULL, status VARCHAR(255) NOT NULL, invoice_url TEXT DEFAULT NULL, provider_invoice_id VARCHAR(255) DEFAULT NULL, paid_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, subscription_id UUID NOT NULL, currency VARCHAR(3) DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_952B91FF9A1887DC ON billing.invoices (subscription_id)');
+        $this->addSql('CREATE INDEX IDX_952B91FF6956883F ON billing.invoices (currency)');
+        $this->addSql('CREATE TABLE catalog.label_translations (locale VARCHAR(10) NOT NULL, name VARCHAR(120) NOT NULL, description TEXT DEFAULT NULL, label_id UUID NOT NULL, PRIMARY KEY (label_id, locale))');
+        $this->addSql('CREATE INDEX IDX_EB28909E33B92F39 ON catalog.label_translations (label_id)');
+        $this->addSql('CREATE TABLE catalog.labels (id UUID NOT NULL, code CITEXT NOT NULL, name VARCHAR(120) NOT NULL, description TEXT DEFAULT NULL, country_scope TEXT DEFAULT NULL, requires_document BOOLEAN DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE TABLE content.legal_pages (id UUID NOT NULL, code CITEXT NOT NULL, locale VARCHAR(10) NOT NULL, version INT DEFAULT NULL, title VARCHAR(120) DEFAULT NULL, content TEXT DEFAULT NULL, published_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, is_active BOOLEAN NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE TABLE identity.login_attempts (id UUID NOT NULL, email CITEXT NOT NULL, ip_address INET, success BOOLEAN NOT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE TABLE messaging.message_attachments (id UUID NOT NULL, file_url TEXT DEFAULT NULL, file_name TEXT DEFAULT NULL, mime_type VARCHAR(150) DEFAULT NULL, file_size INT DEFAULT NULL, message_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_2BD7F14F537A1329 ON messaging.message_attachments (message_id)');
+        $this->addSql('CREATE TABLE messaging.message_reads (read_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, message_id UUID NOT NULL, user_id UUID NOT NULL, PRIMARY KEY (message_id, user_id))');
+        $this->addSql('CREATE INDEX IDX_82B0534B537A1329 ON messaging.message_reads (message_id)');
+        $this->addSql('CREATE INDEX IDX_82B0534BA76ED395 ON messaging.message_reads (user_id)');
+        $this->addSql('CREATE TABLE messaging.messages (id UUID NOT NULL, content TEXT DEFAULT NULL, metadata JSON NOT NULL, is_system BOOLEAN NOT NULL, moderated_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, conversation_id UUID NOT NULL, sender_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_79C1A739AC0396 ON messaging.messages (conversation_id)');
+        $this->addSql('CREATE INDEX IDX_79C1A73F624B39D ON messaging.messages (sender_id)');
+        $this->addSql('CREATE TABLE trust.moderation_actions (id UUID NOT NULL, action_type VARCHAR(120) DEFAULT NULL, payload JSON DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, report_id UUID NOT NULL, admin_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_FD7BEFD4BD2A4C0 ON trust.moderation_actions (report_id)');
+        $this->addSql('CREATE INDEX IDX_FD7BEFD642B8210 ON trust.moderation_actions (admin_id)');
+        $this->addSql('CREATE TABLE notification.notification_deliveries (id UUID NOT NULL, channel VARCHAR(120) DEFAULT NULL, destination VARCHAR(120) DEFAULT NULL, status VARCHAR(255) NOT NULL, provider_id VARCHAR(255) DEFAULT NULL, sent_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, failed_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, notification_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_CFA49F75EF1A9D84 ON notification.notification_deliveries (notification_id)');
+        $this->addSql('CREATE TABLE notification.notification_templates (id UUID NOT NULL, code CITEXT NOT NULL, locale VARCHAR(10) NOT NULL, channel VARCHAR(120) DEFAULT NULL, subject VARCHAR(120) DEFAULT NULL, body TEXT DEFAULT NULL, is_active BOOLEAN NOT NULL, version INT DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE TABLE notification.notifications (id UUID NOT NULL, type VARCHAR(120) DEFAULT NULL, title VARCHAR(120) DEFAULT NULL, body TEXT DEFAULT NULL, data JSON DEFAULT NULL, read_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, user_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_41D22829A76ED395 ON notification.notifications (user_id)');
+        $this->addSql('CREATE TABLE producer.opening_hours (id UUID NOT NULL, weekday SMALLINT DEFAULT NULL, opens_at TIME(0) WITHOUT TIME ZONE DEFAULT NULL, closes_at TIME(0) WITHOUT TIME ZONE DEFAULT NULL, is_closed BOOLEAN NOT NULL, producer_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_919D4EA789B658FE ON producer.opening_hours (producer_id)');
+        $this->addSql('CREATE TABLE audit.outbox_events (id UUID NOT NULL, event_type VARCHAR(120) DEFAULT NULL, aggregate_type VARCHAR(120) DEFAULT NULL, aggregate_id UUID DEFAULT NULL, payload JSON DEFAULT NULL, status VARCHAR(255) NOT NULL, available_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, processed_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE TABLE identity.password_reset_tokens (id UUID NOT NULL, token_hash VARCHAR(255) DEFAULT NULL, expires_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, used_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, user_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_17F30C0AA76ED395 ON identity.password_reset_tokens (user_id)');
+        $this->addSql('CREATE TABLE billing.payment_methods (id UUID NOT NULL, provider_payment_method_id VARCHAR(255) DEFAULT NULL, type VARCHAR(120) DEFAULT NULL, brand VARCHAR(120) DEFAULT NULL, last4 VARCHAR(4) DEFAULT NULL, is_default BOOLEAN NOT NULL, producer_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_6B28381C89B658FE ON billing.payment_methods (producer_id)');
+        $this->addSql('CREATE TABLE billing.payments (id UUID NOT NULL, amount NUMERIC(12, 2) DEFAULT NULL, status VARCHAR(255) NOT NULL, provider_payment_id VARCHAR(255) DEFAULT NULL, failure_reason TEXT DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, invoice_id UUID NOT NULL, currency VARCHAR(3) DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_9AD625582989F1FD ON billing.payments (invoice_id)');
+        $this->addSql('CREATE INDEX IDX_9AD625586956883F ON billing.payments (currency)');
+        $this->addSql('CREATE TABLE billing.plan_prices (id UUID NOT NULL, billing_cycle VARCHAR(255) NOT NULL, amount NUMERIC(12, 2) DEFAULT NULL, provider_price_id VARCHAR(255) DEFAULT NULL, is_active BOOLEAN NOT NULL, plan_id UUID NOT NULL, currency VARCHAR(3) DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_68F87C0DE899029B ON billing.plan_prices (plan_id)');
+        $this->addSql('CREATE INDEX IDX_68F87C0D6956883F ON billing.plan_prices (currency)');
+        $this->addSql('CREATE TABLE analytics.platform_daily_metrics (metric_date DATE NOT NULL, users INT DEFAULT NULL, producers INT DEFAULT NULL, requests INT DEFAULT NULL, replies INT DEFAULT NULL, conversations INT DEFAULT NULL, subscriptions INT DEFAULT NULL, revenue NUMERIC(12, 2) DEFAULT NULL, PRIMARY KEY (metric_date))');
+        $this->addSql('CREATE TABLE analytics.producer_daily_metrics (metric_date DATE NOT NULL, profile_views INT DEFAULT NULL, matches INT DEFAULT NULL, replies INT DEFAULT NULL, conversations INT DEFAULT NULL, response_rate NUMERIC(12, 2) DEFAULT NULL, producer_id UUID NOT NULL, PRIMARY KEY (producer_id, metric_date))');
+        $this->addSql('CREATE INDEX IDX_4D5F14C189B658FE ON analytics.producer_daily_metrics (producer_id)');
+        $this->addSql('CREATE TABLE producer.producer_labels (verified_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, expires_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, producer_id UUID NOT NULL, label_id UUID NOT NULL, document_id UUID DEFAULT NULL, PRIMARY KEY (producer_id, label_id))');
+        $this->addSql('CREATE INDEX IDX_3B46051E89B658FE ON producer.producer_labels (producer_id)');
+        $this->addSql('CREATE INDEX IDX_3B46051E33B92F39 ON producer.producer_labels (label_id)');
+        $this->addSql('CREATE INDEX IDX_3B46051EC33F7837 ON producer.producer_labels (document_id)');
+        $this->addSql('CREATE TABLE producer.producer_media (id UUID NOT NULL, type VARCHAR(120) DEFAULT NULL, file_url TEXT DEFAULT NULL, alt_text TEXT DEFAULT NULL, position INT DEFAULT NULL, is_public BOOLEAN NOT NULL, producer_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_43C4579189B658FE ON producer.producer_media (producer_id)');
+        $this->addSql('CREATE TABLE producer.producer_product_media (id UUID NOT NULL, file_url TEXT DEFAULT NULL, alt_text TEXT DEFAULT NULL, position INT DEFAULT NULL, producer_product_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_4E9DA00965EFAD74 ON producer.producer_product_media (producer_product_id)');
+        $this->addSql('CREATE TABLE producer.producer_products (id UUID NOT NULL, variety TEXT DEFAULT NULL, description TEXT DEFAULT NULL, estimated_volume NUMERIC(14, 3) DEFAULT NULL, default_price NUMERIC(12, 2) DEFAULT NULL, is_active BOOLEAN NOT NULL, metadata JSON DEFAULT NULL, producer_id UUID NOT NULL, product_id UUID NOT NULL, currency VARCHAR(3) DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_AA465DA189B658FE ON producer.producer_products (producer_id)');
+        $this->addSql('CREATE INDEX IDX_AA465DA14584665A ON producer.producer_products (product_id)');
+        $this->addSql('CREATE INDEX IDX_AA465DA16956883F ON producer.producer_products (currency)');
+        $this->addSql("CREATE TABLE producer.producer_profiles (id UUID NOT NULL, farm_name VARCHAR(255) NOT NULL, slug CITEXT NOT NULL, description TEXT DEFAULT NULL, story TEXT DEFAULT NULL, city TEXT DEFAULT NULL, postal_code VARCHAR(20) DEFAULT NULL, address_visibility VARCHAR(120) DEFAULT NULL, location geography(Point,4326) DEFAULT NULL, verification_status VARCHAR(255) NOT NULL, is_active BOOLEAN NOT NULL, owner_user_id UUID NOT NULL, country_code VARCHAR(2) NOT NULL, search_vector TSVECTOR GENERATED ALWAYS AS (setweight(to_tsvector('simple', coalesce(public.immutable_unaccent(farm_name), '')), 'A') || setweight(to_tsvector('simple', coalesce(public.immutable_unaccent(city), '')), 'B') || setweight(to_tsvector('simple', coalesce(public.immutable_unaccent(description), '')), 'C')) STORED, PRIMARY KEY (id))");
+        $this->addSql('CREATE UNIQUE INDEX UNIQ_92CC82CB989D9B62 ON producer.producer_profiles (slug)');
+        $this->addSql('CREATE UNIQUE INDEX UNIQ_92CC82CB2B18554A ON producer.producer_profiles (owner_user_id)');
+        $this->addSql('CREATE INDEX IDX_92CC82CBF026BB7C ON producer.producer_profiles (country_code)');
+        $this->addSql('CREATE INDEX idx_producer_profiles_location_gist ON producer.producer_profiles USING gist (location)');
+        $this->addSql('CREATE INDEX idx_producer_profiles_search_gin ON producer.producer_profiles USING gin (search_vector)');
+        $this->addSql('CREATE INDEX idx_producer_profiles_farm_name_trgm ON producer.producer_profiles USING gin (farm_name gin_trgm_ops)');
+        $this->addSql('CREATE TABLE matching.producer_replies (id UUID NOT NULL, reply_text TEXT DEFAULT NULL, price_amount NUMERIC(12, 2) DEFAULT NULL, availability_date DATE DEFAULT NULL, valid_until DATE DEFAULT NULL, conditions TEXT DEFAULT NULL, status VARCHAR(255) NOT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, request_id UUID NOT NULL, producer_id UUID NOT NULL, price_unit_id UUID DEFAULT NULL, currency VARCHAR(3) DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_FB170DC0427EB8A5 ON matching.producer_replies (request_id)');
+        $this->addSql('CREATE INDEX IDX_FB170DC089B658FE ON matching.producer_replies (producer_id)');
+        $this->addSql('CREATE INDEX IDX_FB170DC0939BB851 ON matching.producer_replies (price_unit_id)');
+        $this->addSql('CREATE INDEX IDX_FB170DC06956883F ON matching.producer_replies (currency)');
+        $this->addSql('CREATE TABLE producer.producer_settings (accepts_individuals BOOLEAN NOT NULL, accepts_professionals BOOLEAN NOT NULL, pickup_enabled BOOLEAN NOT NULL, delivery_enabled BOOLEAN NOT NULL, min_order_info TEXT DEFAULT NULL, settings JSON DEFAULT NULL, producer_id UUID NOT NULL, PRIMARY KEY (producer_id))');
+        $this->addSql('CREATE TABLE producer.product_availabilities (id UUID NOT NULL, available_from DATE DEFAULT NULL, available_to DATE DEFAULT NULL, quantity_estimate NUMERIC(14, 3) DEFAULT NULL, pickup_available BOOLEAN NOT NULL, delivery_available BOOLEAN NOT NULL, producer_product_id UUID NOT NULL, unit_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_C1C5980565EFAD74 ON producer.product_availabilities (producer_product_id)');
+        $this->addSql('CREATE INDEX IDX_C1C59805F8BD700D ON producer.product_availabilities (unit_id)');
+        $this->addSql('CREATE TABLE catalog.product_translations (locale VARCHAR(10) NOT NULL, name VARCHAR(120) NOT NULL, description TEXT DEFAULT NULL, keywords TEXT DEFAULT NULL, product_id UUID NOT NULL, PRIMARY KEY (product_id, locale))');
+        $this->addSql('CREATE INDEX IDX_F90E808C4584665A ON catalog.product_translations (product_id)');
+        $this->addSql("CREATE TABLE catalog.products (id UUID NOT NULL, slug CITEXT DEFAULT NULL, name VARCHAR(120) NOT NULL, season_start_month SMALLINT DEFAULT NULL, season_end_month SMALLINT DEFAULT NULL, is_active BOOLEAN NOT NULL, category_id UUID NOT NULL, default_unit_id UUID DEFAULT NULL, search_vector TSVECTOR GENERATED ALWAYS AS (setweight(to_tsvector('simple', coalesce(public.immutable_unaccent(name), '')), 'A')) STORED, PRIMARY KEY (id))");
+        $this->addSql('CREATE UNIQUE INDEX UNIQ_66B553D2989D9B62 ON catalog.products (slug)');
+        $this->addSql('CREATE INDEX IDX_66B553D212469DE2 ON catalog.products (category_id)');
+        $this->addSql('CREATE INDEX IDX_66B553D2A382148 ON catalog.products (default_unit_id)');
+        $this->addSql('CREATE INDEX idx_products_search_gin ON catalog.products USING gin (search_vector)');
+        $this->addSql('CREATE INDEX idx_products_name_trgm ON catalog.products USING gin (name gin_trgm_ops)');
+        $this->addSql('CREATE TABLE producer.quick_replies (id UUID NOT NULL, title VARCHAR(120) DEFAULT NULL, content TEXT DEFAULT NULL, position INT DEFAULT NULL, is_active BOOLEAN NOT NULL, producer_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_1D37CB4289B658FE ON producer.quick_replies (producer_id)');
+        $this->addSql('CREATE TABLE matching.recurring_request_rules (id UUID NOT NULL, frequency VARCHAR(120) DEFAULT NULL, next_run_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, end_at DATE DEFAULT NULL, is_active BOOLEAN NOT NULL, request_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_7440C0C6427EB8A5 ON matching.recurring_request_rules (request_id)');
+        $this->addSql('CREATE TABLE engagement.referrals (id UUID NOT NULL, code CITEXT NOT NULL, status VARCHAR(255) NOT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, referrer_id UUID DEFAULT NULL, referred_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_B88E00C5798C22DB ON engagement.referrals (referrer_id)');
+        $this->addSql('CREATE INDEX IDX_B88E00C5CFE2A98 ON engagement.referrals (referred_id)');
+        $this->addSql('CREATE TABLE identity.refresh_tokens (id UUID NOT NULL, token_hash VARCHAR(255) DEFAULT NULL, expires_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, revoked_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, ip_address INET, user_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_9CAD7EB3A76ED395 ON identity.refresh_tokens (user_id)');
+        $this->addSql('CREATE TABLE matching.reply_attachments (id UUID NOT NULL, file_url TEXT DEFAULT NULL, file_name TEXT DEFAULT NULL, mime_type VARCHAR(150) DEFAULT NULL, uploaded_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, reply_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_10F9BF918A0E4E7F ON matching.reply_attachments (reply_id)');
+        $this->addSql('CREATE TABLE trust.reports (id UUID NOT NULL, target_type VARCHAR(120) DEFAULT NULL, target_id UUID DEFAULT NULL, reason TEXT DEFAULT NULL, message TEXT DEFAULT NULL, status VARCHAR(255) NOT NULL, decision TEXT DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, reporter_id UUID DEFAULT NULL, reviewed_by_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_2831557E1CFE6F5 ON trust.reports (reporter_id)');
+        $this->addSql('CREATE INDEX IDX_2831557FC6B21F1 ON trust.reports (reviewed_by_id)');
+        $this->addSql('CREATE TABLE matching.request_attachments (id UUID NOT NULL, file_url TEXT DEFAULT NULL, file_name TEXT DEFAULT NULL, mime_type VARCHAR(150) DEFAULT NULL, file_size INT DEFAULT NULL, request_id UUID NOT NULL, uploaded_by_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_F4E7C16A427EB8A5 ON matching.request_attachments (request_id)');
+        $this->addSql('CREATE INDEX IDX_F4E7C16AA2B28FE8 ON matching.request_attachments (uploaded_by_id)');
+        $this->addSql('CREATE TABLE matching.request_events (id UUID NOT NULL, event_type VARCHAR(120) DEFAULT NULL, payload JSON DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, request_id UUID NOT NULL, actor_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_26366913427EB8A5 ON matching.request_events (request_id)');
+        $this->addSql('CREATE INDEX IDX_2636691310DAF24A ON matching.request_events (actor_id)');
+        $this->addSql('CREATE TABLE matching.request_labels (required BOOLEAN NOT NULL, request_id UUID NOT NULL, label_id UUID NOT NULL, PRIMARY KEY (request_id, label_id))');
+        $this->addSql('CREATE INDEX IDX_C0603C48427EB8A5 ON matching.request_labels (request_id)');
+        $this->addSql('CREATE INDEX IDX_C0603C4833B92F39 ON matching.request_labels (label_id)');
+        $this->addSql('CREATE TABLE matching.request_matches (id UUID NOT NULL, score NUMERIC(7, 2) DEFAULT NULL, distance_km NUMERIC(8, 2) DEFAULT NULL, reasons JSON NOT NULL, status VARCHAR(255) NOT NULL, unlocked_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, request_id UUID NOT NULL, producer_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_14E44DD4427EB8A5 ON matching.request_matches (request_id)');
+        $this->addSql('CREATE INDEX IDX_14E44DD489B658FE ON matching.request_matches (producer_id)');
+        $this->addSql('CREATE UNIQUE INDEX uniq_request_producer ON matching.request_matches (request_id, producer_id)');
+        $this->addSql('CREATE TABLE trust.reviews (id UUID NOT NULL, rating INT DEFAULT NULL, comment TEXT DEFAULT NULL, status VARCHAR(255) NOT NULL, producer_response TEXT DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, client_id UUID DEFAULT NULL, producer_id UUID NOT NULL, request_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_9AEC591D19EB6921 ON trust.reviews (client_id)');
+        $this->addSql('CREATE INDEX IDX_9AEC591D89B658FE ON trust.reviews (producer_id)');
+        $this->addSql('CREATE INDEX IDX_9AEC591D427EB8A5 ON trust.reviews (request_id)');
+        $this->addSql('CREATE UNIQUE INDEX uniq_client_request_producer ON trust.reviews (client_id, request_id, producer_id)');
+        $this->addSql('ALTER TABLE trust.reviews ADD CONSTRAINT chk_reviews_rating CHECK (rating BETWEEN 1 AND 5)');
+        $this->addSql('CREATE TABLE engagement.saved_searches (id UUID NOT NULL, name VARCHAR(120) NOT NULL, criteria JSON DEFAULT NULL, notifications_enabled BOOLEAN NOT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, user_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_F01B6E60A76ED395 ON engagement.saved_searches (user_id)');
+        $this->addSql('CREATE TABLE billing.subscription_plans (id UUID NOT NULL, code CITEXT NOT NULL, name VARCHAR(120) NOT NULL, description TEXT DEFAULT NULL, limits JSON DEFAULT NULL, features JSON DEFAULT NULL, is_active BOOLEAN NOT NULL, position INT DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE TABLE billing.subscriptions (id UUID NOT NULL, status VARCHAR(255) NOT NULL, current_period_start TIMESTAMP(0) WITH TIME ZONE NOT NULL, current_period_end TIMESTAMP(0) WITH TIME ZONE NOT NULL, cancel_at_period_end BOOLEAN NOT NULL, provider_subscription_id VARCHAR(255) DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, updated_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, producer_id UUID NOT NULL, plan_price_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE UNIQUE INDEX UNIQ_BE7589EA424D71C9 ON billing.subscriptions (provider_subscription_id)');
+        $this->addSql('CREATE INDEX IDX_BE7589EA89B658FE ON billing.subscriptions (producer_id)');
+        $this->addSql('CREATE INDEX IDX_BE7589EAD871F09D ON billing.subscriptions (plan_price_id)');
+        $this->addSql('CREATE TABLE producer.team_members (role VARCHAR(120) DEFAULT NULL, permissions TEXT DEFAULT NULL, invited_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, accepted_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, is_active BOOLEAN NOT NULL, producer_id UUID NOT NULL, user_id UUID NOT NULL, PRIMARY KEY (producer_id, user_id))');
+        $this->addSql('CREATE INDEX IDX_DA0A34B689B658FE ON producer.team_members (producer_id)');
+        $this->addSql('CREATE INDEX IDX_DA0A34B6A76ED395 ON producer.team_members (user_id)');
+        $this->addSql('CREATE TABLE support.ticket_attachments (id UUID NOT NULL, file_url TEXT DEFAULT NULL, file_name TEXT DEFAULT NULL, mime_type VARCHAR(150) DEFAULT NULL, file_size INT DEFAULT NULL, ticket_message_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_3D232E73C5E9817D ON support.ticket_attachments (ticket_message_id)');
+        $this->addSql('CREATE TABLE support.ticket_messages (id UUID NOT NULL, content TEXT DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, ticket_id UUID NOT NULL, sender_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_8AED546700047D2 ON support.ticket_messages (ticket_id)');
+        $this->addSql('CREATE INDEX IDX_8AED546F624B39D ON support.ticket_messages (sender_id)');
+        $this->addSql('CREATE TABLE support.tickets (id UUID NOT NULL, subject VARCHAR(120) DEFAULT NULL, status VARCHAR(255) NOT NULL, priority VARCHAR(120) DEFAULT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, closed_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, user_id UUID NOT NULL, assigned_to_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_89890406A76ED395 ON support.tickets (user_id)');
+        $this->addSql('CREATE INDEX IDX_89890406F4BD7827 ON support.tickets (assigned_to_id)');
+        $this->addSql('CREATE TABLE catalog.units (id UUID NOT NULL, code CITEXT NOT NULL, label VARCHAR(120) DEFAULT NULL, unit_type VARCHAR(120) DEFAULT NULL, locale_labels JSON DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE TABLE identity.user_addresses (id UUID NOT NULL, label VARCHAR(120) DEFAULT NULL, address1 TEXT DEFAULT NULL, address2 TEXT DEFAULT NULL, city TEXT DEFAULT NULL, postal_code VARCHAR(20) DEFAULT NULL, country_code VARCHAR(2) DEFAULT NULL, is_default BOOLEAN DEFAULT false NOT NULL, user_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_682B61A0A76ED395 ON identity.user_addresses (user_id)');
+        $this->addSql('CREATE TABLE identity.user_consents (id UUID NOT NULL, consent_type VARCHAR(120) DEFAULT NULL, version INT DEFAULT NULL, granted BOOLEAN NOT NULL, ip_address INET, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, user_id UUID NOT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_8A0A6263A76ED395 ON identity.user_consents (user_id)');
+        $this->addSql('CREATE TABLE identity.user_preferences (locale VARCHAR(10) NOT NULL, currency VARCHAR(3) DEFAULT NULL, distance_unit VARCHAR(120) DEFAULT NULL, notification_settings JSON DEFAULT NULL, user_id UUID NOT NULL, PRIMARY KEY (user_id))');
+        $this->addSql('CREATE TABLE messaging.user_presence (status VARCHAR(255) NOT NULL, last_seen_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, updated_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, user_id UUID NOT NULL, PRIMARY KEY (user_id))');
+        $this->addSql('CREATE TABLE trust.user_sanctions (id UUID NOT NULL, action_type VARCHAR(120) DEFAULT NULL, reason TEXT DEFAULT NULL, starts_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, ends_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, user_id UUID NOT NULL, created_by_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_7A8CD4C6A76ED395 ON trust.user_sanctions (user_id)');
+        $this->addSql('CREATE INDEX IDX_7A8CD4C6B03A8386 ON trust.user_sanctions (created_by_id)');
+        $this->addSql('CREATE TABLE trust.verification_documents (id UUID NOT NULL, type VARCHAR(120) DEFAULT NULL, file_url TEXT DEFAULT NULL, status VARCHAR(255) NOT NULL, reviewed_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, expires_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, producer_id UUID NOT NULL, reviewed_by_id UUID DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_C9138BBF89B658FE ON trust.verification_documents (producer_id)');
+        $this->addSql('CREATE INDEX IDX_C9138BBFFC6B21F1 ON trust.verification_documents (reviewed_by_id)');
+        $this->addSql('CREATE TABLE billing.webhook_events (id UUID NOT NULL, provider_event_id VARCHAR(255) DEFAULT NULL, event_type VARCHAR(120) DEFAULT NULL, payload JSON DEFAULT NULL, status VARCHAR(255) NOT NULL, received_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, processed_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE UNIQUE INDEX UNIQ_4DB677C439B58662 ON billing.webhook_events (provider_event_id)');
+        $this->addSql('CREATE TABLE identity.users (id UUID NOT NULL, email CITEXT NOT NULL, password_hash TEXT NOT NULL, roles TEXT NOT NULL, first_name VARCHAR(255) DEFAULT NULL, last_name VARCHAR(255) DEFAULT NULL, phone VARCHAR(32) DEFAULT NULL, locale VARCHAR(10) NOT NULL, status VARCHAR(255) NOT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, updated_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, last_login_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE UNIQUE INDEX UNIQ_3EA6317DE7927C74 ON identity.users (email)');
+        $this->addSql('CREATE TABLE messenger_messages (id BIGINT GENERATED BY DEFAULT AS IDENTITY NOT NULL, body TEXT NOT NULL, headers TEXT NOT NULL, queue_name VARCHAR(190) NOT NULL, created_at TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL, available_at TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL, delivered_at TIMESTAMP(0) WITHOUT TIME ZONE DEFAULT NULL, PRIMARY KEY (id))');
+        $this->addSql('CREATE INDEX IDX_75EA56E0FB7336F0E3BD61CE16BA31DBBF396750 ON messenger_messages (queue_name, available_at, delivered_at, id)');
+        $this->addSql('ALTER TABLE audit.audit_logs ADD CONSTRAINT FK_945DBD9410DAF24A FOREIGN KEY (actor_id) REFERENCES identity.users (id)');
+        $this->addSql('ALTER TABLE messaging.blocked_users ADD CONSTRAINT FK_16942404548D5975 FOREIGN KEY (blocker_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE messaging.blocked_users ADD CONSTRAINT FK_1694240421FF5136 FOREIGN KEY (blocked_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE catalog.categories ADD CONSTRAINT FK_B0753980727ACA70 FOREIGN KEY (parent_id) REFERENCES catalog.categories (id)');
+        $this->addSql('ALTER TABLE catalog.category_translations ADD CONSTRAINT FK_5160853512469DE2 FOREIGN KEY (category_id) REFERENCES catalog.categories (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.client_requests ADD CONSTRAINT FK_6D85CCAD19EB6921 FOREIGN KEY (client_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.client_requests ADD CONSTRAINT FK_6D85CCAD12469DE2 FOREIGN KEY (category_id) REFERENCES catalog.categories (id)');
+        $this->addSql('ALTER TABLE matching.client_requests ADD CONSTRAINT FK_6D85CCAD4584665A FOREIGN KEY (product_id) REFERENCES catalog.products (id)');
+        $this->addSql('ALTER TABLE matching.client_requests ADD CONSTRAINT FK_6D85CCADF8BD700D FOREIGN KEY (unit_id) REFERENCES catalog.units (id)');
+        $this->addSql('ALTER TABLE matching.client_requests ADD CONSTRAINT FK_6D85CCAD6956883F FOREIGN KEY (currency) REFERENCES catalog.currencies (code) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.client_requests ADD CONSTRAINT FK_6D85CCADF026BB7C FOREIGN KEY (country_code) REFERENCES catalog.countries (code) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE messaging.conversation_participants ADD CONSTRAINT FK_A16FE0ED9AC0396 FOREIGN KEY (conversation_id) REFERENCES messaging.conversations (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE messaging.conversation_participants ADD CONSTRAINT FK_A16FE0EDA76ED395 FOREIGN KEY (user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE messaging.conversations ADD CONSTRAINT FK_7704DBE0427EB8A5 FOREIGN KEY (request_id) REFERENCES matching.client_requests (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE messaging.conversations ADD CONSTRAINT FK_7704DBE019EB6921 FOREIGN KEY (client_id) REFERENCES identity.users (id)');
+        $this->addSql('ALTER TABLE messaging.conversations ADD CONSTRAINT FK_7704DBE089B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE billing.coupon_redemptions ADD CONSTRAINT FK_9E3C879666C5951B FOREIGN KEY (coupon_id) REFERENCES billing.coupons (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE billing.coupon_redemptions ADD CONSTRAINT FK_9E3C879689B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE billing.coupon_redemptions ADD CONSTRAINT FK_9E3C87969A1887DC FOREIGN KEY (subscription_id) REFERENCES billing.subscriptions (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE identity.data_requests ADD CONSTRAINT FK_DD065489A76ED395 FOREIGN KEY (user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.deal_outcomes ADD CONSTRAINT FK_B59B887427EB8A5 FOREIGN KEY (request_id) REFERENCES matching.client_requests (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.deal_outcomes ADD CONSTRAINT FK_B59B88789B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.deal_outcomes ADD CONSTRAINT FK_B59B887C48B85B0 FOREIGN KEY (declared_by_id) REFERENCES identity.users (id)');
+        $this->addSql('ALTER TABLE producer.delivery_zones ADD CONSTRAINT FK_4A1665B689B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE engagement.favorites ADD CONSTRAINT FK_479AA8A6A76ED395 FOREIGN KEY (user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE billing.invoices ADD CONSTRAINT FK_952B91FF9A1887DC FOREIGN KEY (subscription_id) REFERENCES billing.subscriptions (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE billing.invoices ADD CONSTRAINT FK_952B91FF6956883F FOREIGN KEY (currency) REFERENCES catalog.currencies (code) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE catalog.label_translations ADD CONSTRAINT FK_EB28909E33B92F39 FOREIGN KEY (label_id) REFERENCES catalog.labels (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE messaging.message_attachments ADD CONSTRAINT FK_2BD7F14F537A1329 FOREIGN KEY (message_id) REFERENCES messaging.messages (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE messaging.message_reads ADD CONSTRAINT FK_82B0534B537A1329 FOREIGN KEY (message_id) REFERENCES messaging.messages (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE messaging.message_reads ADD CONSTRAINT FK_82B0534BA76ED395 FOREIGN KEY (user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE messaging.messages ADD CONSTRAINT FK_79C1A739AC0396 FOREIGN KEY (conversation_id) REFERENCES messaging.conversations (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE messaging.messages ADD CONSTRAINT FK_79C1A73F624B39D FOREIGN KEY (sender_id) REFERENCES identity.users (id)');
+        $this->addSql('ALTER TABLE trust.moderation_actions ADD CONSTRAINT FK_FD7BEFD4BD2A4C0 FOREIGN KEY (report_id) REFERENCES trust.reports (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE trust.moderation_actions ADD CONSTRAINT FK_FD7BEFD642B8210 FOREIGN KEY (admin_id) REFERENCES identity.users (id)');
+        $this->addSql('ALTER TABLE notification.notification_deliveries ADD CONSTRAINT FK_CFA49F75EF1A9D84 FOREIGN KEY (notification_id) REFERENCES notification.notifications (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE notification.notifications ADD CONSTRAINT FK_41D22829A76ED395 FOREIGN KEY (user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE producer.opening_hours ADD CONSTRAINT FK_919D4EA789B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE identity.password_reset_tokens ADD CONSTRAINT FK_17F30C0AA76ED395 FOREIGN KEY (user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE billing.payment_methods ADD CONSTRAINT FK_6B28381C89B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE billing.payments ADD CONSTRAINT FK_9AD625582989F1FD FOREIGN KEY (invoice_id) REFERENCES billing.invoices (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE billing.payments ADD CONSTRAINT FK_9AD625586956883F FOREIGN KEY (currency) REFERENCES catalog.currencies (code) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE billing.plan_prices ADD CONSTRAINT FK_68F87C0DE899029B FOREIGN KEY (plan_id) REFERENCES billing.subscription_plans (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE billing.plan_prices ADD CONSTRAINT FK_68F87C0D6956883F FOREIGN KEY (currency) REFERENCES catalog.currencies (code) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE analytics.producer_daily_metrics ADD CONSTRAINT FK_4D5F14C189B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE producer.producer_labels ADD CONSTRAINT FK_3B46051E89B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE producer.producer_labels ADD CONSTRAINT FK_3B46051E33B92F39 FOREIGN KEY (label_id) REFERENCES catalog.labels (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE producer.producer_labels ADD CONSTRAINT FK_3B46051EC33F7837 FOREIGN KEY (document_id) REFERENCES trust.verification_documents (id)');
+        $this->addSql('ALTER TABLE producer.producer_media ADD CONSTRAINT FK_43C4579189B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE producer.producer_product_media ADD CONSTRAINT FK_4E9DA00965EFAD74 FOREIGN KEY (producer_product_id) REFERENCES producer.producer_products (id)');
+        $this->addSql('ALTER TABLE producer.producer_products ADD CONSTRAINT FK_AA465DA189B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE producer.producer_products ADD CONSTRAINT FK_AA465DA14584665A FOREIGN KEY (product_id) REFERENCES catalog.products (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE producer.producer_products ADD CONSTRAINT FK_AA465DA16956883F FOREIGN KEY (currency) REFERENCES catalog.currencies (code) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE producer.producer_profiles ADD CONSTRAINT FK_92CC82CB2B18554A FOREIGN KEY (owner_user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE producer.producer_profiles ADD CONSTRAINT FK_92CC82CBF026BB7C FOREIGN KEY (country_code) REFERENCES catalog.countries (code) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.producer_replies ADD CONSTRAINT FK_FB170DC0427EB8A5 FOREIGN KEY (request_id) REFERENCES matching.client_requests (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.producer_replies ADD CONSTRAINT FK_FB170DC089B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.producer_replies ADD CONSTRAINT FK_FB170DC0939BB851 FOREIGN KEY (price_unit_id) REFERENCES catalog.units (id)');
+        $this->addSql('ALTER TABLE matching.producer_replies ADD CONSTRAINT FK_FB170DC06956883F FOREIGN KEY (currency) REFERENCES catalog.currencies (code) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE producer.producer_settings ADD CONSTRAINT FK_FCB9A73E89B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE producer.product_availabilities ADD CONSTRAINT FK_C1C5980565EFAD74 FOREIGN KEY (producer_product_id) REFERENCES producer.producer_products (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE producer.product_availabilities ADD CONSTRAINT FK_C1C59805F8BD700D FOREIGN KEY (unit_id) REFERENCES catalog.units (id)');
+        $this->addSql('ALTER TABLE catalog.product_translations ADD CONSTRAINT FK_F90E808C4584665A FOREIGN KEY (product_id) REFERENCES catalog.products (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE catalog.products ADD CONSTRAINT FK_66B553D212469DE2 FOREIGN KEY (category_id) REFERENCES catalog.categories (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE catalog.products ADD CONSTRAINT FK_66B553D2A382148 FOREIGN KEY (default_unit_id) REFERENCES catalog.units (id)');
+        $this->addSql('ALTER TABLE producer.quick_replies ADD CONSTRAINT FK_1D37CB4289B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.recurring_request_rules ADD CONSTRAINT FK_7440C0C6427EB8A5 FOREIGN KEY (request_id) REFERENCES matching.client_requests (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE engagement.referrals ADD CONSTRAINT FK_B88E00C5798C22DB FOREIGN KEY (referrer_id) REFERENCES identity.users (id)');
+        $this->addSql('ALTER TABLE engagement.referrals ADD CONSTRAINT FK_B88E00C5CFE2A98 FOREIGN KEY (referred_id) REFERENCES identity.users (id)');
+        $this->addSql('ALTER TABLE identity.refresh_tokens ADD CONSTRAINT FK_9CAD7EB3A76ED395 FOREIGN KEY (user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.reply_attachments ADD CONSTRAINT FK_10F9BF918A0E4E7F FOREIGN KEY (reply_id) REFERENCES matching.producer_replies (id)');
+        $this->addSql('ALTER TABLE trust.reports ADD CONSTRAINT FK_2831557E1CFE6F5 FOREIGN KEY (reporter_id) REFERENCES identity.users (id)');
+        $this->addSql('ALTER TABLE trust.reports ADD CONSTRAINT FK_2831557FC6B21F1 FOREIGN KEY (reviewed_by_id) REFERENCES identity.users (id)');
+        $this->addSql('ALTER TABLE matching.request_attachments ADD CONSTRAINT FK_F4E7C16A427EB8A5 FOREIGN KEY (request_id) REFERENCES matching.client_requests (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.request_attachments ADD CONSTRAINT FK_F4E7C16AA2B28FE8 FOREIGN KEY (uploaded_by_id) REFERENCES identity.users (id)');
+        $this->addSql('ALTER TABLE matching.request_events ADD CONSTRAINT FK_26366913427EB8A5 FOREIGN KEY (request_id) REFERENCES matching.client_requests (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.request_events ADD CONSTRAINT FK_2636691310DAF24A FOREIGN KEY (actor_id) REFERENCES identity.users (id)');
+        $this->addSql('ALTER TABLE matching.request_labels ADD CONSTRAINT FK_C0603C48427EB8A5 FOREIGN KEY (request_id) REFERENCES matching.client_requests (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.request_labels ADD CONSTRAINT FK_C0603C4833B92F39 FOREIGN KEY (label_id) REFERENCES catalog.labels (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.request_matches ADD CONSTRAINT FK_14E44DD4427EB8A5 FOREIGN KEY (request_id) REFERENCES matching.client_requests (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE matching.request_matches ADD CONSTRAINT FK_14E44DD489B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE trust.reviews ADD CONSTRAINT FK_9AEC591D19EB6921 FOREIGN KEY (client_id) REFERENCES identity.users (id)');
+        $this->addSql('ALTER TABLE trust.reviews ADD CONSTRAINT FK_9AEC591D89B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE trust.reviews ADD CONSTRAINT FK_9AEC591D427EB8A5 FOREIGN KEY (request_id) REFERENCES matching.client_requests (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE engagement.saved_searches ADD CONSTRAINT FK_F01B6E60A76ED395 FOREIGN KEY (user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE billing.subscriptions ADD CONSTRAINT FK_BE7589EA89B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE billing.subscriptions ADD CONSTRAINT FK_BE7589EAD871F09D FOREIGN KEY (plan_price_id) REFERENCES billing.plan_prices (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE producer.team_members ADD CONSTRAINT FK_DA0A34B689B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE producer.team_members ADD CONSTRAINT FK_DA0A34B6A76ED395 FOREIGN KEY (user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE support.ticket_attachments ADD CONSTRAINT FK_3D232E73C5E9817D FOREIGN KEY (ticket_message_id) REFERENCES support.ticket_messages (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE support.ticket_messages ADD CONSTRAINT FK_8AED546700047D2 FOREIGN KEY (ticket_id) REFERENCES support.tickets (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE support.ticket_messages ADD CONSTRAINT FK_8AED546F624B39D FOREIGN KEY (sender_id) REFERENCES identity.users (id)');
+        $this->addSql('ALTER TABLE support.tickets ADD CONSTRAINT FK_89890406A76ED395 FOREIGN KEY (user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE support.tickets ADD CONSTRAINT FK_89890406F4BD7827 FOREIGN KEY (assigned_to_id) REFERENCES identity.users (id)');
+        $this->addSql('ALTER TABLE identity.user_addresses ADD CONSTRAINT FK_682B61A0A76ED395 FOREIGN KEY (user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE identity.user_consents ADD CONSTRAINT FK_8A0A6263A76ED395 FOREIGN KEY (user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE identity.user_preferences ADD CONSTRAINT FK_41747C57A76ED395 FOREIGN KEY (user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE messaging.user_presence ADD CONSTRAINT FK_3CACE3B4A76ED395 FOREIGN KEY (user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE trust.user_sanctions ADD CONSTRAINT FK_7A8CD4C6A76ED395 FOREIGN KEY (user_id) REFERENCES identity.users (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE trust.user_sanctions ADD CONSTRAINT FK_7A8CD4C6B03A8386 FOREIGN KEY (created_by_id) REFERENCES identity.users (id)');
+        $this->addSql('ALTER TABLE trust.verification_documents ADD CONSTRAINT FK_C9138BBF89B658FE FOREIGN KEY (producer_id) REFERENCES producer.producer_profiles (id) NOT DEFERRABLE');
+        $this->addSql('ALTER TABLE trust.verification_documents ADD CONSTRAINT FK_C9138BBFFC6B21F1 FOREIGN KEY (reviewed_by_id) REFERENCES identity.users (id)');
+
+        $this->addSql('CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON identity.users FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()');
+        $this->addSql('CREATE TRIGGER trg_subscriptions_updated_at BEFORE UPDATE ON billing.subscriptions FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()');
+        $this->addSql('CREATE TRIGGER trg_user_presence_updated_at BEFORE UPDATE ON messaging.user_presence FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()');
+
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION matching.find_matching_producers(
+    p_request_id uuid,
+    p_limit integer DEFAULT 50
+)
+RETURNS TABLE (
+    producer_id uuid,
+    score numeric,
+    distance_km numeric,
+    reasons jsonb
+)
+LANGUAGE sql
+STABLE
+AS $$
+WITH req AS (
+    SELECT r.*
+    FROM matching.client_requests r
+    WHERE r.id = p_request_id
+), candidates AS (
+    SELECT
+        pp.id AS producer_id,
+        ST_Distance(pp.location, req.location) / 1000.0 AS distance_km,
+        pp.verification_status,
+        pp.is_active,
+        EXISTS (
+            SELECT 1
+            FROM producer.producer_products prp
+            WHERE prp.producer_id = pp.id
+            AND prp.product_id = req.product_id
+            AND prp.is_active = true
+        ) AS has_product,
+        EXISTS (
+            SELECT 1
+            FROM billing.subscriptions s
+            WHERE s.producer_id = pp.id
+            AND s.status IN ('trialing', 'active')
+            AND now() BETWEEN s.current_period_start AND s.current_period_end
+        ) AS has_active_subscription
+    FROM producer.producer_profiles pp
+    CROSS JOIN req
+    WHERE pp.is_active = true
+    AND pp.location IS NOT NULL
+    AND req.location IS NOT NULL
+    AND ST_DWithin(pp.location, req.location, COALESCE(req.radius_km, 50) * 1000)
+)
+SELECT
+    producer_id,
+    (
+        CASE WHEN has_product THEN 50 ELSE 0 END +
+        CASE WHEN has_active_subscription THEN 20 ELSE 0 END +
+        CASE WHEN verification_status = 'verified' THEN 15 ELSE 0 END +
+        GREATEST(0, 15 - distance_km / 5)
+    )::numeric(10,2) AS score,
+    distance_km::numeric(10,2),
+    jsonb_build_object(
+        'has_product', has_product,
+        'active_subscription', has_active_subscription,
+        'verified', verification_status = 'verified',
+        'distance_km', round(distance_km::numeric, 2)
+    ) AS reasons
+FROM candidates
+WHERE has_product = true
+ORDER BY score DESC, distance_km ASC
+LIMIT p_limit;
+$$;
+SQL);
+
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION matching.populate_request_matches(p_request_id uuid)
+RETURNS integer
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    inserted_count integer;
+BEGIN
+    INSERT INTO matching.request_matches (id, request_id, producer_id, score, distance_km, reasons, status, created_at)
+    SELECT gen_random_uuid(), p_request_id, producer_id, score, distance_km, reasons, 'proposed', now()
+    FROM matching.find_matching_producers(p_request_id, 100)
+    ON CONFLICT (request_id, producer_id) DO UPDATE
+    SET score = EXCLUDED.score,
+        distance_km = EXCLUDED.distance_km,
+        reasons = EXCLUDED.reasons;
+
+    GET DIAGNOSTICS inserted_count = ROW_COUNT;
+    RETURN inserted_count;
+END;
+$$;
+SQL);
+
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION billing.producer_has_feature(
+    p_producer_id uuid,
+    p_feature text
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+AS $$
+SELECT EXISTS (
+    SELECT 1
+    FROM billing.subscriptions s
+    JOIN billing.plan_prices pp ON pp.id = s.plan_price_id
+    JOIN billing.subscription_plans sp ON sp.id = pp.plan_id
+    WHERE s.producer_id = p_producer_id
+    AND s.status IN ('trialing', 'active')
+    AND now() BETWEEN s.current_period_start AND s.current_period_end
+    AND COALESCE((sp.features ->> p_feature)::boolean, false) = true
+);
+$$;
+SQL);
+
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION audit.log_row_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    actor uuid;
+BEGIN
+    actor := NULLIF(current_setting('app.current_user_id', true), '')::uuid;
+
+    INSERT INTO audit.audit_logs (
+        actor_id, schema_name, table_name, record_id, action,
+        old_data, new_data, ip_address, created_at
+    ) VALUES (
+        actor, TG_TABLE_SCHEMA, TG_TABLE_NAME,
+        COALESCE(NEW.id, OLD.id)::text,
+        TG_OP,
+        CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN to_jsonb(OLD) ELSE NULL END,
+        CASE WHEN TG_OP IN ('INSERT', 'UPDATE') THEN to_jsonb(NEW) ELSE NULL END,
+        NULLIF(current_setting('app.request_ip', true), '')::inet,
+        now()
+    );
+    RETURN COALESCE(NEW, OLD);
+END;
+$$;
+SQL);
+
+        $this->addSql('CREATE TRIGGER trg_users_audit AFTER INSERT OR UPDATE OR DELETE ON identity.users FOR EACH ROW EXECUTE FUNCTION audit.log_row_change()');
+        $this->addSql('CREATE TRIGGER trg_producer_profiles_audit AFTER INSERT OR UPDATE OR DELETE ON producer.producer_profiles FOR EACH ROW EXECUTE FUNCTION audit.log_row_change()');
+        $this->addSql('CREATE TRIGGER trg_subscriptions_audit AFTER INSERT OR UPDATE OR DELETE ON billing.subscriptions FOR EACH ROW EXECUTE FUNCTION audit.log_row_change()');
+        $this->addSql('CREATE TRIGGER trg_verification_documents_audit AFTER INSERT OR UPDATE OR DELETE ON trust.verification_documents FOR EACH ROW EXECUTE FUNCTION audit.log_row_change()');
+
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION audit.enqueue_event(
+    p_event_type text,
+    p_aggregate_type text,
+    p_aggregate_id uuid,
+    p_payload jsonb DEFAULT '{}'::jsonb
+)
+RETURNS uuid
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_id uuid := gen_random_uuid();
+BEGIN
+    INSERT INTO audit.outbox_events (
+        id, event_type, aggregate_type, aggregate_id, payload, status, available_at
+    ) VALUES (
+        v_id, p_event_type, p_aggregate_type, p_aggregate_id, p_payload, 'pending', now()
+    );
+    PERFORM pg_notify('outbox_events', jsonb_build_object('id', v_id, 'type', p_event_type)::text);
+    RETURN v_id;
+END;
+$$;
+SQL);
+
+        $this->addSql(<<<'SQL'
+CREATE OR REPLACE FUNCTION identity.anonymize_user(p_user_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    UPDATE identity.users
+    SET email = ('deleted+' || id || '@anonymized.local')::citext,
+        first_name = NULL,
+        last_name = NULL,
+        phone = NULL,
+        password_hash = '',
+        status = 'deleted',
+        updated_at = now()
+    WHERE id = p_user_id;
+
+    UPDATE matching.client_requests
+    SET message = NULL
+    WHERE client_id = p_user_id;
+END;
+$$;
+SQL);
+    }
+
+    public function down(Schema $schema): void
+    {
+        // this down() migration is auto-generated, please modify it to your needs
+        $this->addSql('ALTER TABLE matching.client_requests DROP CONSTRAINT chk_client_requests_urgency_level');
+        $this->addSql('ALTER TABLE matching.client_requests DROP CONSTRAINT chk_client_requests_product_or_custom');
+        $this->addSql('ALTER TABLE trust.reviews DROP CONSTRAINT chk_reviews_rating');
+        $this->addSql('ALTER TABLE audit.audit_logs DROP CONSTRAINT FK_945DBD9410DAF24A');
+        $this->addSql('ALTER TABLE messaging.blocked_users DROP CONSTRAINT FK_16942404548D5975');
+        $this->addSql('ALTER TABLE messaging.blocked_users DROP CONSTRAINT FK_1694240421FF5136');
+        $this->addSql('ALTER TABLE catalog.categories DROP CONSTRAINT FK_B0753980727ACA70');
+        $this->addSql('ALTER TABLE catalog.category_translations DROP CONSTRAINT FK_5160853512469DE2');
+        $this->addSql('ALTER TABLE matching.client_requests DROP CONSTRAINT FK_6D85CCAD19EB6921');
+        $this->addSql('ALTER TABLE matching.client_requests DROP CONSTRAINT FK_6D85CCAD12469DE2');
+        $this->addSql('ALTER TABLE matching.client_requests DROP CONSTRAINT FK_6D85CCAD4584665A');
+        $this->addSql('ALTER TABLE matching.client_requests DROP CONSTRAINT FK_6D85CCADF8BD700D');
+        $this->addSql('ALTER TABLE matching.client_requests DROP CONSTRAINT FK_6D85CCAD6956883F');
+        $this->addSql('ALTER TABLE matching.client_requests DROP CONSTRAINT FK_6D85CCADF026BB7C');
+        $this->addSql('ALTER TABLE messaging.conversation_participants DROP CONSTRAINT FK_A16FE0ED9AC0396');
+        $this->addSql('ALTER TABLE messaging.conversation_participants DROP CONSTRAINT FK_A16FE0EDA76ED395');
+        $this->addSql('ALTER TABLE messaging.conversations DROP CONSTRAINT FK_7704DBE0427EB8A5');
+        $this->addSql('ALTER TABLE messaging.conversations DROP CONSTRAINT FK_7704DBE019EB6921');
+        $this->addSql('ALTER TABLE messaging.conversations DROP CONSTRAINT FK_7704DBE089B658FE');
+        $this->addSql('ALTER TABLE billing.coupon_redemptions DROP CONSTRAINT FK_9E3C879666C5951B');
+        $this->addSql('ALTER TABLE billing.coupon_redemptions DROP CONSTRAINT FK_9E3C879689B658FE');
+        $this->addSql('ALTER TABLE billing.coupon_redemptions DROP CONSTRAINT FK_9E3C87969A1887DC');
+        $this->addSql('ALTER TABLE identity.data_requests DROP CONSTRAINT FK_DD065489A76ED395');
+        $this->addSql('ALTER TABLE matching.deal_outcomes DROP CONSTRAINT FK_B59B887427EB8A5');
+        $this->addSql('ALTER TABLE matching.deal_outcomes DROP CONSTRAINT FK_B59B88789B658FE');
+        $this->addSql('ALTER TABLE matching.deal_outcomes DROP CONSTRAINT FK_B59B887C48B85B0');
+        $this->addSql('ALTER TABLE producer.delivery_zones DROP CONSTRAINT FK_4A1665B689B658FE');
+        $this->addSql('ALTER TABLE engagement.favorites DROP CONSTRAINT FK_479AA8A6A76ED395');
+        $this->addSql('ALTER TABLE billing.invoices DROP CONSTRAINT FK_952B91FF9A1887DC');
+        $this->addSql('ALTER TABLE billing.invoices DROP CONSTRAINT FK_952B91FF6956883F');
+        $this->addSql('ALTER TABLE catalog.label_translations DROP CONSTRAINT FK_EB28909E33B92F39');
+        $this->addSql('ALTER TABLE messaging.message_attachments DROP CONSTRAINT FK_2BD7F14F537A1329');
+        $this->addSql('ALTER TABLE messaging.message_reads DROP CONSTRAINT FK_82B0534B537A1329');
+        $this->addSql('ALTER TABLE messaging.message_reads DROP CONSTRAINT FK_82B0534BA76ED395');
+        $this->addSql('ALTER TABLE messaging.messages DROP CONSTRAINT FK_79C1A739AC0396');
+        $this->addSql('ALTER TABLE messaging.messages DROP CONSTRAINT FK_79C1A73F624B39D');
+        $this->addSql('ALTER TABLE trust.moderation_actions DROP CONSTRAINT FK_FD7BEFD4BD2A4C0');
+        $this->addSql('ALTER TABLE trust.moderation_actions DROP CONSTRAINT FK_FD7BEFD642B8210');
+        $this->addSql('ALTER TABLE notification.notification_deliveries DROP CONSTRAINT FK_CFA49F75EF1A9D84');
+        $this->addSql('ALTER TABLE notification.notifications DROP CONSTRAINT FK_41D22829A76ED395');
+        $this->addSql('ALTER TABLE producer.opening_hours DROP CONSTRAINT FK_919D4EA789B658FE');
+        $this->addSql('ALTER TABLE identity.password_reset_tokens DROP CONSTRAINT FK_17F30C0AA76ED395');
+        $this->addSql('ALTER TABLE billing.payment_methods DROP CONSTRAINT FK_6B28381C89B658FE');
+        $this->addSql('ALTER TABLE billing.payments DROP CONSTRAINT FK_9AD625582989F1FD');
+        $this->addSql('ALTER TABLE billing.payments DROP CONSTRAINT FK_9AD625586956883F');
+        $this->addSql('ALTER TABLE billing.plan_prices DROP CONSTRAINT FK_68F87C0DE899029B');
+        $this->addSql('ALTER TABLE billing.plan_prices DROP CONSTRAINT FK_68F87C0D6956883F');
+        $this->addSql('ALTER TABLE analytics.producer_daily_metrics DROP CONSTRAINT FK_4D5F14C189B658FE');
+        $this->addSql('ALTER TABLE producer.producer_labels DROP CONSTRAINT FK_3B46051E89B658FE');
+        $this->addSql('ALTER TABLE producer.producer_labels DROP CONSTRAINT FK_3B46051E33B92F39');
+        $this->addSql('ALTER TABLE producer.producer_labels DROP CONSTRAINT FK_3B46051EC33F7837');
+        $this->addSql('ALTER TABLE producer.producer_media DROP CONSTRAINT FK_43C4579189B658FE');
+        $this->addSql('ALTER TABLE producer.producer_product_media DROP CONSTRAINT FK_4E9DA00965EFAD74');
+        $this->addSql('ALTER TABLE producer.producer_products DROP CONSTRAINT FK_AA465DA189B658FE');
+        $this->addSql('ALTER TABLE producer.producer_products DROP CONSTRAINT FK_AA465DA14584665A');
+        $this->addSql('ALTER TABLE producer.producer_products DROP CONSTRAINT FK_AA465DA16956883F');
+        $this->addSql('ALTER TABLE producer.producer_profiles DROP CONSTRAINT FK_92CC82CB2B18554A');
+        $this->addSql('ALTER TABLE producer.producer_profiles DROP CONSTRAINT FK_92CC82CBF026BB7C');
+        $this->addSql('ALTER TABLE matching.producer_replies DROP CONSTRAINT FK_FB170DC0427EB8A5');
+        $this->addSql('ALTER TABLE matching.producer_replies DROP CONSTRAINT FK_FB170DC089B658FE');
+        $this->addSql('ALTER TABLE matching.producer_replies DROP CONSTRAINT FK_FB170DC0939BB851');
+        $this->addSql('ALTER TABLE matching.producer_replies DROP CONSTRAINT FK_FB170DC06956883F');
+        $this->addSql('ALTER TABLE producer.producer_settings DROP CONSTRAINT FK_FCB9A73E89B658FE');
+        $this->addSql('ALTER TABLE producer.product_availabilities DROP CONSTRAINT FK_C1C5980565EFAD74');
+        $this->addSql('ALTER TABLE producer.product_availabilities DROP CONSTRAINT FK_C1C59805F8BD700D');
+        $this->addSql('ALTER TABLE catalog.product_translations DROP CONSTRAINT FK_F90E808C4584665A');
+        $this->addSql('ALTER TABLE catalog.products DROP CONSTRAINT FK_66B553D212469DE2');
+        $this->addSql('ALTER TABLE catalog.products DROP CONSTRAINT FK_66B553D2A382148');
+        $this->addSql('ALTER TABLE producer.quick_replies DROP CONSTRAINT FK_1D37CB4289B658FE');
+        $this->addSql('ALTER TABLE matching.recurring_request_rules DROP CONSTRAINT FK_7440C0C6427EB8A5');
+        $this->addSql('ALTER TABLE engagement.referrals DROP CONSTRAINT FK_B88E00C5798C22DB');
+        $this->addSql('ALTER TABLE engagement.referrals DROP CONSTRAINT FK_B88E00C5CFE2A98');
+        $this->addSql('ALTER TABLE identity.refresh_tokens DROP CONSTRAINT FK_9CAD7EB3A76ED395');
+        $this->addSql('ALTER TABLE matching.reply_attachments DROP CONSTRAINT FK_10F9BF918A0E4E7F');
+        $this->addSql('ALTER TABLE trust.reports DROP CONSTRAINT FK_2831557E1CFE6F5');
+        $this->addSql('ALTER TABLE trust.reports DROP CONSTRAINT FK_2831557FC6B21F1');
+        $this->addSql('ALTER TABLE matching.request_attachments DROP CONSTRAINT FK_F4E7C16A427EB8A5');
+        $this->addSql('ALTER TABLE matching.request_attachments DROP CONSTRAINT FK_F4E7C16AA2B28FE8');
+        $this->addSql('ALTER TABLE matching.request_events DROP CONSTRAINT FK_26366913427EB8A5');
+        $this->addSql('ALTER TABLE matching.request_events DROP CONSTRAINT FK_2636691310DAF24A');
+        $this->addSql('ALTER TABLE matching.request_labels DROP CONSTRAINT FK_C0603C48427EB8A5');
+        $this->addSql('ALTER TABLE matching.request_labels DROP CONSTRAINT FK_C0603C4833B92F39');
+        $this->addSql('ALTER TABLE matching.request_matches DROP CONSTRAINT FK_14E44DD4427EB8A5');
+        $this->addSql('ALTER TABLE matching.request_matches DROP CONSTRAINT FK_14E44DD489B658FE');
+        $this->addSql('ALTER TABLE trust.reviews DROP CONSTRAINT FK_9AEC591D19EB6921');
+        $this->addSql('ALTER TABLE trust.reviews DROP CONSTRAINT FK_9AEC591D89B658FE');
+        $this->addSql('ALTER TABLE trust.reviews DROP CONSTRAINT FK_9AEC591D427EB8A5');
+        $this->addSql('ALTER TABLE engagement.saved_searches DROP CONSTRAINT FK_F01B6E60A76ED395');
+        $this->addSql('ALTER TABLE billing.subscriptions DROP CONSTRAINT FK_BE7589EA89B658FE');
+        $this->addSql('ALTER TABLE billing.subscriptions DROP CONSTRAINT FK_BE7589EAD871F09D');
+        $this->addSql('ALTER TABLE producer.team_members DROP CONSTRAINT FK_DA0A34B689B658FE');
+        $this->addSql('ALTER TABLE producer.team_members DROP CONSTRAINT FK_DA0A34B6A76ED395');
+        $this->addSql('ALTER TABLE support.ticket_attachments DROP CONSTRAINT FK_3D232E73C5E9817D');
+        $this->addSql('ALTER TABLE support.ticket_messages DROP CONSTRAINT FK_8AED546700047D2');
+        $this->addSql('ALTER TABLE support.ticket_messages DROP CONSTRAINT FK_8AED546F624B39D');
+        $this->addSql('ALTER TABLE support.tickets DROP CONSTRAINT FK_89890406A76ED395');
+        $this->addSql('ALTER TABLE support.tickets DROP CONSTRAINT FK_89890406F4BD7827');
+        $this->addSql('ALTER TABLE identity.user_addresses DROP CONSTRAINT FK_682B61A0A76ED395');
+        $this->addSql('ALTER TABLE identity.user_consents DROP CONSTRAINT FK_8A0A6263A76ED395');
+        $this->addSql('ALTER TABLE identity.user_preferences DROP CONSTRAINT FK_41747C57A76ED395');
+        $this->addSql('ALTER TABLE messaging.user_presence DROP CONSTRAINT FK_3CACE3B4A76ED395');
+        $this->addSql('ALTER TABLE trust.user_sanctions DROP CONSTRAINT FK_7A8CD4C6A76ED395');
+        $this->addSql('ALTER TABLE trust.user_sanctions DROP CONSTRAINT FK_7A8CD4C6B03A8386');
+        $this->addSql('ALTER TABLE trust.verification_documents DROP CONSTRAINT FK_C9138BBF89B658FE');
+        $this->addSql('ALTER TABLE trust.verification_documents DROP CONSTRAINT FK_C9138BBFFC6B21F1');
+        $this->addSql('DROP TABLE audit.audit_logs');
+        $this->addSql('DROP TABLE messaging.blocked_users');
+        $this->addSql('DROP TABLE catalog.categories');
+        $this->addSql('DROP TABLE catalog.category_translations');
+        $this->addSql('DROP TABLE matching.client_requests');
+        $this->addSql('DROP TABLE messaging.conversation_participants');
+        $this->addSql('DROP TABLE messaging.conversations');
+        $this->addSql('DROP TABLE catalog.countries');
+        $this->addSql('DROP TABLE billing.coupon_redemptions');
+        $this->addSql('DROP TABLE billing.coupons');
+        $this->addSql('DROP TABLE catalog.currencies');
+        $this->addSql('DROP TABLE identity.data_requests');
+        $this->addSql('DROP TABLE matching.deal_outcomes');
+        $this->addSql('DROP TABLE producer.delivery_zones');
+        $this->addSql('DROP TABLE content.faq_articles');
+        $this->addSql('DROP TABLE engagement.favorites');
+        $this->addSql('DROP TABLE billing.invoices');
+        $this->addSql('DROP TABLE catalog.label_translations');
+        $this->addSql('DROP TABLE catalog.labels');
+        $this->addSql('DROP TABLE content.legal_pages');
+        $this->addSql('DROP TABLE identity.login_attempts');
+        $this->addSql('DROP TABLE messaging.message_attachments');
+        $this->addSql('DROP TABLE messaging.message_reads');
+        $this->addSql('DROP TABLE messaging.messages');
+        $this->addSql('DROP TABLE trust.moderation_actions');
+        $this->addSql('DROP TABLE notification.notification_deliveries');
+        $this->addSql('DROP TABLE notification.notification_templates');
+        $this->addSql('DROP TABLE notification.notifications');
+        $this->addSql('DROP TABLE producer.opening_hours');
+        $this->addSql('DROP TABLE audit.outbox_events');
+        $this->addSql('DROP TABLE identity.password_reset_tokens');
+        $this->addSql('DROP TABLE billing.payment_methods');
+        $this->addSql('DROP TABLE billing.payments');
+        $this->addSql('DROP TABLE billing.plan_prices');
+        $this->addSql('DROP TABLE analytics.platform_daily_metrics');
+        $this->addSql('DROP TABLE analytics.producer_daily_metrics');
+        $this->addSql('DROP TABLE producer.producer_labels');
+        $this->addSql('DROP TABLE producer.producer_media');
+        $this->addSql('DROP TABLE producer.producer_product_media');
+        $this->addSql('DROP TABLE producer.producer_products');
+        $this->addSql('DROP TABLE producer.producer_profiles');
+        $this->addSql('DROP TABLE matching.producer_replies');
+        $this->addSql('DROP TABLE producer.producer_settings');
+        $this->addSql('DROP TABLE producer.product_availabilities');
+        $this->addSql('DROP TABLE catalog.product_translations');
+        $this->addSql('DROP TABLE catalog.products');
+        $this->addSql('DROP TABLE producer.quick_replies');
+        $this->addSql('DROP TABLE matching.recurring_request_rules');
+        $this->addSql('DROP TABLE engagement.referrals');
+        $this->addSql('DROP TABLE identity.refresh_tokens');
+        $this->addSql('DROP TABLE matching.reply_attachments');
+        $this->addSql('DROP TABLE trust.reports');
+        $this->addSql('DROP TABLE matching.request_attachments');
+        $this->addSql('DROP TABLE matching.request_events');
+        $this->addSql('DROP TABLE matching.request_labels');
+        $this->addSql('DROP TABLE matching.request_matches');
+        $this->addSql('DROP TABLE trust.reviews');
+        $this->addSql('DROP TABLE engagement.saved_searches');
+        $this->addSql('DROP TABLE billing.subscription_plans');
+        $this->addSql('DROP TABLE billing.subscriptions');
+        $this->addSql('DROP TABLE producer.team_members');
+        $this->addSql('DROP TABLE support.ticket_attachments');
+        $this->addSql('DROP TABLE support.ticket_messages');
+        $this->addSql('DROP TABLE support.tickets');
+        $this->addSql('DROP TABLE catalog.units');
+        $this->addSql('DROP TABLE identity.user_addresses');
+        $this->addSql('DROP TABLE identity.user_consents');
+        $this->addSql('DROP TABLE identity.user_preferences');
+        $this->addSql('DROP TABLE messaging.user_presence');
+        $this->addSql('DROP TABLE trust.user_sanctions');
+        $this->addSql('DROP TABLE trust.verification_documents');
+        $this->addSql('DROP TABLE billing.webhook_events');
+        $this->addSql('DROP TABLE identity.users');
+        $this->addSql('DROP TABLE messenger_messages');
+        $this->addSql('DROP FUNCTION IF EXISTS identity.anonymize_user(uuid)');
+        $this->addSql('DROP FUNCTION IF EXISTS audit.enqueue_event(text, text, uuid, jsonb)');
+        $this->addSql('DROP FUNCTION IF EXISTS audit.log_row_change()');
+        $this->addSql('DROP FUNCTION IF EXISTS billing.producer_has_feature(uuid, text)');
+        $this->addSql('DROP FUNCTION IF EXISTS matching.populate_request_matches(uuid)');
+        $this->addSql('DROP FUNCTION IF EXISTS matching.find_matching_producers(uuid, integer)');
+        $this->addSql('DROP FUNCTION IF EXISTS public.set_updated_at()');
+        $this->addSql('DROP FUNCTION IF EXISTS public.immutable_unaccent(text)');
+    }
+}
