@@ -1,8 +1,8 @@
 framework:
     rate_limiter:
-        # ? cahier_des_charges_devops_trouvemoi_agri.pdf §10 : "protection brute force" sur l'authentification.
-        # ? Utilisé dans AuthController::login (ou l'authenticator JWT) avec une clé combinant IP + email.
-        login_attempts:
+        # ? cahier_des_charges_devops_trouvemoi_agri.pdf §10 : anti-spam sur forgot-password (emails + énumération).
+        # ? Utilisé directement dans AuthController::forgotPassword via RateLimiterFactory (auto-injecté par nom).
+        password_reset_requests:
             policy: 'sliding_window'
-            limit: 5
+            limit: 3
             interval: '15 minutes'
