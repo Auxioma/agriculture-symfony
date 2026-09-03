@@ -588,9 +588,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     public function setProducerProfile(ProducerProfile $producerProfile): static
     {
-        if ($producerProfile->getOwner() !== $this) {
-            $producerProfile->setOwner($this);
-        }
+        $producerProfile->setOwner($this);
         $this->producerProfile = $producerProfile;
 
         return $this;

@@ -17,6 +17,7 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Email;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
@@ -122,7 +123,11 @@ final class AuthController extends AbstractController
         #[MapRequestPayload] ForgotPasswordRequest $request,
         EntityManagerInterface $em,
         MailerInterface $mailer,
-        RateLimiterFactory $passwordResetRequestsLimiter, // ← nouveau paramètre
+        // ! L'auto-wiring par convention de nom (password_reset_requests -> $passwordResetRequestsLimiter)
+        // ! ne suffit pas ici (plusieurs RateLimiterFactory coexistent, dont celles de login_throttling) :
+        // ! il faut référencer le service exact.
+        #[Autowire(service: 'limiter.password_reset_requests')]
+        RateLimiterFactory $passwordResetRequestsLimiter,
     ): JsonResponse {
         $limiter = $passwordResetRequestsLimiter->create($request->email);
         if (!$limiter->consume(1)->isAccepted()) {
