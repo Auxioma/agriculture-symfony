@@ -16,9 +16,12 @@ security:
             # Ensure dev tools and static assets are always allowed
             pattern: ^/(_profiler|_wdt|assets|build)/
             security: false
-        main:
-            lazy: true
-            provider: app_user_provider
+
+        # ! Le firewall "main" du squelette Symfony a été retiré : sans pattern, il matchait TOUTE requête
+        # ! (donc /api/auth/login en premier, avant api_login) et n'a aucun authenticator -- la requête
+        # ! continuait alors vers le routeur normal, qui ne trouve aucun contrôleur pour /login -> 404.
+        # ! À réintroduire (après api_login/api, jamais avant) le jour où un vrai back-office avec session
+        # ! existera.
 
         api_login:
             pattern: ^/api/auth/login

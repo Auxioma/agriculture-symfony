@@ -24,14 +24,22 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
 
 /**
  * register-client, register-producer, logout, forgot-password, reset-password, et GET /api/me.
- * /api/auth/login n'a volontairement aucune méthode ici : elle est gérée entièrement par le firewall
- * json_login (security.yaml), pas par ce contrôleur.
+ * /api/auth/login est traitée par le firewall json_login (security.yaml), pas par le corps de la méthode
+ * login() ci-dessous.
+ *
+ * /api/me (hors de /api/auth) ne peut pas partager un préfixe commun avec les autres routes. Chaque route
+ * porte donc son chemin complet.
  */
 
-#[Route('/api/auth')]
 final class AuthController extends AbstractController
 {
-    #[Route('/register-client', methods: ['POST'])]
+    #[Route('/api/auth/login', methods: ['POST'])]
+    public function login(): never
+    {
+        throw new \LogicException('Cette route est interceptée par le firewall json_login avant d\'atteindre le contrôleur.');
+    }
+
+    #[Route('/api/auth/register-client', methods: ['POST'])]
     public function registerClient(
         #[MapRequestPayload] RegisterClientRequest $request,
         EntityManagerInterface $em,
@@ -55,7 +63,7 @@ final class AuthController extends AbstractController
     }
 
 
-    #[Route('/register-producer', methods: ['POST'])]
+    #[Route('/api/auth/register-producer', methods: ['POST'])]
     public function registerProducer(
         #[MapRequestPayload] RegisterProducerRequest $request,
         EntityManagerInterface $em,
@@ -101,7 +109,7 @@ final class AuthController extends AbstractController
         return $base . '-' . bin2hex(random_bytes(3));
     }
 
-    #[Route('/logout', methods: ['POST'])]
+    #[Route('/api/auth/logout', methods: ['POST'])]
     public function logout(): JsonResponse
     {
         // * Stateless JWT : rien à révoquer côté serveur pour le MVP, le front oublie simplement le token.
@@ -109,7 +117,7 @@ final class AuthController extends AbstractController
         return new JsonResponse(null, 204);
     }
 
-    #[Route('/forgot-password', methods: ['POST'])]
+    #[Route('/api/auth/forgot-password', methods: ['POST'])]
     public function forgotPassword(
         #[MapRequestPayload] ForgotPasswordRequest $request,
         EntityManagerInterface $em,
@@ -150,7 +158,7 @@ final class AuthController extends AbstractController
     }
 
 
-    #[Route('/reset-password', methods: ['POST'])]
+    #[Route('/api/auth/reset-password', methods: ['POST'])]
     public function resetPassword(
         #[MapRequestPayload] ResetPasswordRequest $request,
         EntityManagerInterface $em,
