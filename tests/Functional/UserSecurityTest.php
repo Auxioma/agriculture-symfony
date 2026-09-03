@@ -1,5 +1,15 @@
 <?php
 
+/**
+ * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
+ *
+ * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
+ * Tous droits réservés.
+ *
+ * Ce code source est la propriété exclusive de Auxioma Web Agency et.
+ * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ */
+
 namespace App\Tests\Functional;
 
 use App\Entity\Identity\User;
@@ -55,7 +65,10 @@ final class UserSecurityTest extends DatabaseTestCase
         // * Classe anonyme minimale
         // * rejette bien tout ce qui n'est pas notre entité User, indépendamment de l'implémentation fournie
         $fakeUser = new class implements PasswordAuthenticatedUserInterface {
-            public function getPassword(): ?string { return 'x'; }
+            public function getPassword(): ?string
+            {
+                return 'x';
+            }
         };
 
         $this->expectException(UnsupportedUserException::class);

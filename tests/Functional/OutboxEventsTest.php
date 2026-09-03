@@ -1,5 +1,15 @@
 <?php
 
+/**
+ * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
+ *
+ * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
+ * Tous droits réservés.
+ *
+ * Ce code source est la propriété exclusive de Auxioma Web Agency et.
+ * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ */
+
 namespace App\Tests\Functional;
 
 use App\Tests\DatabaseTestCase;
@@ -12,7 +22,7 @@ final class OutboxEventsTest extends DatabaseTestCase
         $aggregateId = \Symfony\Component\Uid\Uuid::v4()->toRfc4122();
 
         $eventId = $connection->fetchOne(
-            "SELECT audit.enqueue_event(:type, :aggregateType, :aggregateId, :payload)",
+            'SELECT audit.enqueue_event(:type, :aggregateType, :aggregateId, :payload)',
             [
                 'type' => 'request.sent',
                 'aggregateType' => 'client_request',
@@ -45,7 +55,7 @@ final class OutboxEventsTest extends DatabaseTestCase
 
         // Pas de 4e paramètre : on vérifie le DEFAULT '{}'::jsonb côté SQL.
         $eventId = $connection->fetchOne(
-            "SELECT audit.enqueue_event(:type, :aggregateType, :aggregateId)",
+            'SELECT audit.enqueue_event(:type, :aggregateType, :aggregateId)',
             ['type' => 'ping', 'aggregateType' => 'test', 'aggregateId' => $aggregateId]
         );
 

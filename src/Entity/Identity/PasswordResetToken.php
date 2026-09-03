@@ -1,5 +1,15 @@
 <?php
 
+/**
+ * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
+ *
+ * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
+ * Tous droits réservés.
+ *
+ * Ce code source est la propriété exclusive de Auxioma Web Agency et.
+ * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ */
+
 namespace App\Entity\Identity;
 
 use App\Repository\Identity\PasswordResetTokenRepository;
@@ -29,7 +39,7 @@ class PasswordResetToken
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
     private ?\DateTimeImmutable $usedAt = null;
 
-        public function __construct()
+    public function __construct()
     {
         $this->id = Uuid::v4();
     }
