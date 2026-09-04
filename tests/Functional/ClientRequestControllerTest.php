@@ -155,4 +155,45 @@ final class ClientRequestControllerTest extends ApiTestCase
         self::assertCount(1, $data);
         self::assertSame('Demande B', $data[0]['customProduct']);
     }
+
+    public function testGetRequestDetailReturnsFullData(): void
+    {
+        $token = $this->registerClientAndLogin();
+
+        $this->client->request('POST', '/api/requests', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Détail test', 'message' => 'Bonjour']));
+        $created = json_decode($this->client->getResponse()->getContent(), true);
+
+        $this->client->request('GET', '/api/client/requests/'.$created['id'], server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame('Bonjour', $data['message']);
+    }
+
+    public function testGetRequestDetailRejectsAccessToAnotherClientsRequest(): void
+    {
+        $tokenA = $this->registerClientAndLogin('clienta');
+        $this->client->request('POST', '/api/requests', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$tokenA,
+        ], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Privée']));
+        $created = json_decode($this->client->getResponse()->getContent(), true);
+
+        $tokenB = $this->registerClientAndLogin('clientb');
+        $this->client->request('GET', '/api/client/requests/'.$created['id'], server: ['HTTP_AUTHORIZATION' => 'Bearer '.$tokenB]);
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testGetRequestDetailReturns404ForUnknownId(): void
+    {
+        $token = $this->registerClientAndLogin();
+
+        $this->client->request('GET', '/api/client/requests/'.\Symfony\Component\Uid\Uuid::v4()->toRfc4122(), server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseStatusCodeSame(404);
+    }
 }

@@ -124,4 +124,38 @@ final class ClientRequestController extends AbstractController
             $requests
         ));
     }
+
+    #[Route('/api/client/requests/{id}', methods: ['GET'])]
+    public function getRequestDetail(string $id, #[CurrentUser] User $client, EntityManagerInterface $em): JsonResponse
+    {
+        $clientRequest = $em->find(ClientRequest::class, $id);
+
+        if ($clientRequest === null) {
+            return $this->json(['error' => 'Demande introuvable.'], 404);
+        }
+
+        if ($clientRequest->getClient() !== $client) {
+            return $this->json(['error' => 'Accès refusé.'], 403);
+        }
+
+        return $this->json([
+            'id' => $clientRequest->getId()->toRfc4122(),
+            'needType' => $clientRequest->getNeedType()->value,
+            'status' => $clientRequest->getStatus()->value,
+            'customProduct' => $clientRequest->getCustomProduct(),
+            'productId' => $clientRequest->getProduct()?->getId()->toRfc4122(),
+            'categoryId' => $clientRequest->getCategory()?->getId()->toRfc4122(),
+            'quantity' => $clientRequest->getQuantity(),
+            'budgetMin' => $clientRequest->getBudgetMin(),
+            'budgetMax' => $clientRequest->getBudgetMax(),
+            'desiredDate' => $clientRequest->getDesiredDate()?->format('Y-m-d'),
+            'urgencyLevel' => $clientRequest->getUrgencyLevel(),
+            'city' => $clientRequest->getCity(),
+            'postalCode' => $clientRequest->getPostalCode(),
+            'pickupWanted' => $clientRequest->isPickupWanted(),
+            'deliveryWanted' => $clientRequest->isDeliveryWanted(),
+            'message' => $clientRequest->getMessage(),
+            'createdAt' => $clientRequest->getCreatedAt()->format(DATE_ATOM),
+        ]);
+    }
 }
