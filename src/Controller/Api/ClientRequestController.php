@@ -102,4 +102,26 @@ final class ClientRequestController extends AbstractController
 
         return $this->json(['id' => $clientRequest->getId()->toRfc4122()], 201);
     }
+
+    #[Route('/api/client/requests', methods: ['GET'])]
+    public function listMyRequests(#[CurrentUser] User $client, EntityManagerInterface $em): JsonResponse
+    {
+        $requests = $em->getRepository(ClientRequest::class)->findBy(
+            ['client' => $client],
+            ['createdAt' => 'DESC']
+        );
+
+        return $this->json(array_map(
+            static fn (ClientRequest $r) => [
+                'id' => $r->getId()->toRfc4122(),
+                'needType' => $r->getNeedType()->value,
+                'status' => $r->getStatus()->value,
+                'customProduct' => $r->getCustomProduct(),
+                'productId' => $r->getProduct()?->getId()->toRfc4122(),
+                'categoryId' => $r->getCategory()?->getId()->toRfc4122(),
+                'createdAt' => $r->getCreatedAt()->format(DATE_ATOM),
+            ],
+            $requests
+        ));
+    }
 }

@@ -132,4 +132,27 @@ final class ClientRequestControllerTest extends ApiTestCase
         self::assertEqualsWithDelta(2.3522, (float) $point['lon'], 0.0001);
         self::assertEqualsWithDelta(48.8566, (float) $point['lat'], 0.0001);
     }
+
+    public function testListMyRequestsOnlyReturnsOwnRequests(): void
+    {
+        $tokenA = $this->registerClientAndLogin('clienta');
+        $this->client->request('POST', '/api/requests', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$tokenA,
+        ], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Demande A']));
+
+        $tokenB = $this->registerClientAndLogin('clientb');
+        $this->client->request('POST', '/api/requests', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$tokenB,
+        ], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Demande B']));
+
+        // On reste connecté en tant que client B et on liste ses demandes.
+        $this->client->request('GET', '/api/client/requests', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$tokenB]);
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertCount(1, $data);
+        self::assertSame('Demande B', $data[0]['customProduct']);
+    }
 }
