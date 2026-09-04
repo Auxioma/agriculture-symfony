@@ -15,6 +15,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 abstract class ApiTestCase extends WebTestCase
 {
+    use GeographyTestHelperTrait;
+
     protected KernelBrowser $client;
     protected EntityManagerInterface $em;
 

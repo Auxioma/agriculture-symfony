@@ -100,6 +100,11 @@ final class ClientRequestController extends AbstractController
         $em->persist($clientRequest);
         $em->flush();
 
+        $em->getConnection()->executeStatement(
+            'SELECT matching.populate_request_matches(:id)',
+            ['id' => $clientRequest->getId()->toRfc4122()]
+        );
+
         return $this->json(['id' => $clientRequest->getId()->toRfc4122()], 201);
     }
 
@@ -128,15 +133,11 @@ final class ClientRequestController extends AbstractController
     #[Route('/api/client/requests/{id}', methods: ['GET'])]
     public function getRequestDetail(string $id, #[CurrentUser] User $client, EntityManagerInterface $em): JsonResponse
     {
-        $clientRequest = $em->find(ClientRequest::class, $id);
-
-        if ($clientRequest === null) {
-            return $this->json(['error' => 'Demande introuvable.'], 404);
+        $result = $this->findOwnedRequest($id, $client, $em);
+        if ($result instanceof JsonResponse) {
+            return $result;
         }
-
-        if ($clientRequest->getClient() !== $client) {
-            return $this->json(['error' => 'Accès refusé.'], 403);
-        }
+        $clientRequest = $result;
 
         return $this->json([
             'id' => $clientRequest->getId()->toRfc4122(),
@@ -157,5 +158,63 @@ final class ClientRequestController extends AbstractController
             'message' => $clientRequest->getMessage(),
             'createdAt' => $clientRequest->getCreatedAt()->format(DATE_ATOM),
         ]);
+    }
+
+    private function findOwnedRequest(string $id, User $client, EntityManagerInterface $em): ClientRequest|JsonResponse
+    {
+        $clientRequest = $em->find(ClientRequest::class, $id);
+
+        if ($clientRequest === null) {
+            return $this->json(['error' => 'Demande introuvable.'], 404);
+        }
+
+        if ($clientRequest->getClient() !== $client) {
+            return $this->json(['error' => 'Accès refusé.'], 403);
+        }
+
+        return $clientRequest;
+    }
+
+    #[Route('/api/client/requests/{id}/cancel', methods: ['POST'])]
+    public function cancelRequest(string $id, #[CurrentUser] User $client, EntityManagerInterface $em): JsonResponse
+    {
+        $result = $this->findOwnedRequest($id, $client, $em);
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+
+        $result->setStatus(RequestStatus::Cancelled);
+        $em->flush();
+
+        return $this->json(null, 200);
+    }
+
+    #[Route('/api/client/requests/{id}/archive', methods: ['POST'])]
+    public function archiveRequest(string $id, #[CurrentUser] User $client, EntityManagerInterface $em): JsonResponse
+    {
+        $result = $this->findOwnedRequest($id, $client, $em);
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+
+        $result->setStatus(RequestStatus::Archived);
+        $em->flush();
+
+        return $this->json(null, 200);
+    }
+
+    #[Route('/api/client/requests/{id}/duplicate', methods: ['POST'])]
+    public function duplicateRequest(string $id, #[CurrentUser] User $client, EntityManagerInterface $em): JsonResponse
+    {
+        $result = $this->findOwnedRequest($id, $client, $em);
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+
+        $duplicate = $result->duplicate();
+        $em->persist($duplicate);
+        $em->flush();
+
+        return $this->json(['id' => $duplicate->getId()->toRfc4122()], 201);
     }
 }

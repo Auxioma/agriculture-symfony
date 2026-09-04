@@ -672,4 +672,32 @@ class ClientRequest
 
         return $this;
     }
+
+    public function duplicate(): self
+    {
+        $copy = new self();
+        $copy->setClient($this->client);
+        $copy->setNeedType($this->needType);
+        $copy->setStatus(RequestStatus::Sent);
+        $copy->setCategory($this->category);
+        $copy->setProduct($this->product);
+        $copy->setCustomProduct($this->customProduct);
+        $copy->setQuantity($this->quantity);
+        $copy->setUnit($this->unit);
+        $copy->setBudgetMin($this->budgetMin);
+        $copy->setBudgetMax($this->budgetMax);
+        $copy->setCurrency($this->currency);
+        $copy->setDesiredDate($this->desiredDate);
+        $copy->setUrgencyLevel($this->urgencyLevel);
+        $copy->setCountry($this->country);
+        $copy->setCity($this->city);
+        $copy->setPostalCode($this->postalCode);
+        $copy->setLocation($this->location);
+        $copy->setRadiusKm($this->radiusKm);
+        $copy->setPickupWanted($this->pickupWanted);
+        $copy->setDeliveryWanted($this->deliveryWanted);
+        $copy->setMessage($this->message);
+
+        return $copy;
+    }
 }

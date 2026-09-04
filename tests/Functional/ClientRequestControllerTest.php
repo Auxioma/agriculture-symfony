@@ -196,4 +196,64 @@ final class ClientRequestControllerTest extends ApiTestCase
 
         self::assertResponseStatusCodeSame(404);
     }
+
+    public function testCancelRequestUpdatesStatus(): void
+    {
+        $token = $this->registerClientAndLogin();
+        $this->client->request('POST', '/api/requests', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['needType' => 'price_request', 'customProduct' => 'À annuler']));
+        $created = json_decode($this->client->getResponse()->getContent(), true);
+
+        $this->client->request('POST', '/api/client/requests/'.$created['id'].'/cancel', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        self::assertResponseIsSuccessful();
+
+        $row = $this->em->getConnection()->fetchAssociative('SELECT status FROM matching.client_requests WHERE id = :id', ['id' => $created['id']]);
+        self::assertSame('cancelled', $row['status']);
+    }
+
+    public function testCancelRequestRejectsAccessToAnotherClientsRequest(): void
+    {
+        $tokenA = $this->registerClientAndLogin('clienta');
+        $this->client->request('POST', '/api/requests', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$tokenA], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Privée']));
+        $created = json_decode($this->client->getResponse()->getContent(), true);
+
+        $tokenB = $this->registerClientAndLogin('clientb');
+        $this->client->request('POST', '/api/client/requests/'.$created['id'].'/cancel', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$tokenB]);
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testArchiveRequestUpdatesStatus(): void
+    {
+        $token = $this->registerClientAndLogin();
+        $this->client->request('POST', '/api/requests', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['needType' => 'price_request', 'customProduct' => 'À archiver']));
+        $created = json_decode($this->client->getResponse()->getContent(), true);
+
+        $this->client->request('POST', '/api/client/requests/'.$created['id'].'/archive', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        self::assertResponseIsSuccessful();
+
+        $row = $this->em->getConnection()->fetchAssociative('SELECT status FROM matching.client_requests WHERE id = :id', ['id' => $created['id']]);
+        self::assertSame('archived', $row['status']);
+    }
+
+    public function testDuplicateRequestCreatesANewOneWithSentStatus(): void
+    {
+        $token = $this->registerClientAndLogin();
+        $this->client->request('POST', '/api/requests', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Original', 'message' => 'Message original']));
+        $original = json_decode($this->client->getResponse()->getContent(), true);
+
+        $this->client->request('POST', '/api/client/requests/'.$original['id'].'/duplicate', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        self::assertResponseStatusCodeSame(201);
+        $duplicate = json_decode($this->client->getResponse()->getContent(), true);
+
+        self::assertNotSame($original['id'], $duplicate['id']);
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT status, message, custom_product FROM matching.client_requests WHERE id = :id',
+            ['id' => $duplicate['id']]
+        );
+        self::assertSame('sent', $row['status']);
+        self::assertSame('Message original', $row['message']);
+        self::assertSame('Original', $row['custom_product']);
+    }
+    
 }
