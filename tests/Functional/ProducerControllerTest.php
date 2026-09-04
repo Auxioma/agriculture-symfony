@@ -1,9 +1,14 @@
 <?php
 
+namespace App\Tests\Functional;
+
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
-
+/**
+ * Teste GET /api/producers et GET /api/producers/{id} (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §20.3, round 1).
+ * Routes publiques : aucun header Authorization envoyé dans ces tests.
+ */
 final class ProducerControllerTest extends ApiTestCase
 {
     use EntityFactoryTrait;
@@ -11,9 +16,11 @@ final class ProducerControllerTest extends ApiTestCase
     public function testListProducersReturnsOnlyActiveOnes(): void
     {
         $country = $this->makeCountry();
-        $active = $this->makeProducerProfile($this->makeUser('active'), $country);
+        // * farmName distinct pour chaque producteur : makeProducerProfile() a la même valeur par défaut pour
+        // * les deux sinon, ce qui rend assertNotContains() ci-dessous impossible à vérifier correctement.
+        $active = $this->makeProducerProfile($this->makeUser('active'), $country, farmName: 'Ferme Active');
         $active->setIsActive(true);
-        $inactive = $this->makeProducerProfile($this->makeUser('inactive'), $country);
+        $inactive = $this->makeProducerProfile($this->makeUser('inactive'), $country, farmName: 'Ferme Inactive');
         $inactive->setIsActive(false);
         $this->em->flush();
 

@@ -91,14 +91,17 @@ trait EntityFactoryTrait
         return $user;
     }
 
+    // * farmName paramétrable (comme makeCategory()/makeProduct()) : nécessaire dès qu'un test doit
+    // * distinguer plusieurs producteurs par leur nom (ex. un actif et un inactif dans la même liste).
     protected function makeProducerProfile(
         User $owner,
         Country $country,
         VerificationStatus $verificationStatus = VerificationStatus::Verified,
+        string $farmName = 'Ferme Test',
     ): ProducerProfile {
         $producer = new ProducerProfile();
         $producer->setOwner($owner);
-        $producer->setFarmName('Ferme Test');
+        $producer->setFarmName($farmName);
         $producer->setSlug('ferme-test-'.bin2hex(random_bytes(6)));
         $producer->setCountry($country);
         $producer->setVerificationStatus($verificationStatus);
