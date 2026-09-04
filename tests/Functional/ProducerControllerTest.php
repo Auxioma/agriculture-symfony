@@ -59,4 +59,5 @@ final class ProducerControllerTest extends ApiTestCase
 
         self::assertResponseStatusCodeSame(404);
     }
+    
 }
