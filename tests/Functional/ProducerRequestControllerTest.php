@@ -3,6 +3,7 @@
 namespace App\Tests\Functional;
 
 use App\Entity\Identity\User;
+use App\Entity\Producer\ProducerProfile;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
@@ -100,7 +101,15 @@ final class ProducerRequestControllerTest extends ApiTestCase
         ]));
         $producerToken = json_decode($this->client->getResponse()->getContent(), true)['token'];
 
-        return [$requestId, $producerToken];
+        // ! Les deux requêtes HTTP ci-dessus déclenchent un reset automatique de l'EntityManager entre
+        // ! chaque requête (Symfony vide son identity map après chaque requête du client de test, pour
+        // ! simuler l'isolation d'une vraie requête HTTP en production). $producer, persisté avant ces
+        // ! requêtes, n'est donc plus "managed" du point de vue de $this->em : on le recharge pour repartir
+        // ! avec une entité fraîche, sinon un persist() ultérieur qui le référence (ex. makeActiveSubscription)
+        // ! plante avec "A new entity was found through the relationship...".
+        $producer = $this->em->getRepository(ProducerProfile::class)->find($producer->getId());
+
+        return [$requestId, $producerToken, $producer];
     }
 
     public function testGetRequestDetailForProducerReturnsData(): void
@@ -144,5 +153,68 @@ final class ProducerRequestControllerTest extends ApiTestCase
         $this->client->request('GET', '/api/producer/requests/'.$unmatchedRequestId, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$producerToken]);
 
         self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testReplyToRequestSucceedsWhenProducerHasFeature(): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$producerToken,
+        ], content: json_encode(['replyText' => 'Oui disponible', 'priceAmount' => '12.50']));
+
+        self::assertResponseStatusCodeSame(201);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT status, reply_text FROM matching.producer_replies WHERE id = :id',
+            ['id' => $data['id']]
+        );
+        self::assertSame('sent', $row['status']);
+        self::assertSame('Oui disponible', $row['reply_text']);
+    }
+
+    public function testReplyToRequestRejectsProducerWithoutFeature(): void
+    {
+        [$requestId, $producerToken] = $this->setUpMatchedRequestAndProducer();
+        // * Pas d'abonnement du tout : producer_has_feature() doit renvoyer false.
+
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$producerToken,
+        ], content: json_encode(['replyText' => 'Oui disponible']));
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testReplyToRequestRejectsEmptyPayload(): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$producerToken,
+        ], content: json_encode([]));
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testDeclineRequestSucceedsWithoutFeatureCheck(): void
+    {
+        [$requestId, $producerToken] = $this->setUpMatchedRequestAndProducer();
+        // * Pas d'abonnement : decline() ne vérifie pas producer_has_feature(), ça doit quand même réussir.
+
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/decline', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$producerToken]);
+
+        self::assertResponseStatusCodeSame(201);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+
+        $row = $this->em->getConnection()->fetchAssociative('SELECT status FROM matching.producer_replies WHERE id = :id', ['id' => $data['id']]);
+        self::assertSame('declined', $row['status']);
     }
 }
