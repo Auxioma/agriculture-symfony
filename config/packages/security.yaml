@@ -51,6 +51,7 @@ security:
     access_control:
         - { path: ^/api/auth/(login|register-client|register-producer|forgot-password|reset-password), roles: PUBLIC_ACCESS }
         - { path: ^/api/(categories|products|labels), roles: PUBLIC_ACCESS }
+        - { path: ^/api/producers, roles: PUBLIC_ACCESS }
         - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
         # - { path: ^/admin, roles: ROLE_ADMIN }
         # - { path: ^/profile, roles: ROLE_USER }
