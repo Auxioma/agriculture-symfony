@@ -9,6 +9,7 @@ use App\Entity\Identity\User;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\ProducerReply;
 use App\Entity\Matching\RequestMatch;
+use App\Entity\Messaging\Conversation;
 use App\Enum\ReplyStatus;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -137,6 +138,18 @@ final class ProducerRequestController extends AbstractController
                 return $this->json(['error' => 'Devise inconnue.'], 422);
             }
             $reply->setCurrency($currency);
+        }
+
+        // ! Le cahier fonctionnel n'expose aucune route de création dédiée pour les conversations :
+        // ! elle s'ouvre implicitement dès la première réponse du producteur (cf. §6.2, statut "Conversation
+        // ! ouverte" distinct de "Réponses reçues"), pour être immédiatement visible via GET /api/conversations.
+        $conversation = $em->getRepository(Conversation::class)->findOneBy(['request' => $clientRequest, 'producer' => $producer]);
+        if ($conversation === null) {
+            $conversation = new Conversation();
+            $conversation->setRequest($clientRequest);
+            $conversation->setProducer($producer);
+            $conversation->setClient($clientRequest->getClient());
+            $em->persist($conversation);
         }
 
         $em->persist($reply);

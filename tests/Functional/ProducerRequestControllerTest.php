@@ -8,8 +8,9 @@ use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
 /**
- * Teste GET /api/producer/requests/available et GET /api/producer/requests/{id} (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §20.5).
- * reply/decline suivront dans un round séparé.
+ * Teste les 4 routes de §20.5 (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf) : GET available, GET {id},
+ * POST {id}/reply, POST {id}/decline. Couvre aussi l'ouverture implicite de conversation déclenchée par reply()
+ * la vérification complète de la messagerie elle-même vit dans ConversationControllerTest.php.
  */
 
 final class ProducerRequestControllerTest extends ApiTestCase
@@ -175,6 +176,27 @@ final class ProducerRequestControllerTest extends ApiTestCase
         );
         self::assertSame('sent', $row['status']);
         self::assertSame('Oui disponible', $row['reply_text']);
+    }
+
+    public function testReplyToRequestOpensConversation(): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$producerToken,
+        ], content: json_encode(['replyText' => 'Oui disponible']));
+        self::assertResponseStatusCodeSame(201);
+
+        // * pas de route de création dédiée, la conversation doit exister dès la première réponse
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT status FROM messaging.conversations WHERE request_id = :requestId',
+            ['requestId' => $requestId]
+        );
+        self::assertNotFalse($row);
+        self::assertSame('open', $row['status']);
     }
 
     public function testReplyToRequestRejectsProducerWithoutFeature(): void
