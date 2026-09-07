@@ -10,7 +10,7 @@
  * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
  */
 
-namespace App\Tests\Functional;
+namespace App\Tests\Functional\Database;
 
 use App\Entity\Identity\User;
 use App\Tests\DatabaseTestCase;

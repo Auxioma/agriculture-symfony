@@ -1,0 +1,20 @@
+flysystem:
+    storages:
+        producer_media.storage:
+            adapter: 'aws'
+            options:
+                client: 'Aws\S3\S3Client'
+                bucket: '%env(STORAGE_BUCKET)%'
+                prefix: 'producer-media'
+            public_url: '%env(STORAGE_PUBLIC_URL)%'
+
+when@test:
+    flysystem:
+        storages:
+            # ! Pas de vrai MinIO dans les tests automatisés : adaptateur local (écrit dans var/storage/test,
+            # ! gitignoré) pour rester rapide et déterministe, même pattern que FakePaymentGateway pour Stripe.
+            producer_media.storage:
+                adapter: 'local'
+                options:
+                    directory: '%kernel.project_dir%/var/storage/test'
+                public_url: 'http://localhost/test-storage'

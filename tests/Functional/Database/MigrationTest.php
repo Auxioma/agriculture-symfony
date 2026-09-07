@@ -10,7 +10,7 @@
  * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
  */
 
-namespace App\Tests\Functional;
+namespace App\Tests\Functional\Database;
 
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Tools\DsnParser;
@@ -53,7 +53,7 @@ final class MigrationTest extends TestCase
 
         $process = new Process(
             ['php', '-d', 'variables_order=EGPCS', 'bin/console', 'doctrine:migrations:migrate', '--no-interaction'],
-            \dirname(__DIR__, 2),
+            \dirname(__DIR__, 3),
             $env
         );
 

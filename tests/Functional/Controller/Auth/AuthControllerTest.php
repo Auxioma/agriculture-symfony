@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Tests\Functional;
+namespace App\Tests\Functional\Controller\Auth;
 
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;

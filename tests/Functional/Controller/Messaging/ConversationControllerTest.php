@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Tests\Functional;
+namespace App\Tests\Functional\Controller\Messaging;
 
 use App\Entity\Identity\User;
 use App\Entity\Messaging\BlockedUser;

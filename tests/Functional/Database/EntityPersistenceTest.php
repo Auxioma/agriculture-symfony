@@ -10,7 +10,7 @@
  * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
  */
 
-namespace App\Tests\Functional;
+namespace App\Tests\Functional\Database;
 
 use App\Entity\Catalog\CategoryTranslation;
 use App\Entity\Catalog\Country;

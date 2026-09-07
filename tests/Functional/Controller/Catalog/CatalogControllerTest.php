@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Tests\Functional;
+namespace App\Tests\Functional\Controller\Catalog;
 
 use App\Entity\Catalog\Label;
 use App\Tests\ApiTestCase;

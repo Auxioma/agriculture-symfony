@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Tests\Functional;
+namespace App\Tests\Functional\Controller\Producer;
 
 use App\Entity\Identity\User;
 use App\Tests\ApiTestCase;

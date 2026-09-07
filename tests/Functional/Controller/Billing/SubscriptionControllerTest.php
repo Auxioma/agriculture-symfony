@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Tests\Functional;
+namespace App\Tests\Functional\Controller\Billing;
 
 use App\Entity\Billing\Invoice;
 use App\Entity\Catalog\Country;
