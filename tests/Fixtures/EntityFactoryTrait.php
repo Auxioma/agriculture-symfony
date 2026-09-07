@@ -132,11 +132,13 @@ trait EntityFactoryTrait
         $plan->setCode('plan-'.bin2hex(random_bytes(6)));
         $plan->setName('Basic');
         $plan->setFeatures($features);
+        $plan->setIsActive(true);
         $this->em->persist($plan);
 
         $planPrice = new PlanPrice();
         $planPrice->setPlan($plan);
         $planPrice->setBillingCycle(BillingCycle::Monthly);
+        $planPrice->setIsActive(true);
         $this->em->persist($planPrice);
 
         $subscription = new Subscription();
