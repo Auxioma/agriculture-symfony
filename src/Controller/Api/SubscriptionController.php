@@ -2,15 +2,19 @@
 
 namespace App\Controller\Api;
 
+use App\Dto\Subscription\ChangePlanRequest;
+use App\Dto\Subscription\CheckoutRequest;
 use App\Entity\Billing\Invoice;
 use App\Entity\Billing\PlanPrice;
 use App\Entity\Billing\Subscription;
 use App\Entity\Billing\SubscriptionPlan;
 use App\Entity\Identity\User;
 use App\Enum\SubscriptionStatus;
+use App\Service\Payment\PaymentGatewayInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 
@@ -126,5 +130,72 @@ final class SubscriptionController extends AbstractController
         $em->flush();
 
         return $this->json(null, 200);
+    }
+
+
+    #[Route('/api/subscription/checkout', methods: ['POST'])]
+    public function checkout(
+        #[MapRequestPayload] CheckoutRequest $request,
+        #[CurrentUser] User $user,
+        EntityManagerInterface $em,
+        PaymentGatewayInterface $paymentGateway,
+    ): JsonResponse {
+        $producer = $user->getProducerProfile();
+        if ($producer === null) {
+            return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
+        }
+
+        $planPrice = $em->find(PlanPrice::class, $request->planPriceId);
+        if ($planPrice === null || !$planPrice->isActive() || $planPrice->getProviderPriceId() === null) {
+            return $this->json(['error' => 'Offre inconnue.'], 422);
+        }
+
+        $existing = $em->getRepository(Subscription::class)->findOneBy(['producer' => $producer, 'status' => SubscriptionStatus::Active]);
+        if ($existing !== null) {
+            return $this->json(['error' => 'Un abonnement actif existe déjà -- utilisez change-plan.'], 409);
+        }
+
+        $checkoutUrl = $paymentGateway->createCheckoutSession(
+            priceId: $planPrice->getProviderPriceId(),
+            customerEmail: $user->getEmail(),
+            metadata: ['producer_id' => $producer->getId()->toRfc4122()],
+            successUrl: 'https://app.trouvemoi.com/abonnement/succes?session_id={CHECKOUT_SESSION_ID}',
+            cancelUrl: 'https://app.trouvemoi.com/abonnement/annule',
+        );
+
+        return $this->json(['checkoutUrl' => $checkoutUrl], 201);
+    }
+
+    #[Route('/api/subscription/change-plan', methods: ['POST'])]
+    public function changePlan(
+        #[MapRequestPayload] ChangePlanRequest $request,
+        #[CurrentUser] User $user,
+        EntityManagerInterface $em,
+        PaymentGatewayInterface $paymentGateway,
+    ): JsonResponse {
+        $producer = $user->getProducerProfile();
+        if ($producer === null) {
+            return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
+        }
+
+        $subscription = $em->getRepository(Subscription::class)->findOneBy(['producer' => $producer, 'status' => SubscriptionStatus::Active]);
+        if ($subscription === null) {
+            return $this->json(['error' => 'Aucun abonnement actif.'], 404);
+        }
+        if ($subscription->getProviderSubscriptionId() === null) {
+            return $this->json(['error' => 'Abonnement non synchronisé avec Stripe.'], 409);
+        }
+
+        $newPlanPrice = $em->find(PlanPrice::class, $request->planPriceId);
+        if ($newPlanPrice === null || !$newPlanPrice->isActive() || $newPlanPrice->getProviderPriceId() === null) {
+            return $this->json(['error' => 'Offre inconnue.'], 422);
+        }
+
+        $paymentGateway->updateSubscriptionPrice($subscription->getProviderSubscriptionId(), $newPlanPrice->getProviderPriceId());
+
+        // ! On ne touche pas $subscription->planPrice ici : la source de vérité reste le webhook
+        // ! customer.subscription.updated, qui confirmera le changement effectif (proration, échec de
+        // ! paiement...) avant de le refléter en local.
+        return $this->json(null, 202);
     }
 }

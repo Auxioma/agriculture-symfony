@@ -10,10 +10,11 @@ use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
 /**
- * Teste les 4 routes non-paiement de §20.7 Abonnements (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf) :
+ * Teste les 4 routes non-paiement de Abonnements (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf) :
  * GET /api/subscription/plans (public), GET .../current, GET .../invoices, POST .../cancel.
  * checkout et change-plan sont hors scope de ce round -- ils attendent l'intégration Stripe.
  */
+
 final class SubscriptionControllerTest extends ApiTestCase
 {
     use EntityFactoryTrait;

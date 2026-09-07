@@ -53,6 +53,7 @@ security:
         - { path: ^/api/(categories|products|labels), roles: PUBLIC_ACCESS }
         - { path: ^/api/producers, roles: PUBLIC_ACCESS }
         - { path: ^/api/subscription/plans, roles: PUBLIC_ACCESS }
+        - { path: ^/api/webhooks/stripe, roles: PUBLIC_ACCESS }
         - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
         # - { path: ^/admin, roles: ROLE_ADMIN }
         # - { path: ^/profile, roles: ROLE_USER }
