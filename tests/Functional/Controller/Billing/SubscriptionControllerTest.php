@@ -3,16 +3,21 @@
 namespace App\Tests\Functional\Controller\Billing;
 
 use App\Entity\Billing\Invoice;
+use App\Entity\Billing\PlanPrice;
+use App\Entity\Billing\SubscriptionPlan;
 use App\Entity\Catalog\Country;
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerProfile;
+use App\Enum\BillingCycle;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
 /**
- * Teste les 4 routes non-paiement de Abonnements (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf) :
- * GET /api/subscription/plans (public), GET .../current, GET .../invoices, POST .../cancel.
- * checkout et change-plan sont hors scope de ce round -- ils attendent l'intégration Stripe.
+ * Teste les 6 routes de §20.7 Abonnements (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf) :
+ * GET /api/subscription/plans (public), GET .../current, GET .../invoices, POST .../cancel, .../checkout,
+ * .../change-plan. checkout/change-plan utilisent FakePaymentGateway (config/services.yaml, bloc when@test) --
+ * aucun appel Stripe réel ici ; le flux réel a été validé manuellement (cf. StripeWebhookControllerTest pour
+ * la partie webhook).
  */
 
 final class SubscriptionControllerTest extends ApiTestCase
@@ -47,6 +52,26 @@ final class SubscriptionControllerTest extends ApiTestCase
         $producer = $this->em->getRepository(ProducerProfile::class)->find($producer->getId());
 
         return [$token, $producer];
+    }
+
+    // * providerPriceId paramétrable : indispensable pour checkout()/changePlan(), qui rejettent tout
+    // * PlanPrice sans correspondance Stripe (cf. SubscriptionController::checkout()).
+    private function makePlanPriceWithProviderId(string $providerPriceId): PlanPrice
+    {
+        $plan = new SubscriptionPlan();
+        $plan->setCode('plan-'.bin2hex(random_bytes(6)));
+        $plan->setName('Plan test');
+        $plan->setIsActive(true);
+        $this->em->persist($plan);
+
+        $planPrice = new PlanPrice();
+        $planPrice->setPlan($plan);
+        $planPrice->setBillingCycle(BillingCycle::Monthly);
+        $planPrice->setProviderPriceId($providerPriceId);
+        $planPrice->setIsActive(true);
+        $this->em->persist($planPrice);
+
+        return $planPrice;
     }
 
     public function testListPlansReturnsOnlyActiveOnes(): void
@@ -176,5 +201,111 @@ final class SubscriptionControllerTest extends ApiTestCase
         $this->client->request('POST', '/api/subscription/cancel', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
 
         self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testCheckoutCreatesSessionAndReturnsUrl(): void
+    {
+        [$token] = $this->registerProducerAndLogin();
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_checkout');
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/subscription/checkout', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => $planPrice->getId()->toRfc4122()]));
+
+        self::assertResponseStatusCodeSame(201);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        // * URL fixe renvoyée par FakePaymentGateway (config/services.yaml, bloc when@test) -- confirme que
+        // * le contrôleur appelle bien PaymentGatewayInterface plutôt que le vrai StripeClient.
+        self::assertSame('https://checkout.stripe.test/fake-session', $data['checkoutUrl']);
+    }
+
+    public function testCheckoutRejectsWhenAlreadyActive(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $this->makeActiveSubscription($producer);
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_checkout_2');
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/subscription/checkout', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => $planPrice->getId()->toRfc4122()]));
+
+        self::assertResponseStatusCodeSame(409);
+    }
+
+    public function testCheckoutRejectsUnknownPlanPrice(): void
+    {
+        [$token] = $this->registerProducerAndLogin();
+
+        $this->client->request('POST', '/api/subscription/checkout', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => \Symfony\Component\Uid\Uuid::v4()->toRfc4122()]));
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testCheckoutRejectsAccountWithoutProducerProfile(): void
+    {
+        $token = $this->registerClientAndLogin();
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_checkout_3');
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/subscription/checkout', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => $planPrice->getId()->toRfc4122()]));
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testChangePlanSucceeds(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $subscription = $this->makeActiveSubscription($producer);
+        $subscription->setProviderSubscriptionId('sub_test_changeplan');
+        $newPlanPrice = $this->makePlanPriceWithProviderId('price_test_changeplan_new');
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/subscription/change-plan', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => $newPlanPrice->getId()->toRfc4122()]));
+
+        self::assertResponseStatusCodeSame(202);
+    }
+
+    public function testChangePlanRejectsWhenNoActiveSubscription(): void
+    {
+        [$token] = $this->registerProducerAndLogin();
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_changeplan_2');
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/subscription/change-plan', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => $planPrice->getId()->toRfc4122()]));
+
+        self::assertResponseStatusCodeSame(404);
+    }
+
+    public function testChangePlanRejectsUnsynchronizedSubscription(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        // * makeActiveSubscription() ne définit jamais providerSubscriptionId -- exactement le cas
+        // * "abonnement jamais synchronisé avec Stripe" que ce test vérifie.
+        $this->makeActiveSubscription($producer);
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_changeplan_3');
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/subscription/change-plan', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => $planPrice->getId()->toRfc4122()]));
+
+        self::assertResponseStatusCodeSame(409);
     }
 }

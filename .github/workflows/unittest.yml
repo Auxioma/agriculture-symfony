@@ -44,6 +44,11 @@ jobs:
           tools: composer
           coverage: none
       - run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Générer la paire de clés JWT
+        # ! config/jwt/*.pem est gitignoré (jamais commité, même en test) : sans cette étape, la CI n'a
+        # ! aucun fichier de clé physique et tout ce qui dépend du firewall JWT échoue. La passphrase vient
+        # ! de .env.test (committé, valeur fixe dédiée aux tests -- voir .env.test pour le détail).
+        run: php bin/console lexik:jwt:generate-keypair --overwrite --no-interaction --env=test
       - name: Exécuter la migration sur la base de CI
         run: php bin/console doctrine:migrations:migrate --no-interaction
       - name: Lancer la suite de tests
