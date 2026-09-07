@@ -9,15 +9,16 @@ use App\Dto\Auth\ResetPasswordRequest;
 use App\Entity\Catalog\Country;
 use App\Entity\Identity\PasswordResetToken;
 use App\Entity\Identity\User;
+use App\Entity\Matching\ClientRequest;
 use App\Entity\Producer\ProducerProfile;
 use App\Repository\Identity\UserRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Email;
-use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
@@ -205,5 +206,64 @@ final class AuthController extends AbstractController
             'lastName' => $user->getLastName(),
             'roles' => $user->getRoles(),
         ]);
+    }
+
+    #[Route('/api/me/export', methods: ['GET'])]
+    public function exportMyData(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    {
+        $data = [
+            'user' => [
+                'id' => $user->getId()->toRfc4122(),
+                'email' => $user->getEmail(),
+                'firstName' => $user->getFirstName(),
+                'lastName' => $user->getLastName(),
+                'phone' => $user->getPhone(),
+                'locale' => $user->getLocale(),
+                'roles' => $user->getRoles(),
+                'createdAt' => $user->getCreatedAt()->format(DATE_ATOM),
+            ],
+        ];
+
+        $producer = $user->getProducerProfile();
+        if ($producer !== null) {
+            $data['producerProfile'] = [
+                'id' => $producer->getId()->toRfc4122(),
+                'farmName' => $producer->getFarmName(),
+                'slug' => $producer->getSlug(),
+                'description' => $producer->getDescription(),
+                'story' => $producer->getStory(),
+                'city' => $producer->getCity(),
+                'postalCode' => $producer->getPostalCode(),
+                'verificationStatus' => $producer->getVerificationStatus()->value,
+            ];
+        }
+
+        $clientRequests = $em->getRepository(ClientRequest::class)->findBy(['client' => $user]);
+        $data['clientRequests'] = array_map(
+            static fn (ClientRequest $r) => [
+                'id' => $r->getId()->toRfc4122(),
+                'needType' => $r->getNeedType()->value,
+                'status' => $r->getStatus()->value,
+                'customProduct' => $r->getCustomProduct(),
+                'message' => $r->getMessage(),
+                'createdAt' => $r->getCreatedAt()->format(DATE_ATOM),
+            ],
+            $clientRequests
+        );
+
+        return $this->json($data);
+    }
+
+    #[Route('/api/me', methods: ['DELETE'])]
+    public function deleteMyAccount(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    {
+        // ! identity.anonymize_user() existe et est testée depuis longtemps (migration + EntityPersistenceTest)
+        // ! mais n'était encore appelée par aucune route -- c'est ici qu'on la branche enfin.
+        $em->getConnection()->executeStatement(
+            'SELECT identity.anonymize_user(:userId)',
+            ['userId' => $user->getId()->toRfc4122()]
+        );
+
+        return $this->json(null, 204);
     }
 }
