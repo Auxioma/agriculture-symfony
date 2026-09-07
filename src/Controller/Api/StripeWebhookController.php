@@ -35,94 +35,135 @@ final class StripeWebhookController extends AbstractController
             return $this->json(['error' => 'Signature invalide.'], 400);
         }
 
-        // ! Idempotence : providerEventId est UNIQUE en base -- Stripe peut renvoyer le même événement
-        // ! plusieurs fois (retry sur timeout de notre côté), on ne le traite qu'une seule fois.
-        if ($em->getRepository(WebhookEvent::class)->findOneBy(['providerEventId' => $event->id]) !== null) {
+        // ! Idempotence : providerEventId est UNIQUE en base. Un événement déjà traité avec succès n'est
+        // ! jamais rejoué (Stripe peut renvoyer le même événement plusieurs fois). Un événement resté en
+        // ! échec, en revanche, est retenté -- voir plus bas pourquoi.
+        $webhookEvent = $em->getRepository(WebhookEvent::class)->findOneBy(['providerEventId' => $event->id]);
+        if ($webhookEvent !== null && $webhookEvent->getStatus() === 'processed') {
             return $this->json(null, 200);
         }
 
-        match ($event->type) {
+        $handled = match ($event->type) {
             'customer.subscription.created' => $this->handleSubscriptionCreated($event, $em),
             'customer.subscription.updated' => $this->handleSubscriptionUpdated($event, $em),
             'customer.subscription.deleted' => $this->handleSubscriptionDeleted($event, $em),
             'invoice.paid' => $this->handleInvoicePaid($event, $em),
-            default => null,
+            default => true,
         };
 
-        $webhookEvent = new WebhookEvent();
+        $webhookEvent ??= new WebhookEvent();
         $webhookEvent->setProviderEventId($event->id);
         $webhookEvent->setEventType($event->type);
         $webhookEvent->setPayload($event->toArray());
-        $webhookEvent->setStatus('processed');
-        $webhookEvent->setReceivedAt(new \DateTimeImmutable());
-        $webhookEvent->setProcessedAt(new \DateTimeImmutable());
+        $webhookEvent->setStatus($handled ? 'processed' : 'failed');
+        $webhookEvent->setReceivedAt($webhookEvent->getReceivedAt() ?? new \DateTimeImmutable());
+        if ($handled) {
+            $webhookEvent->setProcessedAt(new \DateTimeImmutable());
+        }
         $em->persist($webhookEvent);
         $em->flush();
 
-        return $this->json(null, 200);
+        // ! Cahier devops : "Webhooks sécurisés, idempotence, logs, alertes échec paiement" et "Webhooks
+        // ! paiement -- échecs répétés -- Haute" supposent que Stripe puisse effectivement réessayer. On ne
+        // ! renvoie donc pas 200 quand la cible (Subscription) n'existe pas encore -- typiquement quand
+        // ! invoice.paid arrive avant customer.subscription.created, Stripe ne garantissant pas l'ordre de
+        // ! livraison des webhooks (confirmé en test manuel). Stripe réessaiera avec un backoff croissant.
+        return $handled ? $this->json(null, 200) : $this->json(['error' => 'Cible introuvable, nouvelle tentative attendue.'], 409);
     }
 
     // * customer.subscription.created (pas checkout.session.completed) : l'objet Subscription Stripe
     // * porte déjà metadata.producer_id (cf. subscription_data.metadata dans StripeGateway) ET le prix
     // * souscrit -- pas besoin de recorréler via la session ou d'expand des line_items.
-    private function handleSubscriptionCreated(Event $event, EntityManagerInterface $em): void
+    // * Retourne toujours true : producer_id absent ou planPrice inconnu sont des problèmes permanents
+    // * (mauvaise config, prix jamais synchronisé) -- retenter ne les résoudra jamais, contrairement au cas
+    // * "cible pas encore créée" des trois autres handlers.
+    private function handleSubscriptionCreated(Event $event, EntityManagerInterface $em): bool
     {
         $stripeSubscription = $event->data->object;
         $producerId = $stripeSubscription->metadata['producer_id'] ?? null;
         if ($producerId === null) {
-            return;
+            return true;
         }
 
         $producer = $em->find(ProducerProfile::class, $producerId);
-        $priceId = $stripeSubscription->items->data[0]->price->id ?? null;
+        $item = $stripeSubscription->items->data[0] ?? null;
+        $priceId = $item->price->id ?? null;
         $planPrice = $priceId !== null ? $em->getRepository(PlanPrice::class)->findOneBy(['providerPriceId' => $priceId]) : null;
-        if ($producer === null || $planPrice === null) {
-            return;
+        if ($producer === null || $planPrice === null || $item === null) {
+            return true;
         }
 
         $subscription = new Subscription();
         $subscription->setProducer($producer);
         $subscription->setPlanPrice($planPrice);
         $subscription->setStatus(SubscriptionStatus::Active);
-        $subscription->setCurrentPeriodStart((new \DateTimeImmutable())->setTimestamp($stripeSubscription->current_period_start));
-        $subscription->setCurrentPeriodEnd((new \DateTimeImmutable())->setTimestamp($stripeSubscription->current_period_end));
+        // ! Depuis l'API version 2026-02-25.clover, current_period_start/end n'existent plus sur l'objet
+        // ! Subscription lui-même mais sur chaque subscription_item (confirmé via un vrai payload webhook
+        // ! reçu en test manuel -- une souscription peut avoir plusieurs lignes facturées séparément).
+        $subscription->setCurrentPeriodStart((new \DateTimeImmutable())->setTimestamp($item->current_period_start));
+        $subscription->setCurrentPeriodEnd((new \DateTimeImmutable())->setTimestamp($item->current_period_end));
         $subscription->setProviderSubscriptionId($stripeSubscription->id);
         $em->persist($subscription);
+
+        return true;
     }
 
-    private function handleSubscriptionUpdated(Event $event, EntityManagerInterface $em): void
+    // * Retourne false (retry) si la Subscription locale n'existe pas encore : customer.subscription.created
+    // * n'a peut-être pas fini d'être traité, Stripe ne garantissant pas l'ordre de livraison des webhooks.
+    private function handleSubscriptionUpdated(Event $event, EntityManagerInterface $em): bool
     {
         $stripeSubscription = $event->data->object;
         $subscription = $em->getRepository(Subscription::class)->findOneBy(['providerSubscriptionId' => $stripeSubscription->id]);
         if ($subscription === null) {
-            return;
+            return false;
         }
 
-        $subscription->setCurrentPeriodStart((new \DateTimeImmutable())->setTimestamp($stripeSubscription->current_period_start));
-        $subscription->setCurrentPeriodEnd((new \DateTimeImmutable())->setTimestamp($stripeSubscription->current_period_end));
+        $item = $stripeSubscription->items->data[0] ?? null;
+        if ($item !== null) {
+            $subscription->setCurrentPeriodStart((new \DateTimeImmutable())->setTimestamp($item->current_period_start));
+            $subscription->setCurrentPeriodEnd((new \DateTimeImmutable())->setTimestamp($item->current_period_end));
+        }
         $subscription->setCancelAtPeriodEnd((bool) $stripeSubscription->cancel_at_period_end);
 
-        $priceId = $stripeSubscription->items->data[0]->price->id ?? null;
+        $priceId = $item->price->id ?? null;
         $planPrice = $priceId !== null ? $em->getRepository(PlanPrice::class)->findOneBy(['providerPriceId' => $priceId]) : null;
         if ($planPrice !== null) {
             $subscription->setPlanPrice($planPrice);
         }
+
+        return true;
     }
 
-    private function handleSubscriptionDeleted(Event $event, EntityManagerInterface $em): void
+    private function handleSubscriptionDeleted(Event $event, EntityManagerInterface $em): bool
     {
         $stripeSubscription = $event->data->object;
         $subscription = $em->getRepository(Subscription::class)->findOneBy(['providerSubscriptionId' => $stripeSubscription->id]);
-        $subscription?->setStatus(SubscriptionStatus::Cancelled);
+        if ($subscription === null) {
+            return false;
+        }
+        $subscription->setStatus(SubscriptionStatus::Cancelled);
+
+        return true;
     }
 
     // * Alimente réellement GET /api/subscription/invoices (round 1), qui sinon resterait toujours vide.
-    private function handleInvoicePaid(Event $event, EntityManagerInterface $em): void
+    // * Retourne false (retry) uniquement si providerSubscriptionId est présent mais pas encore trouvable en
+    // * local -- confirmé en test manuel : invoice.paid est arrivé une seconde avant customer.subscription.created.
+    // * Si providerSubscriptionId est absent (facture hors abonnement), pas d'erreur transitoire à corriger.
+    private function handleInvoicePaid(Event $event, EntityManagerInterface $em): bool
     {
         $stripeInvoice = $event->data->object;
-        $subscription = $em->getRepository(Subscription::class)->findOneBy(['providerSubscriptionId' => $stripeInvoice->subscription]);
+        // ! Depuis l'API version 2026-02-25.clover, invoice.subscription n'existe plus au niveau racine :
+        // ! la référence est nichée sous parent.subscription_details.subscription (confirmé via un vrai
+        // ! payload webhook reçu en test manuel).
+        $providerSubscriptionId = $stripeInvoice->parent->subscription_details->subscription ?? null;
+        if ($providerSubscriptionId === null) {
+            return true;
+        }
+
+        $subscription = $em->getRepository(Subscription::class)->findOneBy(['providerSubscriptionId' => $providerSubscriptionId]);
         if ($subscription === null) {
-            return;
+            return false;
         }
 
         $invoice = new Invoice();
@@ -134,6 +175,7 @@ final class StripeWebhookController extends AbstractController
         $invoice->setProviderInvoiceId($stripeInvoice->id);
         $invoice->setPaidAt(new \DateTimeImmutable());
         $em->persist($invoice);
+
+        return true;
     }
-    
 }
