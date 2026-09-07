@@ -7,11 +7,11 @@ use App\Entity\Messaging\BlockedUser;
 use App\Entity\Producer\ProducerProfile;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
- * Teste GET /api/conversations, GET /api/conversations/{id}, POST .../messages et POST .../report
- * (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §20.6, round 1). POST .../attachments est hors scope --
- * il attend l'architecture de stockage fichiers (S3/MinIO, cahier devops).
+ * Teste GET /api/conversations, GET /api/conversations/{id}, POST .../messages, POST .../report et
+ * POST .../attachments (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §20.6, rounds 1 et 2).
  */
 final class ConversationControllerTest extends ApiTestCase
 {
@@ -200,6 +200,90 @@ final class ConversationControllerTest extends ApiTestCase
             'CONTENT_TYPE' => 'application/json',
             'HTTP_AUTHORIZATION' => 'Bearer '.$tokenOther,
         ], content: json_encode(['reason' => 'peu importe']));
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testUploadAttachmentSucceedsAndAppearsWithSignedUrl(): void
+    {
+        [$conversationId, $tokenClient] = $this->setUpOpenConversation();
+
+        $file = new UploadedFile(__DIR__.'/../../../Fixtures/files/sample.jpg', 'sample.jpg', 'image/jpeg', null, true);
+
+        $this->client->request('POST', '/api/conversations/'.$conversationId.'/attachments', server: [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$tokenClient,
+        ], files: ['file' => $file], content: null);
+
+        self::assertResponseStatusCodeSame(201);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT file_name, mime_type FROM messaging.message_attachments WHERE id = :id',
+            ['id' => $data['attachmentId']]
+        );
+        self::assertNotFalse($row);
+        self::assertSame('sample.jpg', $row['file_name']);
+        self::assertSame('image/jpeg', $row['mime_type']);
+
+        // * fileUrl en base est une clé objet privée -- ce qui compte ici c'est qu'un GET renvoie bien une
+        // * URL exploitable (signée par FakeTemporaryUrlGenerator en test), pas une clé brute inutilisable.
+        $this->client->request('GET', '/api/conversations/'.$conversationId, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$tokenClient]);
+        self::assertResponseIsSuccessful();
+        $conversation = json_decode($this->client->getResponse()->getContent(), true);
+        $messageWithAttachment = end($conversation['messages']);
+        self::assertCount(1, $messageWithAttachment['attachments']);
+        self::assertSame('sample.jpg', $messageWithAttachment['attachments'][0]['fileName']);
+        self::assertStringStartsWith('https://attachments.test/', $messageWithAttachment['attachments'][0]['url']);
+    }
+
+    public function testUploadAttachmentRejectsUnsupportedMimeType(): void
+    {
+        [$conversationId, $tokenClient] = $this->setUpOpenConversation();
+
+        $file = new UploadedFile(__DIR__.'/../../../Fixtures/files/sample.txt', 'sample.txt', 'text/plain', null, true);
+
+        $this->client->request('POST', '/api/conversations/'.$conversationId.'/attachments', server: [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$tokenClient,
+        ], files: ['file' => $file], content: null);
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testUploadAttachmentRejectsNonParticipant(): void
+    {
+        [$conversationId] = $this->setUpOpenConversation();
+        $tokenOther = $this->registerClientAndLogin('other');
+        $file = new UploadedFile(__DIR__.'/../../../Fixtures/files/sample.jpg', 'sample.jpg', 'image/jpeg', null, true);
+
+        $this->client->request('POST', '/api/conversations/'.$conversationId.'/attachments', server: [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$tokenOther,
+        ], files: ['file' => $file], content: null);
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testUploadAttachmentRejectsWhenRecipientHasBlockedSender(): void
+    {
+        [$conversationId, $tokenClient, , $client] = $this->setUpOpenConversation();
+
+        $conversationRow = $this->em->getConnection()->fetchAssociative(
+            'SELECT producer_id FROM messaging.conversations WHERE id = :id',
+            ['id' => $conversationId]
+        );
+        $producer = $this->em->getRepository(ProducerProfile::class)->find($conversationRow['producer_id']);
+
+        $blockedUser = new BlockedUser();
+        $blockedUser->setBlocker($producer->getOwner());
+        $blockedUser->setBlocked($client);
+        $blockedUser->setCreatedAt(new \DateTimeImmutable());
+        $this->em->persist($blockedUser);
+        $this->em->flush();
+
+        $file = new UploadedFile(__DIR__.'/../../../Fixtures/files/sample.jpg', 'sample.jpg', 'image/jpeg', null, true);
+
+        $this->client->request('POST', '/api/conversations/'.$conversationId.'/attachments', server: [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$tokenClient,
+        ], files: ['file' => $file], content: null);
 
         self::assertResponseStatusCodeSame(403);
     }
