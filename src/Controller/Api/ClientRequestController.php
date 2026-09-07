@@ -10,7 +10,9 @@ use App\Entity\Catalog\Product;
 use App\Entity\Catalog\Unit;
 use App\Entity\Identity\User;
 use App\Entity\Matching\ClientRequest;
+use App\Entity\Matching\RequestMatch;
 use App\Enum\RequestStatus;
+use App\Service\Notification\NotificationService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -25,6 +27,7 @@ final class ClientRequestController extends AbstractController
         #[MapRequestPayload] CreateClientRequestRequest $request,
         #[CurrentUser] User $client,
         EntityManagerInterface $em,
+        NotificationService $notificationService,
     ): JsonResponse {
         if ($request->categoryId === null && $request->productId === null && $request->customProduct === null) {
             return $this->json(['error' => 'category, product ou customProduct est requis.'], 422);
@@ -104,6 +107,27 @@ final class ClientRequestController extends AbstractController
             'SELECT matching.populate_request_matches(:id)',
             ['id' => $clientRequest->getId()->toRfc4122()]
         );
+
+        $notificationService->notify(
+            $client,
+            'request_sent',
+            'Demande envoyée',
+            'Votre demande a bien été envoyée et est en cours de traitement.'
+        );
+
+        // * Notifie chaque producteur matché -- populate_request_matches() vient de créer les RequestMatch,
+        // * on les relit pour savoir à qui envoyer "Nouvelle demande pertinente" (§14.2).
+        $matches = $em->getRepository(RequestMatch::class)->findBy(['request' => $clientRequest]);
+        foreach ($matches as $match) {
+            $notificationService->notify(
+                $match->getProducer()->getOwner(),
+                'new_relevant_request',
+                'Nouvelle demande pertinente',
+                'Une nouvelle demande correspond à votre profil.'
+            );
+        }
+
+        $em->flush();
 
         return $this->json(['id' => $clientRequest->getId()->toRfc4122()], 201);
     }

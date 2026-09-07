@@ -8,6 +8,7 @@ use App\Entity\Billing\Subscription;
 use App\Entity\Billing\WebhookEvent;
 use App\Entity\Producer\ProducerProfile;
 use App\Enum\SubscriptionStatus;
+use App\Service\Notification\NotificationService;
 use Doctrine\ORM\EntityManagerInterface;
 use Stripe\Event;
 use Stripe\Exception\SignatureVerificationException;
@@ -27,7 +28,7 @@ final class StripeWebhookController extends AbstractController
     }
 
     #[Route('/api/webhooks/stripe', methods: ['POST'])]
-    public function handle(Request $request, EntityManagerInterface $em): JsonResponse
+    public function handle(Request $request, EntityManagerInterface $em, NotificationService $notificationService): JsonResponse
     {
         try {
             $event = Webhook::constructEvent($request->getContent(), $request->headers->get('Stripe-Signature', ''), $this->webhookSecret);
@@ -47,6 +48,7 @@ final class StripeWebhookController extends AbstractController
             'customer.subscription.created' => $this->handleSubscriptionCreated($event, $em),
             'customer.subscription.updated' => $this->handleSubscriptionUpdated($event, $em),
             'customer.subscription.deleted' => $this->handleSubscriptionDeleted($event, $em),
+            'invoice.payment_failed' => $this->handleInvoicePaymentFailed($event, $em, $notificationService),
             'invoice.paid' => $this->handleInvoicePaid($event, $em),
             default => true,
         };
@@ -175,6 +177,29 @@ final class StripeWebhookController extends AbstractController
         $invoice->setProviderInvoiceId($stripeInvoice->id);
         $invoice->setPaidAt(new \DateTimeImmutable());
         $em->persist($invoice);
+
+        return true;
+    }
+
+    private function handleInvoicePaymentFailed(Event $event, EntityManagerInterface $em, NotificationService $notificationService): bool
+    {
+        $stripeInvoice = $event->data->object;
+        $providerSubscriptionId = $stripeInvoice->parent->subscription_details->subscription ?? null;
+        if ($providerSubscriptionId === null) {
+            return true;
+        }
+
+        $subscription = $em->getRepository(Subscription::class)->findOneBy(['providerSubscriptionId' => $providerSubscriptionId]);
+        if ($subscription === null) {
+            return false;
+        }
+
+        $notificationService->notify(
+            $subscription->getProducer()->getOwner(),
+            'payment_failed',
+            'Paiement échoué',
+            'Le paiement de votre abonnement a échoué. Merci de vérifier votre moyen de paiement.'
+        );
 
         return true;
     }

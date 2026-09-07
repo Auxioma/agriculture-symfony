@@ -148,6 +148,30 @@ final class ConversationControllerTest extends ApiTestCase
         self::assertSame('conversation_open', $statusRow['status']);
     }
 
+    public function testSendMessageNotifiesOtherParty(): void
+    {
+        [$conversationId, $tokenClient] = $this->setUpOpenConversation();
+
+        // * Le client envoie le message : §14.2 "Nouveau message" doit notifier l'autre partie, le
+        // * producteur (propriétaire du profil lié à la conversation), pas l'expéditeur lui-même.
+        $producerOwnerId = $this->em->getConnection()->fetchOne(
+            'SELECT pp.owner_user_id FROM messaging.conversations c JOIN producer.producer_profiles pp ON pp.id = c.producer_id WHERE c.id = :id',
+            ['id' => $conversationId]
+        );
+
+        $this->client->request('POST', '/api/conversations/'.$conversationId.'/messages', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$tokenClient,
+        ], content: json_encode(['content' => 'Bonjour !']));
+        self::assertResponseStatusCodeSame(201);
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            "SELECT type FROM notification.notifications WHERE user_id = :userId AND type = 'new_message'",
+            ['userId' => $producerOwnerId]
+        );
+        self::assertNotFalse($row);
+    }
+
     public function testSendMessageRejectsWhenRecipientHasBlockedSender(): void
     {
         [$conversationId, $tokenClient, , $client] = $this->setUpOpenConversation();

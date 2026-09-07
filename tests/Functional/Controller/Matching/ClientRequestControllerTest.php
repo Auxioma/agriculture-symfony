@@ -44,6 +44,45 @@ final class ClientRequestControllerTest extends ApiTestCase
         self::assertSame($product->getId()->toRfc4122(), $row['product_id']);
     }
 
+    public function testCreateRequestNotifiesClientAndMatchedProducers(): void
+    {
+        $token = $this->registerClientAndLogin();
+
+        $country = $this->makeCountry();
+        $category = $this->makeCategory();
+        $product = $this->makeProduct($category);
+        $producer = $this->makeProducerProfile($this->makeUser('producer'), $country);
+        $this->makeProducerProduct($producer, $product, true);
+        $this->em->flush();
+        $this->setGeographyPoint('producer.producer_profiles', 'location', $producer->getId()->toRfc4122(), 2.35, 48.85);
+
+        $this->client->request('POST', '/api/requests', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode([
+            'needType' => 'price_request',
+            'productId' => $product->getId()->toRfc4122(),
+            'latitude' => 48.86,
+            'longitude' => 2.36,
+        ]));
+        self::assertResponseStatusCodeSame(201);
+
+        // * §14.1 "Demande envoyée" -- le client reçoit toujours cette notification, matché ou non.
+        // * Compté par type plutôt que par user_id : registerClientAndLogin() ne retourne que le token,
+        // * pas l'entité User, et ce test n'a besoin de rien de plus précis (un seul client dans ce test).
+        $requestSentCount = (int) $this->em->getConnection()->fetchOne(
+            "SELECT count(*) FROM notification.notifications WHERE type = 'request_sent'"
+        );
+        self::assertSame(1, $requestSentCount);
+
+        // * §14.2 "Nouvelle demande pertinente" -- le producteur matché (produit + zone) doit être notifié.
+        $producerNotificationCount = (int) $this->em->getConnection()->fetchOne(
+            'SELECT count(*) FROM notification.notifications WHERE type = :type AND user_id = :userId',
+            ['type' => 'new_relevant_request', 'userId' => $producer->getOwner()->getId()->toRfc4122()]
+        );
+        self::assertSame(1, $producerNotificationCount);
+    }
+
     public function testCreateRequestWithCustomProductOnlySucceeds(): void
     {
         $token = $this->registerClientAndLogin();

@@ -12,6 +12,7 @@ use App\Entity\Messaging\MessageAttachment;
 use App\Entity\Trust\Report;
 use App\Enum\ConversationStatus;
 use App\Enum\RequestStatus;
+use App\Service\Notification\NotificationService;
 use Doctrine\ORM\EntityManagerInterface;
 use League\Flysystem\FilesystemOperator;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -104,6 +105,7 @@ final class ConversationController extends AbstractController
         #[MapRequestPayload] SendMessageRequest $request,
         #[CurrentUser] User $user,
         EntityManagerInterface $em,
+        NotificationService $notificationService,
     ): JsonResponse {
         $result = $this->findAccessibleConversation($id, $user, $em);
         if ($result instanceof JsonResponse) {
@@ -134,6 +136,10 @@ final class ConversationController extends AbstractController
         $clientRequest = $conversation->getRequest();
         if (in_array($clientRequest->getStatus(), [RequestStatus::Sent, RequestStatus::WaitingReplies, RequestStatus::RepliesReceived], true)) {
             $clientRequest->setStatus(RequestStatus::ConversationOpen);
+        }
+
+        if ($otherPartyUser !== null) {
+            $notificationService->notify($otherPartyUser, 'new_message', 'Nouveau message', 'Vous avez reçu un nouveau message.');
         }
 
         $em->persist($message);
@@ -194,6 +200,7 @@ final class ConversationController extends AbstractController
         #[CurrentUser] User $user,
         EntityManagerInterface $em,
         #[Autowire(service: 'message_attachments.storage')] FilesystemOperator $storage,
+        NotificationService $notificationService,
     ): JsonResponse {
         $result = $this->findAccessibleConversation($id, $user, $em);
         if ($result instanceof JsonResponse) {
@@ -243,6 +250,10 @@ final class ConversationController extends AbstractController
         $clientRequest = $conversation->getRequest();
         if (in_array($clientRequest->getStatus(), [RequestStatus::Sent, RequestStatus::WaitingReplies, RequestStatus::RepliesReceived], true)) {
             $clientRequest->setStatus(RequestStatus::ConversationOpen);
+        }
+
+        if ($otherPartyUser !== null) {
+            $notificationService->notify($otherPartyUser, 'new_message', 'Nouveau message', 'Vous avez reçu un nouveau message.');
         }
 
         $em->persist($message);

@@ -178,6 +178,41 @@ final class StripeWebhookControllerTest extends ApiTestCase
         self::assertSame('9.99', $invoiceRow['amount']);
     }
 
+    // * §14.2 "Paiement échoué" -- réutilise la même extraction que invoice.paid (parent.subscription_details.
+    // * subscription), l'objet Invoice ayant la même forme quel que soit son statut final dans cette version d'API.
+    public function testWebhookNotifiesProducerOnPaymentFailed(): void
+    {
+        $country = $this->makeCountry();
+        $producer = $this->makeProducerProfile($this->makeUser(), $country);
+        $subscription = $this->makeActiveSubscription($producer);
+        $subscription->setProviderSubscriptionId('sub_test_payment_failed');
+        $this->em->flush();
+
+        $payload = json_encode([
+            'id' => 'evt_test_'.bin2hex(random_bytes(6)),
+            'type' => 'invoice.payment_failed',
+            'data' => [
+                'object' => [
+                    'id' => 'in_test_'.bin2hex(random_bytes(6)),
+                    'parent' => ['subscription_details' => ['subscription' => 'sub_test_payment_failed']],
+                ],
+            ],
+        ]);
+
+        $this->client->request('POST', '/api/webhooks/stripe', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_STRIPE_SIGNATURE' => WebhookSignature::generateSignatureHeader($payload, self::WEBHOOK_SECRET),
+        ], content: $payload);
+
+        self::assertResponseIsSuccessful();
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            "SELECT type FROM notification.notifications WHERE user_id = :userId AND type = 'payment_failed'",
+            ['userId' => $producer->getOwner()->getId()->toRfc4122()]
+        );
+        self::assertNotFalse($row);
+    }
+
     public function testWebhookRejectsInvalidSignature(): void
     {
         $payload = json_encode(['id' => 'evt_test', 'type' => 'customer.subscription.created', 'data' => ['object' => []]]);

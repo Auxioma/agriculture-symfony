@@ -10,6 +10,7 @@
         "doctrine/doctrine-bundle": "^3.3",
         "doctrine/doctrine-migrations-bundle": "^4.0",
         "doctrine/orm": "^3.6",
+        "easycorp/easyadmin-bundle": "^5.5",
         "jsor/doctrine-postgis": "^2.4",
         "league/flysystem-aws-s3-v3": "^3.35",
         "league/flysystem-bundle": "^3.7",

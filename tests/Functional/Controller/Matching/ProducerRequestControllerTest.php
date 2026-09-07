@@ -199,6 +199,33 @@ final class ProducerRequestControllerTest extends ApiTestCase
         self::assertSame('open', $row['status']);
     }
 
+    public function testReplyToRequestNotifiesClient(): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $this->em->flush();
+
+        $clientId = $this->em->getConnection()->fetchOne(
+            'SELECT client_id FROM matching.client_requests WHERE id = :id',
+            ['id' => $requestId]
+        );
+
+        // * priceAmount présent -- §14.1 distingue "Devis reçu" de "Producteur ayant répondu" (sans prix).
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$producerToken,
+        ], content: json_encode(['replyText' => 'Oui disponible', 'priceAmount' => '12.50']));
+        self::assertResponseStatusCodeSame(201);
+
+        // * Filtré par type : setUpMatchedRequestAndProducer() a déjà généré une notification "request_sent"
+        // * pour ce même client lors de la création de la demande -- il y a donc déjà 2 lignes en base ici.
+        $row = $this->em->getConnection()->fetchAssociative(
+            "SELECT type, title FROM notification.notifications WHERE user_id = :userId AND type = 'quote_received'",
+            ['userId' => $clientId]
+        );
+        self::assertNotFalse($row);
+    }
+
     public function testReplyToRequestRejectsProducerWithoutFeature(): void
     {
         [$requestId, $producerToken] = $this->setUpMatchedRequestAndProducer();

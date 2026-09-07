@@ -11,6 +11,7 @@ use App\Entity\Matching\ProducerReply;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
 use App\Enum\ReplyStatus;
+use App\Service\Notification\NotificationService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -93,6 +94,7 @@ final class ProducerRequestController extends AbstractController
         #[MapRequestPayload] ReplyToRequestRequest $requestDto,
         #[CurrentUser] User $user,
         EntityManagerInterface $em,
+        NotificationService $notificationService,
     ): JsonResponse {
         $result = $this->findMatchedRequest($id, $user, $em);
         if ($result instanceof JsonResponse) {
@@ -151,6 +153,13 @@ final class ProducerRequestController extends AbstractController
             $conversation->setClient($clientRequest->getClient());
             $em->persist($conversation);
         }
+
+        $notificationService->notify(
+            $clientRequest->getClient(),
+            $requestDto->priceAmount !== null ? 'quote_received' : 'producer_replied',
+            $requestDto->priceAmount !== null ? 'Devis reçu' : 'Un producteur a répondu',
+            'Vous avez une nouvelle réponse à votre demande.'
+        );
 
         $em->persist($reply);
         $em->flush();
