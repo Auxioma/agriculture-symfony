@@ -1,0 +1,130 @@
+<?php
+
+namespace App\Tests\Functional\Controller\Admin;
+
+use App\Controller\Admin\CategoryCrudController;
+use App\Controller\Admin\ProductCrudController;
+use App\Controller\Admin\UnitCrudController;
+use App\Entity\Identity\User;
+use App\Tests\ApiTestCase;
+use App\Tests\Fixtures\EntityFactoryTrait;
+use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
+use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
+
+/**
+ * Teste le module "Catégories et produits" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf
+ * §13 : "Catégories, sous-catégories, produits, unités, saisons, traductions, SEO"). Les traductions
+ * (categoryTranslations/productTranslations) ne sont pas couvertes ici : EasyAdmin 5.5.1 ne supporte pas
+ * les entités à clé primaire composite, même en usage indirect -- voir le commentaire sur
+ * CategoryCrudController::configureFields().
+ */
+final class CatalogCrudControllerTest extends ApiTestCase
+{
+    use EntityFactoryTrait;
+
+    private function loginAsAdmin(): User
+    {
+        $admin = $this->makeUserWithPassword('admin', 'motdepasse123');
+        $admin->setRoles([User::ROLE_ADMIN]);
+        $this->em->flush();
+
+        $this->client->followRedirects(true);
+        $this->client->request('GET', '/admin/login');
+        $this->client->submitForm('Se connecter', [
+            '_username' => $admin->getEmail(),
+            '_password' => 'motdepasse123',
+        ]);
+
+        return $admin;
+    }
+
+    // * Pas de champ "traductions" dans ce formulaire : EasyAdmin 5.5.1 rejette catégoriquement toute
+    // * entité à clé primaire composite (CategoryTranslation = category+locale), y compris utilisée
+    // * indirectement via un CollectionField -- confirmé en testant, EntityFactory::getEntityMetadata() lève
+    // * une RuntimeException avant même la soumission du formulaire. Reste géré via l'API/seed pour l'instant.
+    public function testCreatingCategorySucceeds(): void
+    {
+        $this->loginAsAdmin();
+
+        $crawler = $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
+            ->setController(CategoryCrudController::class)
+            ->setAction(Action::NEW)
+            ->generateUrl());
+        self::assertResponseIsSuccessful();
+
+        $form = $crawler->filter('form[method="post"]')->last()->form();
+        $values = $form->getPhpValues();
+        $rootKey = array_key_first($values);
+
+        $values[$rootKey]['name'] = 'Légumes';
+        $values[$rootKey]['slug'] = 'legumes';
+        $values[$rootKey]['isActive'] = '1';
+
+        $this->client->request($form->getMethod(), $form->getUri(), $values, $form->getPhpFiles());
+        self::assertResponseIsSuccessful();
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            "SELECT id FROM catalog.categories WHERE slug = 'legumes'"
+        );
+        self::assertNotFalse($row);
+    }
+
+    public function testEditingProductSucceeds(): void
+    {
+        $this->loginAsAdmin();
+        $category = $this->makeCategory();
+        $product = $this->makeProduct($category, 'Tomates');
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
+            ->setController(ProductCrudController::class)
+            ->setAction(Action::EDIT)
+            ->setEntityId($product->getId())
+            ->generateUrl());
+        self::assertResponseIsSuccessful();
+
+        // * id="edit-{EntityName}-form" identifie sans ambiguïté le vrai formulaire d'édition -- filtrer
+        // * par method="post" seul remonte aussi la modale de suppression générique, qui apparaît en dernier
+        // * dans le DOM et fait planter les valeurs (déjà vu sur les tests Admin/User et Admin/ClientRequest).
+        $form = $crawler->filter('form#edit-Product-form')->form();
+        $values = $form->getPhpValues();
+        $rootKey = array_key_first($values);
+        $values[$rootKey]['name'] = 'Tomates anciennes';
+
+        $this->client->request($form->getMethod(), $form->getUri(), $values, $form->getPhpFiles());
+        self::assertResponseIsSuccessful();
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT name FROM catalog.products WHERE id = :id',
+            ['id' => $product->getId()->toRfc4122()]
+        );
+        self::assertSame('Tomates anciennes', $row['name']);
+    }
+
+    public function testCreatingUnitSucceeds(): void
+    {
+        $this->loginAsAdmin();
+
+        $crawler = $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
+            ->setController(UnitCrudController::class)
+            ->setAction(Action::NEW)
+            ->generateUrl());
+        self::assertResponseIsSuccessful();
+
+        $form = $crawler->filter('form[method="post"]')->last()->form();
+        $values = $form->getPhpValues();
+        $rootKey = array_key_first($values);
+        $values[$rootKey]['code'] = 'kg';
+        $values[$rootKey]['label'] = 'Kilogramme';
+        $values[$rootKey]['unitType'] = 'weight';
+
+        $this->client->request($form->getMethod(), $form->getUri(), $values, $form->getPhpFiles());
+        self::assertResponseIsSuccessful();
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            "SELECT label FROM catalog.units WHERE code = 'kg'"
+        );
+        self::assertNotFalse($row);
+        self::assertSame('Kilogramme', $row['label']);
+    }
+}

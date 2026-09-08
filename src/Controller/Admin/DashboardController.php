@@ -2,8 +2,13 @@
 
 namespace App\Controller\Admin;
 
+use App\Controller\Admin\CategoryCrudController;
 use App\Controller\Admin\ClientRequestCrudController;
+use App\Controller\Admin\ConversationCrudController;
+use App\Controller\Admin\MessageCrudController;
 use App\Controller\Admin\ProducerProfileCrudController;
+use App\Controller\Admin\ProductCrudController;
+use App\Controller\Admin\UnitCrudController;
 use App\Controller\Admin\UserCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Dashboard;
@@ -35,5 +40,10 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkTo(ClientRequestCrudController::class, 'Demandes clients', 'fa fa-inbox');
         yield MenuItem::linkTo(ConversationCrudController::class, 'Conversations signalées', 'fa fa-flag');
         yield MenuItem::linkTo(MessageCrudController::class, 'Messages signalés', 'fa fa-comment-slash');
+        yield MenuItem::subMenu('Catalogue', 'fa fa-tags')->setSubItems([
+            MenuItem::linkTo(CategoryCrudController::class, 'Catégories', 'fa fa-folder-tree'),
+            MenuItem::linkTo(ProductCrudController::class, 'Produits', 'fa fa-carrot'),
+            MenuItem::linkTo(UnitCrudController::class, 'Unités', 'fa fa-ruler'),
+        ]);
     }
 }
