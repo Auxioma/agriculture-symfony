@@ -17,11 +17,21 @@ security:
             pattern: ^/(_profiler|_wdt|assets|build)/
             security: false
 
-        # ! Le firewall "main" du squelette Symfony a été retiré : sans pattern, il matchait TOUTE requête
-        # ! (donc /api/auth/login en premier, avant api_login) et n'a aucun authenticator -- la requête
+        admin:
+            pattern: ^/admin
+            lazy: true
+            provider: app_user_provider
+            form_login:
+                login_path: admin_login
+                check_path: admin_login
+                enable_csrf: true
+                default_target_path: admin
+            logout:
+                path: admin_logout
+                target: admin_login
+
+        # ! api_login avavnt api sinon la requête
         # ! continuait alors vers le routeur normal, qui ne trouve aucun contrôleur pour /login -> 404.
-        # ! À réintroduire (après api_login/api, jamais avant) le jour où un vrai back-office avec session
-        # ! existera.
 
         api_login:
             pattern: ^/api/auth/login
@@ -49,14 +59,14 @@ security:
 
     # Note: Only the *first* matching rule is applied
     access_control:
+        - { path: ^/admin/login, roles: PUBLIC_ACCESS }
+        - { path: ^/admin, roles: [ROLE_ADMIN, ROLE_SUPER_ADMIN] }
         - { path: ^/api/auth/(login|register-client|register-producer|forgot-password|reset-password), roles: PUBLIC_ACCESS }
         - { path: ^/api/(categories|products|labels), roles: PUBLIC_ACCESS }
         - { path: ^/api/producers, roles: PUBLIC_ACCESS }
         - { path: ^/api/subscription/plans, roles: PUBLIC_ACCESS }
         - { path: ^/api/webhooks/stripe, roles: PUBLIC_ACCESS }
         - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
-        # - { path: ^/admin, roles: ROLE_ADMIN }
-        # - { path: ^/profile, roles: ROLE_USER }
 
 when@test:
     security:
