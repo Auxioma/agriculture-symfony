@@ -14,6 +14,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
+use EasyCorp\Bundle\EasyAdminBundle\Filter\EntityFilter;
 
 class ClientRequestCrudController extends AbstractCrudController
 {
@@ -53,11 +54,15 @@ class ClientRequestCrudController extends AbstractCrudController
 
     public function configureFilters(Filters $filters): Filters
     {
+        // * EntityFilter explicite + choice_label obligatoire pour category/country : ni Category ni Country
+        // * n'ont de __toString(), et le <select> du filtre (Symfony EntityType, non-autocomplete par défaut)
+        // * plante sinon en tentant de caster l'entité en chaîne pour l'option affichée -- même mécanisme
+        // * que sur les AssociationField de formulaire (CategoryCrudController::parent, etc.).
         return $filters
             ->add('status')
             ->add('needType')
-            ->add('category')
-            ->add('country');
+            ->add(EntityFilter::new('category')->setFormTypeOption('value_type_options.choice_label', 'name'))
+            ->add(EntityFilter::new('country')->setFormTypeOption('value_type_options.choice_label', 'name'));
     }
 
     public function configureActions(Actions $actions): Actions

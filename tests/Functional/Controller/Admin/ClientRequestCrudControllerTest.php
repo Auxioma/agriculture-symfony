@@ -143,6 +143,21 @@ final class ClientRequestCrudControllerTest extends ApiTestCase
         self::assertFalse($row);
     }
 
+    // * Category et Country n'ont pas de __toString() : le <select> du filtre (Symfony EntityType) plantait
+    // * en tentant de caster l'entité en chaîne pour l'option affichée -- ce test rend vraiment le panneau
+    // * de filtres (render-filters), pas seulement la liste, pour exercer ce chemin précis.
+    public function testRenderingCategoryAndCountryFiltersSucceeds(): void
+    {
+        $this->loginAsAdmin();
+        $this->makeCategory();
+        $this->makeCountry();
+        $this->em->flush();
+
+        $this->client->request('GET', $this->urlFor('renderFilters'));
+
+        self::assertResponseIsSuccessful();
+    }
+
     public function testCreatingRequestFromBackofficeIsForbidden(): void
     {
         $this->loginAsAdmin();
