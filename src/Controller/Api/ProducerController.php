@@ -10,7 +10,7 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 
 /**
- * Lecture publique de l'annuaire des producteurs (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §20.3).
+ * Lecture publique de l'annuaire des producteurs (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf).
  * Routes non authentifiées (voir security.yaml, access_control ^/api/producers) : liste et fiche détail.
  * Les routes réservées au producteur propriétaire (profil, produits, photos) suivront dans un contrôleur séparé.
  */
@@ -59,8 +59,8 @@ final class ProducerController extends AbstractController
             $params['radiusMeters'] = $radiusKm * 1000;
         }
 
-        // * §5.2 : tri par distance (seulement si une position est fournie) ou par nom -- "pertinence",
-        // * "popularité" et "réactivité" demanderaient des métriques pas encore branchées à cette route.
+        // * Cahier fonctionnel : tri par distance (seulement si une position est fournie) ou par nom --
+        // * "pertinence", "popularité" et "réactivité" demanderaient des métriques pas encore branchées à cette route.
         $sort = $request->query->get('sort');
         $orderBy = ($sort === 'distance' && $hasLocation) ? 'distance_km ASC NULLS LAST' : 'pp.farm_name ASC';
         $distanceSelect = $hasLocation ? 'ST_Distance(pp.location, ST_GeographyFromText(:point)) / 1000.0' : 'NULL';

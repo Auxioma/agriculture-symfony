@@ -116,7 +116,7 @@ final class ClientRequestController extends AbstractController
         );
 
         // * Notifie chaque producteur matché -- populate_request_matches() vient de créer les RequestMatch,
-        // * on les relit pour savoir à qui envoyer "Nouvelle demande pertinente" (§14.2).
+        // * on les relit pour savoir à qui envoyer "Nouvelle demande pertinente" (cahier fonctionnel).
         $matches = $em->getRepository(RequestMatch::class)->findBy(['request' => $clientRequest]);
         foreach ($matches as $match) {
             $notificationService->notify(

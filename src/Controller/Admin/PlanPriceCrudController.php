@@ -12,7 +12,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 
 /**
- * Module "Abonnements" du back-office §13 -- volet "Prix".
+ * Module "Abonnements" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf) -- volet "Prix".
  */
 class PlanPriceCrudController extends AbstractCrudController
 {

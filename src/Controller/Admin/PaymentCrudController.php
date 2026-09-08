@@ -13,7 +13,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 
 /**
- * Module "Abonnements" du back-office §13 -- volet "paiements échoués" (et paiements en général).
+ * Module "Abonnements" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf) -- volet "paiements échoués" (et paiements en général).
  * Consultation seule.
  */
 class PaymentCrudController extends AbstractCrudController

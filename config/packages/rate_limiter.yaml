@@ -1,6 +1,6 @@
 framework:
     rate_limiter:
-        # ? cahier_des_charges_devops_trouvemoi_agri.pdf §10 : anti-spam sur forgot-password (emails + énumération).
+        # ? cahier_des_charges_devops_trouvemoi_agri.pdf : anti-spam sur forgot-password (emails + énumération).
         # ? Utilisé directement dans AuthController::forgotPassword via RateLimiterFactory (auto-injecté par nom).
         password_reset_requests:
             policy: 'sliding_window'

@@ -7,7 +7,7 @@ use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
 /**
- * Teste la connexion au back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §13), qui passe par
+ * Teste la connexion au back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf), qui passe par
  * un firewall à session (form_login) totalement distinct du firewall JWT stateless utilisé par l'API.
  */
 final class SecurityControllerTest extends ApiTestCase

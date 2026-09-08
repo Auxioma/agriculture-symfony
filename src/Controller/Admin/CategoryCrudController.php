@@ -22,12 +22,12 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Module "Catégories et produits" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §13 :
+ * Module "Catégories et produits" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf :
  * "Catégories, sous-catégories, produits, unités, saisons, traductions, SEO").
  *
  * Traductions (categoryTranslations) éditées via editTranslations() ci-dessous, PAS via un CollectionField
  * EasyAdmin : CategoryTranslation a une clé primaire composite (category+locale) — cf.
- * trouvemoi-agri-make-entity-guide.md §1.2, décision délibérée du MLD/MPD, verrouillée par
+ * trouvemoi-agri-make-entity-guide.md, décision délibérée du MLD/MPD, verrouillée par
  * tests/Functional/Database/EntityPersistenceTest::testCategoryTranslationUsesACompositePrimaryKey.
  * EasyAdmin refuse catégoriquement toute entité composite dès qu'il l'introspecte (CollectionField y compris
  * en usage indirect via setEntryType()) ; editTranslations() est un formulaire Symfony pur, sans CollectionField,

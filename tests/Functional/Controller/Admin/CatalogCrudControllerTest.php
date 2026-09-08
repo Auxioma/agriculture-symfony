@@ -12,8 +12,8 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 
 /**
- * Teste le module "Catégories et produits" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf
- * §13 : "Catégories, sous-catégories, produits, unités, saisons, traductions, SEO"), y compris l'édition des
+ * Teste le module "Catégories et produits" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf :
+ * "Catégories, sous-catégories, produits, unités, saisons, traductions, SEO"), y compris l'édition des
  * traductions (categoryTranslations/productTranslations) via un formulaire Symfony fait main -- pas un
  * CollectionField EasyAdmin, qui ne supporte pas les entités à clé primaire composite (voir le docblock de
  * CategoryCrudController).

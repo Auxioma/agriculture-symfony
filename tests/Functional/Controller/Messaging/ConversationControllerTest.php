@@ -11,7 +11,7 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
  * Teste GET /api/conversations, GET /api/conversations/{id}, POST .../messages, POST .../report et
- * POST .../attachments (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §20.6, rounds 1 et 2).
+ * POST .../attachments (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf, rounds 1 et 2).
  */
 final class ConversationControllerTest extends ApiTestCase
 {
@@ -152,7 +152,7 @@ final class ConversationControllerTest extends ApiTestCase
     {
         [$conversationId, $tokenClient] = $this->setUpOpenConversation();
 
-        // * Le client envoie le message : §14.2 "Nouveau message" doit notifier l'autre partie, le
+        // * Le client envoie le message : cahier fonctionnel "Nouveau message" doit notifier l'autre partie, le
         // * producteur (propriétaire du profil lié à la conversation), pas l'expéditeur lui-même.
         $producerOwnerId = $this->em->getConnection()->fetchOne(
             'SELECT pp.owner_user_id FROM messaging.conversations c JOIN producer.producer_profiles pp ON pp.id = c.producer_id WHERE c.id = :id',

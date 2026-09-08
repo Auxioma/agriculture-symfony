@@ -10,7 +10,7 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 
 /**
  * Teste GET /api/notifications, POST .../{id}/read et POST .../read-all
- * (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §14, round 1 -- lecture/gestion uniquement).
+ * (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf, round 1 -- lecture/gestion uniquement).
  * NotificationService n'est pas utilisée ici : rien ne l'appelle encore dans le code applicatif (round 2),
  * donc Symfony la retire du conteneur compilé comme service mort -- inaccessible même via getContainer().
  * Les Notification de test sont donc construites directement, comme Label/ProducerLabel dans

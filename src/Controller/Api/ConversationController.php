@@ -24,8 +24,8 @@ use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 
 /**
- * Lecture, messages et pièces jointes d'une conversation (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf
- * §20.6, rounds 1 et 2). Pas de route de création dédiée : une conversation s'ouvre implicitement dès la
+ * Lecture, messages et pièces jointes d'une conversation (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf).
+ * Pas de route de création dédiée : une conversation s'ouvre implicitement dès la
  * première réponse d'un producteur (voir ProducerRequestController::replyToRequest()).
  */
 
@@ -115,7 +115,7 @@ final class ConversationController extends AbstractController
         $conversation = $result;
 
         // ! Bloque l'envoi si le destinataire a bloqué l'expéditeur -- BlockedUser existait déjà mais
-        // ! n'était encore branché à aucune route (même situation que producer_has_feature avant §20.5).
+        // ! n'était encore branché à aucune route (même situation que producer_has_feature avant, cahier fonctionnel).
         $otherPartyUser = $conversation->getClient() === $user ? $conversation->getProducer()->getOwner() : $conversation->getClient();
         if ($otherPartyUser !== null) {
             $isBlocked = $em->getRepository(BlockedUser::class)->findOneBy(['blocker' => $otherPartyUser, 'blocked' => $user]) !== null;
@@ -131,7 +131,7 @@ final class ConversationController extends AbstractController
 
         $conversation->setLastMessageAt(new \DateTimeImmutable());
 
-        // * §6.2 du cahier fonctionnel : la demande passe à "Conversation ouverte" dès le premier vrai
+        // * Cahier fonctionnel : la demande passe à "Conversation ouverte" dès le premier vrai
         // * message -- seulement depuis un statut "en cours", pour ne jamais faire régresser un statut
         // * terminal (accord trouvé, annulée, archivée, expirée, signalée).
         $clientRequest = $conversation->getRequest();
@@ -169,7 +169,7 @@ final class ConversationController extends AbstractController
         $report->setReason($request->reason);
         $report->setMessage($request->message);
 
-        // ! §22.2 : "les conversations privées sont consultées uniquement en cas de signalement..."
+        // ! Cahier fonctionnel : "les conversations privées sont consultées uniquement en cas de signalement..."
         $conversation->setStatus(ConversationStatus::Reported);
 
         $em->persist($report);
@@ -233,7 +233,7 @@ final class ConversationController extends AbstractController
         $message->setConversation($conversation);
         $message->setSender($user);
         // * Légende facultative envoyée avec le fichier (ex. champ "content" du multipart), comme la plupart
-        // * des messageries -- pas dans le cahier explicitement mais cohérent avec §9.1 "Messages texte, photos...".
+        // * des messageries -- pas dans le cahier explicitement mais cohérent avec le cahier fonctionnel "Messages texte, photos...".
         $message->setContent($request->request->get('content'));
 
         $attachment = new MessageAttachment();

@@ -10,7 +10,7 @@ use App\Tests\Fixtures\EntityFactoryTrait;
 use Stripe\WebhookSignature;
 
 /**
- * Teste POST /api/webhooks/stripe (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §20.7 round 2).
+ * Teste POST /api/webhooks/stripe (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf, round 2).
  * Le payload est signé avec WebhookSignature::generateSignatureHeader(), prévu par le SDK Stripe lui-même
  * "for unit tests" -- STRIPE_WEBHOOK_SECRET doit avoir une valeur fixe et connue en environnement de test
  * (voir .env.test : whsec_test_fixed_secret) pour que la signature générée ici et celle vérifiée par le
@@ -178,7 +178,7 @@ final class StripeWebhookControllerTest extends ApiTestCase
         self::assertSame('9.99', $invoiceRow['amount']);
     }
 
-    // * §14.2 "Paiement échoué" -- réutilise la même extraction que invoice.paid (parent.subscription_details.
+    // * Cahier fonctionnel "Paiement échoué" -- réutilise la même extraction que invoice.paid (parent.subscription_details.
     // * subscription), l'objet Invoice ayant la même forme quel que soit son statut final dans cette version d'API.
     public function testWebhookNotifiesProducerOnPaymentFailed(): void
     {

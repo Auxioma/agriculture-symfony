@@ -6,9 +6,9 @@ use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
 /**
- * Teste POST /api/requests (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §20.4 -- premier volet
+ * Teste POST /api/requests (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf -- premier volet
  * du bloc "demandes clients/producteur" : créer une demande. Les autres routes du bloc (liste, détail,
- * cancel/archive/duplicate, puis le côté producteur en §20.5) suivront dans des fichiers séparés.
+ * cancel/archive/duplicate, puis le côté producteur) suivront dans des fichiers séparés.
  */
 
 final class ClientRequestControllerTest extends ApiTestCase
@@ -67,7 +67,7 @@ final class ClientRequestControllerTest extends ApiTestCase
         ]));
         self::assertResponseStatusCodeSame(201);
 
-        // * §14.1 "Demande envoyée" -- le client reçoit toujours cette notification, matché ou non.
+        // * Cahier fonctionnel "Demande envoyée" -- le client reçoit toujours cette notification, matché ou non.
         // * Compté par type plutôt que par user_id : registerClientAndLogin() ne retourne que le token,
         // * pas l'entité User, et ce test n'a besoin de rien de plus précis (un seul client dans ce test).
         $requestSentCount = (int) $this->em->getConnection()->fetchOne(
@@ -75,7 +75,7 @@ final class ClientRequestControllerTest extends ApiTestCase
         );
         self::assertSame(1, $requestSentCount);
 
-        // * §14.2 "Nouvelle demande pertinente" -- le producteur matché (produit + zone) doit être notifié.
+        // * Cahier fonctionnel "Nouvelle demande pertinente" -- le producteur matché (produit + zone) doit être notifié.
         $producerNotificationCount = (int) $this->em->getConnection()->fetchOne(
             'SELECT count(*) FROM notification.notifications WHERE type = :type AND user_id = :userId',
             ['type' => 'new_relevant_request', 'userId' => $producer->getOwner()->getId()->toRfc4122()]

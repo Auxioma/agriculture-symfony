@@ -10,7 +10,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 
 /**
- * Teste le module "Utilisateurs" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §13 :
+ * Teste le module "Utilisateurs" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf :
  * "Recherche, filtres, rôles, suspension, suppression, anonymisation, historique").
  */
 final class UserCrudControllerTest extends ApiTestCase

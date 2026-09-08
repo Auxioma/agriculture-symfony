@@ -10,8 +10,8 @@ use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
 /**
- * Teste GET /api/producers et GET /api/producers/{id} (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §20.3,
- * round 1) et les filtres de recherche ajoutés sur GET /api/producers (§5.2, "recherche et listing producteurs" :
+ * Teste GET /api/producers et GET /api/producers/{id} (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf,
+ * round 1) et les filtres de recherche ajoutés sur GET /api/producers (cahier fonctionnel, "recherche et listing producteurs" :
  * produit, catégorie, label, retrait/livraison, producteur vérifié, localisation+rayon, tri par distance).
  * Routes publiques : aucun header Authorization envoyé dans ces tests.
  */

@@ -14,7 +14,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 
 /**
- * Module "Abonnements" du back-office §13 -- volet "abonnements actifs". Consultation seule : le statut
+ * Module "Abonnements" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf) -- volet "abonnements actifs". Consultation seule : le statut
  * change via les webhooks Stripe déjà branchés (StripeWebhookController), jamais à la main ici.
  */
 class SubscriptionCrudController extends AbstractCrudController

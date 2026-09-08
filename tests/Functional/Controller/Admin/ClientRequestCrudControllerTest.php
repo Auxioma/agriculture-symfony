@@ -14,7 +14,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 
 /**
- * Teste le module "Demandes clients" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §13 :
+ * Teste le module "Demandes clients" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf :
  * "Liste, filtres, statut, doublons, spam, suppression, archivage, signalement").
  */
 final class ClientRequestCrudControllerTest extends ApiTestCase
@@ -62,7 +62,7 @@ final class ClientRequestCrudControllerTest extends ApiTestCase
         self::assertResponseIsSuccessful();
     }
 
-    // * "archivage" et "signalement" (§13) sont juste des valeurs de RequestStatus (Archived/Reported) --
+    // * "archivage" et "signalement" (cahier fonctionnel) sont juste des valeurs de RequestStatus (Archived/Reported) --
     // * vérifie que le formulaire d'édition les accepte réellement, pas seulement en théorie côté entité.
     public function testEditingStatusToArchivedSucceeds(): void
     {

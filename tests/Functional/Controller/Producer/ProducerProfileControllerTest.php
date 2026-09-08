@@ -7,7 +7,7 @@ use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
 /**
- * Teste GET /api/producer/profile et PUT /api/producer/profile (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §20.3, round 2).
+ * Teste GET /api/producer/profile et PUT /api/producer/profile (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf, round 2).
  * Routes réservées au producteur propriétaire du profil.
  */
 final class ProducerProfileControllerTest extends ApiTestCase

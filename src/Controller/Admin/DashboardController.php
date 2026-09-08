@@ -56,5 +56,6 @@ class DashboardController extends AbstractDashboardController
             MenuItem::linkTo(InvoiceCrudController::class, 'Factures', 'fa fa-file-invoice'),
             MenuItem::linkTo(PaymentCrudController::class, 'Paiements', 'fa fa-money-check'),
         ]);
+        yield MenuItem::linkTo(TicketCrudController::class, 'Support', 'fa fa-headset');
     }
 }

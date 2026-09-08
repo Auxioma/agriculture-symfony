@@ -143,8 +143,8 @@ final class ProducerRequestController extends AbstractController
         }
 
         // ! Le cahier fonctionnel n'expose aucune route de création dédiée pour les conversations :
-        // ! elle s'ouvre implicitement dès la première réponse du producteur (cf. §6.2, statut "Conversation
-        // ! ouverte" distinct de "Réponses reçues"), pour être immédiatement visible via GET /api/conversations.
+        // ! elle s'ouvre implicitement dès la première réponse du producteur (cf. cahier fonctionnel, statut
+        // ! "Conversation ouverte" distinct de "Réponses reçues"), pour être immédiatement visible via GET /api/conversations.
         $conversation = $em->getRepository(Conversation::class)->findOneBy(['request' => $clientRequest, 'producer' => $producer]);
         if ($conversation === null) {
             $conversation = new Conversation();

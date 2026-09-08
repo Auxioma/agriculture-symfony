@@ -8,7 +8,7 @@ use App\Tests\Fixtures\EntityFactoryTrait;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
- * Teste POST /api/producer/photos (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §20.3 round 4).
+ * Teste POST /api/producer/photos (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf, round 4).
  * Le stockage réel (MinIO/S3) est remplacé par l'adaptateur Flysystem "local" en environnement de test
  * (config/packages/flysystem.yaml, bloc when@test) -- écrit dans var/storage/test, jamais commité.
  */

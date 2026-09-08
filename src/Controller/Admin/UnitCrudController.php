@@ -8,7 +8,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 
 /**
- * Module "Catégories et produits" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §13 :
+ * Module "Catégories et produits" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf :
  * "Catégories, sous-catégories, produits, unités, saisons, traductions, SEO") -- volet "unités".
  */
 class UnitCrudController extends AbstractCrudController

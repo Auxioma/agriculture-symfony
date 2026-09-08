@@ -9,7 +9,7 @@ use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
 /**
- * Teste POST/PUT/DELETE /api/producer/products (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §20.3, round 3).
+ * Teste POST/PUT/DELETE /api/producer/products (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf, round 3).
  * Gestion du catalogue produit d'un producteur -- réservé au producteur propriétaire de chaque fiche.
  */
 final class ProducerProductControllerTest extends ApiTestCase

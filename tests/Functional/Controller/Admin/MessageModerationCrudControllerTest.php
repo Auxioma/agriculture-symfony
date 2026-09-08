@@ -16,7 +16,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 
 /**
- * Teste le module "Messages" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §13 :
+ * Teste le module "Messages" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf :
  * "Consultation limitée aux cas signalés, masquage, blocage, trace de modération").
  */
 final class MessageModerationCrudControllerTest extends ApiTestCase

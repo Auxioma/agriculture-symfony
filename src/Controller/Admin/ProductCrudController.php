@@ -22,12 +22,12 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Module "Catégories et produits" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §13 :
+ * Module "Catégories et produits" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf :
  * "Catégories, sous-catégories, produits, unités, saisons, traductions, SEO").
  *
  * Traductions (productTranslations) éditées via editTranslations() ci-dessous, PAS via un CollectionField
  * EasyAdmin -- même raison que sur CategoryCrudController (ProductTranslation a une clé primaire composite
- * product+locale, décision délibérée verrouillée par trouvemoi-agri-make-entity-guide.md §1.2).
+ * product+locale, décision délibérée verrouillée par trouvemoi-agri-make-entity-guide.md).
  */
 class ProductCrudController extends AbstractCrudController
 {

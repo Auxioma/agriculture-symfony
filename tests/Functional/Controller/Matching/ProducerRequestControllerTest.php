@@ -8,7 +8,7 @@ use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
 /**
- * Teste les 4 routes de §20.5 (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf) : GET available, GET {id},
+ * Teste les 4 routes du bloc "producteur" des demandes (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf) : GET available, GET {id},
  * POST {id}/reply, POST {id}/decline. Couvre aussi l'ouverture implicite de conversation déclenchée par reply()
  * la vérification complète de la messagerie elle-même vit dans ConversationControllerTest.php.
  */
@@ -210,7 +210,7 @@ final class ProducerRequestControllerTest extends ApiTestCase
             ['id' => $requestId]
         );
 
-        // * priceAmount présent -- §14.1 distingue "Devis reçu" de "Producteur ayant répondu" (sans prix).
+        // * priceAmount présent -- cahier fonctionnel distingue "Devis reçu" de "Producteur ayant répondu" (sans prix).
         $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: [
             'CONTENT_TYPE' => 'application/json',
             'HTTP_AUTHORIZATION' => 'Bearer '.$producerToken,

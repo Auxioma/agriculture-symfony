@@ -14,7 +14,7 @@ flysystem:
                 client: 'Aws\S3\S3Client'
                 bucket: '%env(STORAGE_BUCKET_ATTACHMENTS)%'
                 prefix: 'attachments'
-            # ! Pas de public_url ici, volontairement (cahier fonctionnel §22.2 : "les pièces jointes sont
+            # ! Pas de public_url ici, volontairement (cahier fonctionnel : "les pièces jointes sont
             # ! protégées et non publiques par défaut"). L'accès passe exclusivement par temporaryUrl()
             # ! (URL signée à durée limitée), jamais par une URL persistée.
 

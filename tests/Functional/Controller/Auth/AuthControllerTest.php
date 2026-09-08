@@ -6,7 +6,7 @@ use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
 /**
- * Teste les 6 routes de AuthController (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf §20.1) en
+ * Teste les 6 routes de AuthController (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf) en
  * conditions réelles via KernelBrowser : inscription client/producteur, connexion JWT, /api/me,
  * mot de passe oublié. registerClientAndLogin() (le helper "donne-moi juste un token valide") vit
  * dans ApiTestCase, pas ici -- ClientRequestControllerTest en a besoin aussi.

@@ -13,7 +13,7 @@ use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
 /**
- * Teste les 6 routes de §20.7 Abonnements (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf) :
+ * Teste les 6 routes du bloc Abonnements (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf) :
  * GET /api/subscription/plans (public), GET .../current, GET .../invoices, POST .../cancel, .../checkout,
  * .../change-plan. checkout/change-plan utilisent FakePaymentGateway (config/services.yaml, bloc when@test) --
  * aucun appel Stripe réel ici ; le flux réel a été validé manuellement (cf. StripeWebhookControllerTest pour
