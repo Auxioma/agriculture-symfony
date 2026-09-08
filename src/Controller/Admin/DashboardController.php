@@ -7,7 +7,11 @@ use App\Controller\Admin\ClientRequestCrudController;
 use App\Controller\Admin\ConversationCrudController;
 use App\Controller\Admin\MessageCrudController;
 use App\Controller\Admin\ProducerProfileCrudController;
+use App\Controller\Admin\PaymentCrudController;
+use App\Controller\Admin\PlanPriceCrudController;
 use App\Controller\Admin\ProductCrudController;
+use App\Controller\Admin\SubscriptionCrudController;
+use App\Controller\Admin\SubscriptionPlanCrudController;
 use App\Controller\Admin\UnitCrudController;
 use App\Controller\Admin\UserCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
@@ -44,6 +48,13 @@ class DashboardController extends AbstractDashboardController
             MenuItem::linkTo(CategoryCrudController::class, 'Catégories', 'fa fa-folder-tree'),
             MenuItem::linkTo(ProductCrudController::class, 'Produits', 'fa fa-carrot'),
             MenuItem::linkTo(UnitCrudController::class, 'Unités', 'fa fa-ruler'),
+        ]);
+        yield MenuItem::subMenu('Abonnements', 'fa fa-credit-card')->setSubItems([
+            MenuItem::linkTo(SubscriptionPlanCrudController::class, 'Plans', 'fa fa-list'),
+            MenuItem::linkTo(PlanPriceCrudController::class, 'Prix', 'fa fa-euro-sign'),
+            MenuItem::linkTo(SubscriptionCrudController::class, 'Abonnements actifs', 'fa fa-repeat'),
+            MenuItem::linkTo(InvoiceCrudController::class, 'Factures', 'fa fa-file-invoice'),
+            MenuItem::linkTo(PaymentCrudController::class, 'Paiements', 'fa fa-money-check'),
         ]);
     }
 }
