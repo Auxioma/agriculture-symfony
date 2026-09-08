@@ -43,7 +43,7 @@ class ProducerProfileCrudController extends AbstractCrudController
         yield IdField::new('id')->hideOnForm();
         yield TextField::new('farmName');
         yield AssociationField::new('owner')
-            ->formatValue(fn ($value, $entity) => $entity->getOwner()->getEmail())
+            ->formatValue(fn ($value, $entity) => $entity?->getOwner()?->getEmail())
             ->hideOnForm();
         yield AssociationField::new('country')->hideOnForm();
         yield TextField::new('city')->hideOnForm();

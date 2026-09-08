@@ -37,7 +37,7 @@ class ClientRequestCrudController extends AbstractCrudController
     {
         yield IdField::new('id')->hideOnForm();
         yield AssociationField::new('client')
-            ->formatValue(fn ($value, $entity) => $entity->getClient()->getEmail())
+            ->formatValue(fn ($value, $entity) => $entity?->getClient()?->getEmail())
             ->hideOnForm();
         yield AssociationField::new('category')->hideOnForm();
         yield AssociationField::new('product')->hideOnForm();

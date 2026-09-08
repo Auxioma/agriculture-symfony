@@ -33,5 +33,7 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkTo(UserCrudController::class, 'Utilisateurs', 'fa fa-users');
         yield MenuItem::linkTo(ProducerProfileCrudController::class, 'Validation producteurs', 'fa fa-check-circle');
         yield MenuItem::linkTo(ClientRequestCrudController::class, 'Demandes clients', 'fa fa-inbox');
+        yield MenuItem::linkTo(ConversationCrudController::class, 'Conversations signalées', 'fa fa-flag');
+        yield MenuItem::linkTo(MessageCrudController::class, 'Messages signalés', 'fa fa-comment-slash');
     }
 }

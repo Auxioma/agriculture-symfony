@@ -78,7 +78,8 @@ final class ConversationController extends AbstractController
                 static fn (Message $m) => [
                     'id' => $m->getId()->toRfc4122(),
                     'senderId' => $m->getSender()?->getId()->toRfc4122(),
-                    'content' => $m->getContent(),
+                    'content' => null !== $m->getModeratedAt() ? null : $m->getContent(),
+                    'moderated' => null !== $m->getModeratedAt(),
                     'isSystem' => $m->isSystem(),
                     'createdAt' => $m->getCreatedAt()->format(DATE_ATOM),
                     // ! fileUrl en base est une clé objet privée, pas une URL -- l'URL signée est générée
