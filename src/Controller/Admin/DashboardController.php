@@ -2,6 +2,7 @@
 
 namespace App\Controller\Admin;
 
+use App\Controller\Admin\ProducerProfileCrudController;
 use App\Controller\Admin\UserCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Dashboard;
@@ -28,8 +29,7 @@ class DashboardController extends AbstractDashboardController
     public function configureMenuItems(): iterable
     {
         yield MenuItem::linkToDashboard('Tableau de bord', 'fa fa-home');
-        // * linkToCrud() a été retiré (utilisait encore une signature obsolète) : dans cette version
-        // * d'EasyAdmin (5.5.1), le lien vers un CRUD passe par le contrôleur, pas par l'entité.
         yield MenuItem::linkTo(UserCrudController::class, 'Utilisateurs', 'fa fa-users');
+        yield MenuItem::linkTo(ProducerProfileCrudController::class, 'Validation producteurs', 'fa fa-check-circle');
     }
 }
