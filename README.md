@@ -7,46 +7,44 @@ Ce dépôt contient l'API REST et le back-office Symfony (EasyAdmin). Le front A
 
 - PHP 8.4+, Symfony 8.1
 - PostgreSQL 16 + PostGIS
-- Stockage objet compatible S3 (MinIO en local)
+- Stockage objet compatible S3 (adaptateur disque local en développement/tests)
 - Stripe (abonnements producteurs)
 - JWT (Lexik) pour l'authentification API
 
 ## Prérequis
 
 - PHP 8.4+ avec Composer
-- Docker (pour PostgreSQL, MinIO, Mailpit)
-- `make` (voir plus bas si absent)
-- Symfony CLI (optionnel, pour `symfony server:start`)
+- PostgreSQL 16 + PostGIS installés nativement et démarrés (ce projet utilise pgAdmin4 pour l'administration)
+- `make`
+- Symfony CLI (pour `symfony server:start`)
 
 ## Installation locale
 
-\`\`\`bash
+```bash
 git clone <url-du-dépôt>
 cd agriculture-symfony
 make setup
-\`\`\`
+make up
+```
 
-`make setup` installe les dépendances Composer, crée `.env.local` s'il n'existe pas encore
-(à compléter avec tes propres valeurs : `STRIPE_SECRET_KEY`, `STORAGE_*`...), génère les clés
-JWT si absentes, puis démarre PostgreSQL/MinIO/Mailpit via Docker.
+`make setup` installe les dépendances, crée `.env.local` si absent (à compléter),
+génère les clés JWT si nécessaire, crée la base et joue les migrations.
+`make up` démarre le serveur Symfony local.
 
-Ensuite :
-
-\`\`\`bash
-make db-reset   # crée la base et joue les migrations
-symfony server:start   # ou: php -S 127.0.0.1:8000 -t public
-\`\`\`
+Le stockage de fichiers (photos, pièces jointes) et les emails n'utilisent aucun service
+externe en local : adaptateur disque local (`when@dev` dans `config/packages/flysystem.yaml`)
+et emails non envoyés (visibles dans le profiler Symfony, `/_profiler`, une fois branchés).
 
 ## Commandes
 
 | Commande | Effet |
 |---|---|
 | `make setup` | Installation complète depuis zéro |
-| `make up` / `make down` | Démarre / arrête Postgres, MinIO, Mailpit |
+| `make up` / `make down` | Démarre / arrête le serveur Symfony local |
 | `make db-reset` | Recrée la base et rejoue les migrations |
 | `make test` | Lance la suite PHPUnit |
 | `make quality` | PHP-CS-Fixer + PHPStan |
-| `make logs` | Logs des services Docker |
+| `make logs` | Logs applicatifs (`var/log/dev.log`) |
 
 ## Conventions
 
@@ -60,12 +58,12 @@ symfony server:start   # ou: php -S 127.0.0.1:8000 -t public
 
 - **`JWTDecodeFailureException` ou erreurs liées au firewall API** : les clés JWT ne sont pas
   générées → `php bin/console lexik:jwt:generate-keypair --no-interaction`.
-- **Port 5432 déjà utilisé** : un autre PostgreSQL tourne déjà en local (WAMP, etc.) —
-  arrête-le ou change le port exposé dans `compose.override.yaml`.
-- **Mails de test invisibles** : ils partent vers Mailpit, pas une vraie boîte —
-  interface sur `http://localhost:8025`.
-- **Fichiers/photos introuvables en local** : console MinIO sur `http://localhost:9001`
-  (identifiants par défaut dans `compose.yaml`).
+- **Erreurs de connexion à la base** : vérifie que le service PostgreSQL tourne
+  (visible dans pgAdmin4) et que `DATABASE_URL` dans `.env.local` pointe dessus.
+- **Photos/pièces jointes introuvables en local** : normal, elles sont écrites dans
+  `var/storage/dev*` (gitignoré), pas sur un vrai stockage S3.
+- **`symfony server:start` échoue sur un verrou de fichier log (Windows)** : repli sans
+  Symfony CLI → `php -S 127.0.0.1:8000 -t public`.
 
 ## Liens
 

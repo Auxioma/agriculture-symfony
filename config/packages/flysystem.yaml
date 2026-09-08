@@ -36,3 +36,18 @@ when@test:
                 # ! L'adaptateur local ne sait pas générer d'URL signée (ça n'a pas de sens sur disque) :
                 # ! FakeTemporaryUrlGenerator le remplace uniquement en test.
                 temporary_url_generator: 'App\Service\Storage\FakeTemporaryUrlGenerator'
+
+when@dev:
+    flysystem:
+        storages:
+            producer_media.storage:
+                adapter: 'local'
+                options:
+                    directory: '%kernel.project_dir%/var/storage/dev'
+                public_url: 'http://localhost:8000/dev-storage'
+
+            message_attachments.storage:
+                adapter: 'local'
+                options:
+                    directory: '%kernel.project_dir%/var/storage/dev-attachments'
+                temporary_url_generator: 'App\Service\Storage\FakeTemporaryUrlGenerator'
