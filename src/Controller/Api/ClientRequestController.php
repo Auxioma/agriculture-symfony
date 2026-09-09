@@ -22,6 +22,10 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
 
 final class ClientRequestController extends AbstractController
 {
+    // * "Modifiable" s'arrête dès qu'un producteur a réellement engagé la conversation -- éditer une demande
+    // * à laquelle on a déjà répondu serait déloyal envers ce producteur. Absent du cahier, choix délibéré.
+    private const EDITABLE_STATUSES = [RequestStatus::Draft, RequestStatus::Sent, RequestStatus::WaitingReplies];
+
     #[Route('/api/requests', methods: ['POST'])]
     public function createRequest(
         #[MapRequestPayload] CreateClientRequestRequest $request,
@@ -29,76 +33,16 @@ final class ClientRequestController extends AbstractController
         EntityManagerInterface $em,
         NotificationService $notificationService,
     ): JsonResponse {
-        if ($request->categoryId === null && $request->productId === null && $request->customProduct === null) {
-            return $this->json(['error' => 'category, product ou customProduct est requis.'], 422);
-        }
-
         $clientRequest = new ClientRequest();
         $clientRequest->setClient($client);
-        $clientRequest->setNeedType($request->needType);
         // ! RequestStatus n'a pas de valeur par défaut dans le constructeur de ClientRequest : l'oublier
         // ! plante le flush() avec propriété typée non initialisée
         $clientRequest->setStatus(RequestStatus::Sent);
         $clientRequest->setExpiresAt(new \DateTimeImmutable('+30 days'));
-        $clientRequest->setCustomProduct($request->customProduct);
-        $clientRequest->setQuantity($request->quantity);
-        $clientRequest->setBudgetMin($request->budgetMin);
-        $clientRequest->setBudgetMax($request->budgetMax);
-        $clientRequest->setDesiredDate($request->desiredDate);
-        $clientRequest->setUrgencyLevel($request->urgencyLevel);
-        $clientRequest->setCity($request->city);
-        $clientRequest->setPostalCode($request->postalCode);
-        $clientRequest->setPickupWanted($request->pickupWanted);
-        $clientRequest->setDeliveryWanted($request->deliveryWanted);
-        $clientRequest->setMessage($request->message);
 
-        if ($request->radiusKm !== null) {
-            $clientRequest->setRadiusKm($request->radiusKm);
-        }
-
-        if ($request->categoryId !== null) {
-            $category = $em->find(Category::class, $request->categoryId);
-            if ($category === null) {
-                return $this->json(['error' => 'Catégorie inconnue.'], 422);
-            }
-            $clientRequest->setCategory($category);
-        }
-
-        if ($request->productId !== null) {
-            $product = $em->find(Product::class, $request->productId);
-            if ($product === null) {
-                return $this->json(['error' => 'Produit inconnu.'], 422);
-            }
-            $clientRequest->setProduct($product);
-        }
-
-        if ($request->unitId !== null) {
-            $unit = $em->find(Unit::class, $request->unitId);
-            if ($unit === null) {
-                return $this->json(['error' => 'Unité inconnue.'], 422);
-            }
-            $clientRequest->setUnit($unit);
-        }
-
-        if ($request->currencyCode !== null) {
-            $currency = $em->find(Currency::class, strtoupper($request->currencyCode));
-            if ($currency === null) {
-                return $this->json(['error' => 'Devise inconnue.'], 422);
-            }
-            $clientRequest->setCurrency($currency);
-        }
-
-        if ($request->countryCode !== null) {
-            $country = $em->find(Country::class, strtoupper($request->countryCode));
-            if ($country === null) {
-                return $this->json(['error' => 'Pays inconnu.'], 422);
-            }
-            $clientRequest->setCountry($country);
-        }
-
-        // * Même format EWKT que pour ProducerProfile/DeliveryZone (PostGisMappingTest) : "SRID=4326;POINT(lon lat)".
-        if ($request->latitude !== null && $request->longitude !== null) {
-            $clientRequest->setLocation(sprintf('SRID=4326;POINT(%F %F)', $request->longitude, $request->latitude));
+        $error = $this->applyRequestData($clientRequest, $request, $em);
+        if ($error !== null) {
+            return $error;
         }
 
         $em->persist($clientRequest);
@@ -185,6 +129,40 @@ final class ClientRequestController extends AbstractController
         ]);
     }
 
+    #[Route('/api/client/requests/{id}', methods: ['PUT'])]
+    public function updateRequest(
+        string $id,
+        #[MapRequestPayload] CreateClientRequestRequest $request,
+        #[CurrentUser] User $client,
+        EntityManagerInterface $em,
+    ): JsonResponse {
+        $result = $this->findOwnedRequest($id, $client, $em);
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+        $clientRequest = $result;
+
+        if (!\in_array($clientRequest->getStatus(), self::EDITABLE_STATUSES, true)) {
+            return $this->json(['error' => 'Cette demande ne peut plus être modifiée.'], 409);
+        }
+
+        $error = $this->applyRequestData($clientRequest, $request, $em);
+        if ($error !== null) {
+            return $error;
+        }
+
+        $em->flush();
+
+        // * Les critères ont pu changer (catégorie, localisation...) -- upsert idempotent
+        // * (ON CONFLICT DO UPDATE dans la fonction SQL), sans risque à rejouer.
+        $em->getConnection()->executeStatement(
+            'SELECT matching.populate_request_matches(:id)',
+            ['id' => $clientRequest->getId()->toRfc4122()]
+        );
+
+        return $this->json(['id' => $clientRequest->getId()->toRfc4122()]);
+    }
+
     private function findOwnedRequest(string $id, User $client, EntityManagerInterface $em): ClientRequest|JsonResponse
     {
         $clientRequest = $em->find(ClientRequest::class, $id);
@@ -198,6 +176,91 @@ final class ClientRequestController extends AbstractController
         }
 
         return $clientRequest;
+    }
+
+    // * Factorise l'hydratation partagée par createRequest()/updateRequest(). Remet chaque association à
+    // * null avant de la re-poser : sans effet sur la création (déjà null), mais nécessaire à la mise à jour
+    // * pour qu'un champ omis dans le payload PUT efface bien l'ancienne valeur (sémantique "remplacement complet").
+    private function applyRequestData(ClientRequest $clientRequest, CreateClientRequestRequest $request, EntityManagerInterface $em): ?JsonResponse
+    {
+        // ! Reflète exactement chk_client_requests_product_or_custom (matching.client_requests) : categoryId
+        // ! seul ne satisfait PAS cette contrainte -- une demande avec seulement une catégorie plantait donc
+        // ! en 500 (violation de contrainte) au lieu d'un 422 propre. category reste un filtre optionnel,
+        // ! jamais une réponse suffisante à "que demande le client ?".
+        if ($request->productId === null && $request->customProduct === null) {
+            return $this->json(['error' => 'product ou customProduct est requis.'], 422);
+        }
+
+        $clientRequest->setNeedType($request->needType);
+        $clientRequest->setCustomProduct($request->customProduct);
+        $clientRequest->setQuantity($request->quantity);
+        $clientRequest->setBudgetMin($request->budgetMin);
+        $clientRequest->setBudgetMax($request->budgetMax);
+        $clientRequest->setDesiredDate($request->desiredDate);
+        $clientRequest->setUrgencyLevel($request->urgencyLevel);
+        $clientRequest->setCity($request->city);
+        $clientRequest->setPostalCode($request->postalCode);
+        $clientRequest->setPickupWanted($request->pickupWanted);
+        $clientRequest->setDeliveryWanted($request->deliveryWanted);
+        $clientRequest->setMessage($request->message);
+
+        if ($request->radiusKm !== null) {
+            $clientRequest->setRadiusKm($request->radiusKm);
+        }
+
+        $clientRequest->setCategory(null);
+        if ($request->categoryId !== null) {
+            $category = $em->find(Category::class, $request->categoryId);
+            if ($category === null) {
+                return $this->json(['error' => 'Catégorie inconnue.'], 422);
+            }
+            $clientRequest->setCategory($category);
+        }
+
+        $clientRequest->setProduct(null);
+        if ($request->productId !== null) {
+            $product = $em->find(Product::class, $request->productId);
+            if ($product === null) {
+                return $this->json(['error' => 'Produit inconnu.'], 422);
+            }
+            $clientRequest->setProduct($product);
+        }
+
+        $clientRequest->setUnit(null);
+        if ($request->unitId !== null) {
+            $unit = $em->find(Unit::class, $request->unitId);
+            if ($unit === null) {
+                return $this->json(['error' => 'Unité inconnue.'], 422);
+            }
+            $clientRequest->setUnit($unit);
+        }
+
+        $clientRequest->setCurrency(null);
+        if ($request->currencyCode !== null) {
+            $currency = $em->find(Currency::class, strtoupper($request->currencyCode));
+            if ($currency === null) {
+                return $this->json(['error' => 'Devise inconnue.'], 422);
+            }
+            $clientRequest->setCurrency($currency);
+        }
+
+        $clientRequest->setCountry(null);
+        if ($request->countryCode !== null) {
+            $country = $em->find(Country::class, strtoupper($request->countryCode));
+            if ($country === null) {
+                return $this->json(['error' => 'Pays inconnu.'], 422);
+            }
+            $clientRequest->setCountry($country);
+        }
+
+        // * Même format EWKT que pour ProducerProfile/DeliveryZone (PostGisMappingTest) : "SRID=4326;POINT(lon lat)".
+        $clientRequest->setLocation(
+            $request->latitude !== null && $request->longitude !== null
+                ? sprintf('SRID=4326;POINT(%F %F)', $request->longitude, $request->latitude)
+                : null
+        );
+
+        return null;
     }
 
     #[Route('/api/client/requests/{id}/cancel', methods: ['POST'])]

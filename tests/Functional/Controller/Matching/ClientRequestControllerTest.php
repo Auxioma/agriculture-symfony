@@ -120,13 +120,15 @@ final class ClientRequestControllerTest extends ApiTestCase
     {
         $token = $this->registerClientAndLogin();
 
-        // * UUID syntaxiquement valide mais qui ne correspond à aucune Category en base : distingue ce cas
-        // * (422 "catégorie inconnue") du test précédent (422 "aucune info produit fournie").
+        // * customProduct satisfait chk_client_requests_product_or_custom (categoryId seul ne suffit pas,
+        // * voir applyRequestData()) -- la requête doit donc échouer précisément sur la catégorie inconnue,
+        // * pas sur l'absence de product/customProduct. UUID syntaxiquement valide mais absent de la base.
         $this->client->request('POST', '/api/requests', server: [
             'CONTENT_TYPE' => 'application/json',
             'HTTP_AUTHORIZATION' => 'Bearer '.$token,
         ], content: json_encode([
             'needType' => 'price_request',
+            'customProduct' => 'Peu importe',
             'categoryId' => \Symfony\Component\Uid\Uuid::v4()->toRfc4122(),
         ]));
 
@@ -294,5 +296,105 @@ final class ClientRequestControllerTest extends ApiTestCase
         self::assertSame('Message original', $row['message']);
         self::assertSame('Original', $row['custom_product']);
     }
-    
+
+    public function testUpdateRequestAppliesNewFields(): void
+    {
+        $token = $this->registerClientAndLogin();
+        $this->client->request('POST', '/api/requests', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Brouillon', 'message' => 'Ancien message']));
+        $created = json_decode($this->client->getResponse()->getContent(), true);
+
+        $this->client->request('PUT', '/api/client/requests/'.$created['id'], server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode([
+            'needType' => 'quote_request',
+            'customProduct' => 'Produit corrigé',
+            'message' => 'Nouveau message',
+        ]));
+
+        self::assertResponseIsSuccessful();
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT need_type, custom_product, message FROM matching.client_requests WHERE id = :id',
+            ['id' => $created['id']]
+        );
+        self::assertSame('quote_request', $row['need_type']);
+        self::assertSame('Produit corrigé', $row['custom_product']);
+        self::assertSame('Nouveau message', $row['message']);
+    }
+
+    // * applyRequestData() remet chaque association à null avant de la re-poser : une demande passée d'un
+    // * produit catalogué à un customProduct doit donc perdre categoryId/productId, pas les garder en plus.
+    public function testUpdateRequestClearsAssociationOmittedFromPayload(): void
+    {
+        $token = $this->registerClientAndLogin();
+        $category = $this->makeCategory();
+        $product = $this->makeProduct($category);
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/requests', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['needType' => 'price_request', 'categoryId' => $category->getId()->toRfc4122(), 'productId' => $product->getId()->toRfc4122()]));
+        $created = json_decode($this->client->getResponse()->getContent(), true);
+
+        $this->client->request('PUT', '/api/client/requests/'.$created['id'], server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode([
+            'needType' => 'price_request',
+            'customProduct' => 'Plus de catégorie ni produit',
+        ]));
+
+        self::assertResponseIsSuccessful();
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT category_id, product_id, custom_product FROM matching.client_requests WHERE id = :id',
+            ['id' => $created['id']]
+        );
+        self::assertNull($row['category_id']);
+        self::assertNull($row['product_id']);
+        self::assertSame('Plus de catégorie ni produit', $row['custom_product']);
+    }
+
+    public function testUpdateRequestRejectsAccessToAnotherClientsRequest(): void
+    {
+        $tokenA = $this->registerClientAndLogin('clienta');
+        $this->client->request('POST', '/api/requests', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$tokenA], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Privée']));
+        $created = json_decode($this->client->getResponse()->getContent(), true);
+
+        $tokenB = $this->registerClientAndLogin('clientb');
+        $this->client->request('PUT', '/api/client/requests/'.$created['id'], server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$tokenB], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Piratée']));
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testUpdateRequestReturns404ForUnknownId(): void
+    {
+        $token = $this->registerClientAndLogin();
+
+        $this->client->request('PUT', '/api/client/requests/'.\Symfony\Component\Uid\Uuid::v4()->toRfc4122(), server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Fantôme']));
+
+        self::assertResponseStatusCodeSame(404);
+    }
+
+    public function testUpdateRequestRejectsWhenNoProductInformationGiven(): void
+    {
+        $token = $this->registerClientAndLogin();
+        $this->client->request('POST', '/api/requests', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['needType' => 'price_request', 'customProduct' => 'À corriger']));
+        $created = json_decode($this->client->getResponse()->getContent(), true);
+
+        $this->client->request('PUT', '/api/client/requests/'.$created['id'], server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['needType' => 'price_request']));
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    // * Une fois qu'un producteur a répondu (RepliesReceived et au-delà), la demande n'est plus modifiable --
+    // * choix délibéré non explicité par le cahier, voir le docblock de EDITABLE_STATUSES.
+    public function testUpdateRequestIsRejectedOnceRepliesHaveBeenReceived(): void
+    {
+        $token = $this->registerClientAndLogin();
+        $this->client->request('POST', '/api/requests', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Déjà répondue']));
+        $created = json_decode($this->client->getResponse()->getContent(), true);
+
+        $this->em->getConnection()->executeStatement(
+            "UPDATE matching.client_requests SET status = 'replies_received' WHERE id = :id",
+            ['id' => $created['id']]
+        );
+
+        $this->client->request('PUT', '/api/client/requests/'.$created['id'], server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Trop tard']));
+
+        self::assertResponseStatusCodeSame(409);
+    }
 }

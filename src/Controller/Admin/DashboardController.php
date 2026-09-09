@@ -26,11 +26,55 @@ use Doctrine\ORM\EntityManagerInterface;
 #[AdminDashboard(routePath: '/admin', routeName: 'admin')]
 class DashboardController extends AbstractDashboardController
 {
+    // * index() vient de DashboardControllerInterface avec une signature figée (aucun paramètre) : impossible
+    // * d'y injecter EntityManagerInterface via un argument de méthode comme sur reporting(). Le container
+    // * exposé par AbstractDashboardController ($this->container) est un service locator restreint qui ne
+    // * connaît qu'un sous-ensemble de services (AdminUrlGenerator y est, EntityManagerInterface non -- testé
+    // * en navigateur, erreur "not found ... smaller service locator") : l'injection par constructeur reste
+    // * le seul moyen fiable ici, même pattern que Conversation/MessageCrudController::detail().
+    public function __construct(private readonly EntityManagerInterface $em)
+    {
+    }
+
+    /**
+     * Module "Tableau de bord" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf :
+     * "Utilisateurs, producteurs, demandes, conversations, revenus, signalements, tickets support").
+     * Remplace l'ancien redirect vers Utilisateurs par une vraie vue d'ensemble.
+     */
     public function index(): Response
     {
-        $adminUrlGenerator = $this->container->get(AdminUrlGenerator::class);
+        $connection = $this->em->getConnection();
 
-        return $this->redirect($adminUrlGenerator->setController(UserCrudController::class)->generateUrl());
+        $users = $connection->fetchAssociative(
+            "SELECT count(*) AS total, count(*) FILTER (WHERE status = 'active') AS active FROM identity.users"
+        );
+        $producers = $connection->fetchAssociative(
+            "SELECT count(*) AS total, count(*) FILTER (WHERE verification_status = 'pending') AS pending FROM producer.producer_profiles"
+        );
+        $requests = $connection->fetchAssociative(
+            "SELECT count(*) AS total, count(*) FILTER (WHERE status IN ('sent', 'waiting_replies', 'replies_received', 'conversation_open')) AS active
+             FROM matching.client_requests"
+        );
+        $conversations = $connection->fetchAssociative(
+            "SELECT count(*) AS total, count(*) FILTER (WHERE status = 'reported') AS reported FROM messaging.conversations"
+        );
+        // * Revenus du mois en cours, pas un cumul historique -- Reporting couvre déjà la vue détaillée/dans
+        // * le temps, le dashboard doit rester un instantané "que se passe-t-il maintenant".
+        $revenueThisMonth = $connection->fetchOne(
+            "SELECT COALESCE(SUM(amount), 0) FROM billing.invoices WHERE status = 'paid' AND paid_at >= date_trunc('month', now())"
+        );
+        $openReports = (int) $connection->fetchOne("SELECT count(*) FROM trust.reports WHERE status = 'open'");
+        $openTickets = (int) $connection->fetchOne("SELECT count(*) FROM support.tickets WHERE status NOT IN ('resolved', 'closed')");
+
+        return $this->render('admin/dashboard.html.twig', [
+            'users' => $users,
+            'producers' => $producers,
+            'requests' => $requests,
+            'conversations' => $conversations,
+            'revenueThisMonth' => $revenueThisMonth,
+            'openReports' => $openReports,
+            'openTickets' => $openTickets,
+        ]);
     }
 
     public function configureDashboard(): Dashboard
@@ -75,9 +119,9 @@ class DashboardController extends AbstractDashboardController
      */
 
     #[AdminRoute(path: '/reporting', name: 'reporting')]
-    public function reporting(EntityManagerInterface $em): Response
+    public function reporting(): Response
     {
-        $connection = $em->getConnection();
+        $connection = $this->em->getConnection();
 
         $requestsByCountry = $connection->fetchAllAssociative(
             'SELECT co.code, co.name, COUNT(cr.id) AS total
