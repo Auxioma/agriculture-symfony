@@ -30,9 +30,17 @@ use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
+use App\Service\Audit\AuditLogger;
 
 class MessageCrudController extends AbstractCrudController
 {
+
+    public function __construct(
+        private readonly EntityManagerInterface $em,
+        private readonly AuditLogger $auditLogger,
+    ) {
+    }
+
     public static function getEntityFqcn(): string
     {
         return Message::class;
@@ -62,7 +70,10 @@ class MessageCrudController extends AbstractCrudController
 
     public function detail(AdminContext $context): KeyValueStore|Response
     {
-        $this->assertMessageIsReported($context->getEntity()->getInstance());
+        $message = $context->getEntity()->getInstance();
+        $this->assertMessageIsReported($message);
+        $this->auditLogger->log('reported_message_viewed', 'messaging', 'messages', $message->getId()->toRfc4122());
+        $this->em->flush();
 
         return parent::detail($context);
     }
@@ -102,14 +113,15 @@ class MessageCrudController extends AbstractCrudController
     }
 
     #[AdminRoute(path: '/{entityId}/hide', name: 'hide')]
-    public function hideMessage(AdminContext $context, EntityManagerInterface $em, #[CurrentUser] User $admin): Response
+    public function hideMessage(AdminContext $context, #[CurrentUser] User $admin): Response
     {
         $message = $context->getEntity()->getInstance();
         $this->assertMessageIsReported($message);
         $message->setModeratedAt(new \DateTimeImmutable());
-        $this->recordModerationAction($message->getConversation(), $admin, 'hide_message', ['messageId' => $message->getId()->toRfc4122()], $em);
+        $this->recordModerationAction($message->getConversation(), $admin, 'hide_message', ['messageId' => $message->getId()->toRfc4122()]);
+        $this->auditLogger->log('message_hidden', 'messaging', 'messages', $message->getId()->toRfc4122());
 
-        $em->flush();
+        $this->em->flush();
         $this->addFlash('success', 'Message masqué.');
 
         return $this->redirectToIndex();
@@ -120,16 +132,17 @@ class MessageCrudController extends AbstractCrudController
     // * Le "blocage" côté modération back-office réutilise donc la suspension déjà en place sur Utilisateurs
     // * (User.status), mécanisme réellement conçu pour une décision administrative sur un compte.
     #[AdminRoute(path: '/{entityId}/block-sender', name: 'block_sender')]
-    public function blockSender(AdminContext $context, EntityManagerInterface $em, #[CurrentUser] User $admin): Response
+    public function blockSender(AdminContext $context, #[CurrentUser] User $admin): Response
     {
         $message = $context->getEntity()->getInstance();
         $this->assertMessageIsReported($message);
         $sender = $message->getSender();
         $sender->setStatus(UserStatus::Suspended);
 
-        $this->recordModerationAction($message->getConversation(), $admin, 'block_user', ['userId' => $sender->getId()->toRfc4122()], $em);
+        $this->recordModerationAction($message->getConversation(), $admin, 'block_user', ['userId' => $sender->getId()->toRfc4122()]);
+        $this->auditLogger->log('user_blocked', 'identity', 'users', $sender->getId()->toRfc4122(), ['status' => 'active'], ['status' => UserStatus::Suspended->value]);
 
-        $em->flush();
+        $this->em->flush();
         $this->addFlash('success', 'Utilisateur suspendu.');
 
         return $this->redirectToIndex();
@@ -138,9 +151,9 @@ class MessageCrudController extends AbstractCrudController
     // * ModerationAction.report n'est pas nullable : sans Report retrouvé (ne devrait pas arriver puisque
     // * la liste est déjà filtrée aux conversations signalées), on masque/bloque quand même mais sans trace --
     // * mieux vaut agir sans trace que ne pas agir du tout, mais ce cas ne devrait jamais se produire en pratique.
-    private function recordModerationAction(Conversation $conversation, User $admin, string $actionType, array $payload, EntityManagerInterface $em): void
+    private function recordModerationAction(Conversation $conversation, User $admin, string $actionType, array $payload): void
     {
-        $report = $em->getRepository(Report::class)->findOneBy([
+        $report = $this->em->getRepository(Report::class)->findOneBy([
             'targetType' => 'conversation',
             'targetId' => $conversation->getId(),
         ]);
@@ -154,7 +167,7 @@ class MessageCrudController extends AbstractCrudController
         $action->setAdmin($admin);
         $action->setActionType($actionType);
         $action->setPayload($payload);
-        $em->persist($action);
+        $this->em->persist($action);
     }
 
     private function redirectToIndex(): Response

@@ -24,9 +24,16 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use App\Service\Audit\AuditLogger;
 
 class ConversationCrudController extends AbstractCrudController
 {
+    public function __construct(
+        private readonly EntityManagerInterface $em,
+        private readonly AuditLogger $auditLogger,
+    ) {
+    }
+
     public static function getEntityFqcn(): string
     {
         return Conversation::class;
@@ -53,7 +60,10 @@ class ConversationCrudController extends AbstractCrudController
 
     public function detail(AdminContext $context): KeyValueStore|Response
     {
-        $this->assertConversationIsReported($context->getEntity()->getInstance());
+        $conversation = $context->getEntity()->getInstance();
+        $this->assertConversationIsReported($conversation);
+        $this->auditLogger->log('reported_conversation_viewed', 'messaging', 'conversations', $conversation->getId()->toRfc4122());
+        $this->em->flush();
 
         return parent::detail($context);
     }
@@ -94,24 +104,26 @@ class ConversationCrudController extends AbstractCrudController
     }
 
     #[AdminRoute(path: '/{entityId}/reopen', name: 'reopen')]
-    public function reopenConversation(AdminContext $context, EntityManagerInterface $em): Response
+    public function reopenConversation(AdminContext $context): Response
     {
         $conversation = $context->getEntity()->getInstance();
         $this->assertConversationIsReported($conversation);
         $conversation->setStatus(ConversationStatus::Open);
-        $em->flush();
+        $this->auditLogger->log('conversation_reopened', 'messaging', 'conversations', $conversation->getId()->toRfc4122());
+        $this->em->flush();
         $this->addFlash('success', 'Conversation rouverte.');
 
         return $this->redirectToIndex();
     }
 
     #[AdminRoute(path: '/{entityId}/close', name: 'close')]
-    public function closeConversation(AdminContext $context, EntityManagerInterface $em): Response
+    public function closeConversation(AdminContext $context): Response
     {
         $conversation = $context->getEntity()->getInstance();
         $this->assertConversationIsReported($conversation);
         $conversation->setStatus(ConversationStatus::Closed);
-        $em->flush();
+        $this->auditLogger->log('conversation_closed', 'messaging', 'conversations', $conversation->getId()->toRfc4122());
+        $this->em->flush();
         $this->addFlash('success', 'Conversation clôturée.');
 
         return $this->redirectToIndex();

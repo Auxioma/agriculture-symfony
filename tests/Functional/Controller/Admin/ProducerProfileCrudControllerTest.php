@@ -72,6 +72,12 @@ final class ProducerProfileCrudControllerTest extends ApiTestCase
             ['userId' => $owner->getId()->toRfc4122()]
         );
         self::assertNotFalse($notification);
+
+        $audit = $this->em->getConnection()->fetchAssociative(
+            "SELECT record_id FROM audit.audit_logs WHERE action = 'producer_validated' AND table_name = 'producer_profiles'"
+        );
+        self::assertNotFalse($audit);
+        self::assertSame($producer->getId()->toRfc4122(), $audit['record_id']);
     }
 
     public function testRejectActionSetsStatusAndNotifiesOwner(): void

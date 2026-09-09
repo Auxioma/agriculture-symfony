@@ -113,6 +113,28 @@ final class MessageModerationCrudControllerTest extends ApiTestCase
         self::assertStringNotContainsString($openConversationClient->getEmail(), $content);
     }
 
+    // * Cahier DevOps : "journaliser les actions admin sensibles ... lecture d'une conversation signalée" --
+    // * seule la consultation DETAIL doit être tracée (pas l'INDEX, qui ne fait que lister).
+    public function testViewingReportedConversationDetailRecordsAuditLog(): void
+    {
+        $this->loginAsAdmin();
+        [$conversation] = $this->makeReportedConversationWithMessage();
+
+        $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
+            ->setController(ConversationCrudController::class)
+            ->setAction(Action::DETAIL)
+            ->setEntityId($conversation->getId())
+            ->generateUrl());
+
+        self::assertResponseIsSuccessful();
+
+        $audit = $this->em->getConnection()->fetchAssociative(
+            "SELECT record_id FROM audit.audit_logs WHERE action = 'reported_conversation_viewed' AND table_name = 'conversations'"
+        );
+        self::assertNotFalse($audit);
+        self::assertSame($conversation->getId()->toRfc4122(), $audit['record_id']);
+    }
+
     // * ConversationCrudController::detail() vérifie explicitement le statut : défense en profondeur contre
     // * l'accès direct par URL à une conversation non signalée, même si l'index ne la liste déjà pas.
     public function testDirectAccessToNonReportedConversationIsForbidden(): void
@@ -136,6 +158,32 @@ final class MessageModerationCrudControllerTest extends ApiTestCase
             ->generateUrl());
 
         self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testClosingReportedConversationRecordsAuditLog(): void
+    {
+        $this->loginAsAdmin();
+        [$conversation] = $this->makeReportedConversationWithMessage();
+
+        $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
+            ->setController(ConversationCrudController::class)
+            ->setAction('closeConversation')
+            ->setEntityId($conversation->getId())
+            ->generateUrl());
+
+        self::assertResponseIsSuccessful();
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT status FROM messaging.conversations WHERE id = :id',
+            ['id' => $conversation->getId()->toRfc4122()]
+        );
+        self::assertSame('closed', $row['status']);
+
+        $audit = $this->em->getConnection()->fetchAssociative(
+            "SELECT record_id FROM audit.audit_logs WHERE action = 'conversation_closed' AND table_name = 'conversations'"
+        );
+        self::assertNotFalse($audit);
+        self::assertSame($conversation->getId()->toRfc4122(), $audit['record_id']);
     }
 
     public function testHideMessageRedactsContentFromApiAndRecordsModerationAction(): void
@@ -162,6 +210,12 @@ final class MessageModerationCrudControllerTest extends ApiTestCase
         );
         self::assertNotFalse($action);
         self::assertSame($admin->getId()->toRfc4122(), $action['admin_id']);
+
+        $audit = $this->em->getConnection()->fetchAssociative(
+            "SELECT record_id FROM audit.audit_logs WHERE action = 'message_hidden' AND table_name = 'messages'"
+        );
+        self::assertNotFalse($audit);
+        self::assertSame($message->getId()->toRfc4122(), $audit['record_id']);
 
         // * Preuve bout-en-bout que le masquage cache vraiment le contenu côté API, pas seulement en base --
         // * ConversationController::getConversation() a été patché pour ça dans ce même round.
@@ -198,5 +252,11 @@ final class MessageModerationCrudControllerTest extends ApiTestCase
         );
         self::assertNotFalse($action);
         self::assertSame($admin->getId()->toRfc4122(), $action['admin_id']);
+
+        $audit = $this->em->getConnection()->fetchAssociative(
+            "SELECT record_id FROM audit.audit_logs WHERE action = 'user_blocked' AND table_name = 'users'"
+        );
+        self::assertNotFalse($audit);
+        self::assertSame($client->getId()->toRfc4122(), $audit['record_id']);
     }
 }

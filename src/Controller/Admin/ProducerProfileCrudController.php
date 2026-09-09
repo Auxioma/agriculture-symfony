@@ -19,9 +19,15 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\Response;
+use App\Service\Audit\AuditLogger;
 
 class ProducerProfileCrudController extends AbstractCrudController
 {
+
+    public function __construct(private readonly AuditLogger $auditLogger)
+    {
+    }
+
     public static function getEntityFqcn(): string
     {
         return ProducerProfile::class;
@@ -78,8 +84,13 @@ class ProducerProfileCrudController extends AbstractCrudController
     public function validateProducer(AdminContext $context, EntityManagerInterface $em, NotificationService $notificationService): Response
     {
         $producer = $context->getEntity()->getInstance();
+        $previousStatus = $producer->getVerificationStatus();
         $producer->setVerificationStatus(VerificationStatus::Verified);
         $notificationService->notify($producer->getOwner(), 'profile_validated', 'Profil validé', 'Votre profil producteur a été validé par notre équipe.');
+        $this->auditLogger->log(
+            'producer_validated', 'producer', 'producer_profiles', $producer->getId()->toRfc4122(),
+            ['verificationStatus' => $previousStatus->value], ['verificationStatus' => VerificationStatus::Verified->value]
+        );
         $em->flush();
 
         $this->addFlash('success', 'Profil validé.');
@@ -91,8 +102,13 @@ class ProducerProfileCrudController extends AbstractCrudController
     public function rejectProducer(AdminContext $context, EntityManagerInterface $em, NotificationService $notificationService): Response
     {
         $producer = $context->getEntity()->getInstance();
+        $previousStatus = $producer->getVerificationStatus();
         $producer->setVerificationStatus(VerificationStatus::Rejected);
         $notificationService->notify($producer->getOwner(), 'profile_rejected', 'Profil non validé', "Votre profil producteur n'a pas été validé. Contactez le support pour plus d'informations.");
+        $this->auditLogger->log(
+            'producer_rejected', 'producer', 'producer_profiles', $producer->getId()->toRfc4122(),
+            ['verificationStatus' => $previousStatus->value], ['verificationStatus' => VerificationStatus::Rejected->value]
+        );
         $em->flush();
 
         $this->addFlash('success', 'Profil refusé.');
@@ -105,6 +121,7 @@ class ProducerProfileCrudController extends AbstractCrudController
     {
         $producer = $context->getEntity()->getInstance();
         $notificationService->notify($producer->getOwner(), 'profile_more_info_needed', 'Complément requis', 'Merci de compléter votre profil producteur (documents ou informations manquantes) pour finaliser la vérification.');
+        $this->auditLogger->log('producer_more_info_requested', 'producer', 'producer_profiles', $producer->getId()->toRfc4122());
         $em->flush();
 
         $this->addFlash('success', 'Demande de complément envoyée.');

@@ -18,9 +18,14 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\Response;
+use App\Service\Audit\AuditLogger;
 
 class UserCrudController extends AbstractCrudController
 {
+    public function __construct(private readonly AuditLogger $auditLogger)
+    {
+    }
+
     public static function getEntityFqcn(): string
     {
         return User::class;
@@ -78,15 +83,13 @@ class UserCrudController extends AbstractCrudController
     public function anonymizeUser(AdminContext $context, EntityManagerInterface $em): Response
     {
         $user = $context->getEntity()->getInstance();
-        $em->getConnection()->executeStatement('SELECT identity.anonymize_user(:userId)', ['userId' => $user->getId()->toRfc4122()]);
+        $userId = $user->getId()->toRfc4122();
+        $em->getConnection()->executeStatement('SELECT identity.anonymize_user(:userId)', ['userId' => $userId]);
+        $this->auditLogger->log('user_anonymized', 'identity', 'users', $userId);
+        $em->flush();
 
         $this->addFlash('success', 'Utilisateur anonymisé.');
 
-        // ! AdminUrlGenerator part des paramètres de la requête EN COURS (action=anonymizeUser,
-        // ! entityId=<cible>) et ne les efface pas juste parce qu'on change le contrôleur -- sans
-        // ! setAction(INDEX) explicite, l'URL générée pointe vers cette même action anonymize, ce qui
-        // ! redéclenche l'anonymisation puis redirige de nouveau vers elle-même : boucle de redirection
-        // ! infinie (repérée par un test qui a fait planter le process PHP en OOM avant de s'en arrêter).
         return $this->redirect(
             $this->container->get(AdminUrlGenerator::class)
                 ->setController(self::class)
@@ -94,5 +97,23 @@ class UserCrudController extends AbstractCrudController
                 ->unset('entityId')
                 ->generateUrl()
         );
+    }
+
+    // * Couvre le "blocage compte" (cahier DevOps) même quand il passe par le formulaire générique
+    // * (changement de "status" ici) plutôt que par MessageCrudController::blockSender(). getOriginalEntityData()
+    // * donne la valeur AVANT le changement en cours -- $entityInstance porte déjà les valeurs du formulaire.
+    public function updateEntity(EntityManagerInterface $entityManager, object $entityInstance): void
+    {
+        if ($entityInstance instanceof User) {
+            $previousStatus = $entityManager->getUnitOfWork()->getOriginalEntityData($entityInstance)['status'] ?? null;
+            if ($previousStatus instanceof UserStatus && $previousStatus !== $entityInstance->getStatus()) {
+                $this->auditLogger->log(
+                    'user_status_changed', 'identity', 'users', $entityInstance->getId()->toRfc4122(),
+                    ['status' => $previousStatus->value], ['status' => $entityInstance->getStatus()->value]
+                );
+            }
+        }
+
+        parent::updateEntity($entityManager, $entityInstance);
     }
 }

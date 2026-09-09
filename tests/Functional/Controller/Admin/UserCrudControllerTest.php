@@ -57,6 +57,12 @@ final class UserCrudControllerTest extends ApiTestCase
         );
         self::assertSame('deleted', $row['status']);
         self::assertStringContainsString('@anonymized.local', $row['email']);
+
+        $audit = $this->em->getConnection()->fetchAssociative(
+            "SELECT record_id FROM audit.audit_logs WHERE action = 'user_anonymized' AND table_name = 'users'"
+        );
+        self::assertNotFalse($audit);
+        self::assertSame($target->getId()->toRfc4122(), $audit['record_id']);
     }
 
     // * Vérifie le formulaire d'édition de bout en bout : status et roles sont mappés en ChoiceField (pas
@@ -98,6 +104,15 @@ final class UserCrudControllerTest extends ApiTestCase
         );
         self::assertSame('suspended', $row['status']);
         self::assertStringContainsString('ROLE_PRODUCER', $row['roles']);
+
+        // * Couvre updateEntity() : le "blocage compte" doit être journalisé même via le formulaire générique,
+        // * pas seulement via MessageCrudController::blockSender().
+        $audit = $this->em->getConnection()->fetchAssociative(
+            "SELECT old_data, new_data FROM audit.audit_logs WHERE action = 'user_status_changed' AND record_id = :id",
+            ['id' => $target->getId()->toRfc4122()]
+        );
+        self::assertNotFalse($audit);
+        self::assertStringContainsString('suspended', $audit['new_data']);
     }
 
     // * disable(Action::NEW) doit être appliqué côté serveur (ForbiddenActionException), pas seulement
