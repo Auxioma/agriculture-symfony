@@ -1,4 +1,4 @@
-.PHONY: setup up down db-reset test quality logs
+.PHONY: setup up down db-reset test quality logs backup
 
 setup: ## Installe les dépendances et prépare l'environnement local
 	composer install
@@ -27,3 +27,6 @@ quality: ## Lint + format + analyse statique
 
 logs: ## Affiche les logs applicatifs
 	tail -f var/log/dev.log
+
+backup: ## Lance une sauvegarde PostgreSQL manuelle (nécessite les mêmes credentials que le serveur)
+	bash scripts/db/backup.sh

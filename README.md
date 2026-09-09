@@ -45,6 +45,7 @@ et emails non envoyés (visibles dans le profiler Symfony, `/_profiler`, une foi
 | `make test` | Lance la suite PHPUnit |
 | `make quality` | PHP-CS-Fixer + PHPStan |
 | `make logs` | Logs applicatifs (`var/log/dev.log`) |
+| `make backup` | Sauvegarde PostgreSQL manuelle (nécessite les mêmes credentials que le serveur, voir [runbook](docs/runbooks/backup.md)) |
 
 ## Conventions
 
@@ -68,3 +69,4 @@ et emails non envoyés (visibles dans le profiler Symfony, `/_profiler`, une foi
 ## Liens
 
 - Cahiers des charges (fonctionnel et DevOps) : hors dépôt, demander l'accès à l'équipe projet.
+- [Runbook sauvegardes PostgreSQL](docs/runbooks/backup.md) : fonctionnement, restauration en cas d'incident, secrets requis.
