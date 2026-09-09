@@ -20,7 +20,6 @@ services:
                 credentials:
                     key: '%env(STORAGE_KEY)%'
                     secret: '%env(STORAGE_SECRET)%'
-
                     
     # default configuration for services in *this* file
     _defaults:
@@ -39,6 +38,9 @@ services:
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
+
+    App\EventListener\SecurityHeadersListener:
+        arguments: ['%env(csv:CORS_ALLOWED_ORIGINS)%']
 
 when@test:
     services:
