@@ -1,3 +1,9 @@
 framework:
     mailer:
         dsn: '%env(MAILER_DSN)%'
+        # ! Sans expéditeur par défaut, tout Email sans From/Sender explicite (AuthController::forgotPassword,
+        # ! NotificationService) est rejeté par le transport avec "An email must have a 'From' or a 'Sender'
+        # ! header." -- masqué jusqu'ici par le routage Messenger async qui ne validait jamais réellement
+        # ! l'email (voir messenger.yaml). Ajoute automatiquement un en-tête Sender quand aucun From n'est posé.
+        envelope:
+            sender: '%env(MAILER_FROM_ADDRESS)%'
