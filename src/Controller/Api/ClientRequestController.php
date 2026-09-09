@@ -39,6 +39,7 @@ final class ClientRequestController extends AbstractController
         // ! RequestStatus n'a pas de valeur par défaut dans le constructeur de ClientRequest : l'oublier
         // ! plante le flush() avec propriété typée non initialisée
         $clientRequest->setStatus(RequestStatus::Sent);
+        $clientRequest->setExpiresAt(new \DateTimeImmutable('+30 days'));
         $clientRequest->setCustomProduct($request->customProduct);
         $clientRequest->setQuantity($request->quantity);
         $clientRequest->setBudgetMin($request->budgetMin);

@@ -1,0 +1,27 @@
+name: Reminders
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+
+    env:
+      SSHPASS: ${{ secrets.APP_PASS }}
+
+    steps:
+      - name: Install sshpass
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+
+      - name: Envoyer les rappels d'expiration
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no -p 5022 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
+            set -e
+            cd ~/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
+            bin/console app:send-expiry-reminders --env=dev --no-interaction
+          EOF
