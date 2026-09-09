@@ -27,6 +27,7 @@ use App\Enum\NeedType;
 use App\Enum\RequestStatus;
 use App\Enum\SubscriptionStatus;
 use App\Enum\VerificationStatus;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
  * Fabriques de fixtures minimales et réutilisables pour les tests fonctionnels en base.
@@ -73,14 +74,34 @@ trait EntityFactoryTrait
         return $user;
     }
 
+    // * Contrairement à makeUser() (hash bidon 'x', jamais vérifié), celle-ci hash réellement le mot de
+    // * passe -- nécessaire pour les tests qui doivent ensuite se logger pour de vrai via /api/auth/login.
+    // * Pas fusionnée dans makeUser() : le hash réel a un coût CPU (même réduit en environnement de test),
+    // * inutile pour les ~15 tests existants qui ne se loggent jamais.
+    protected function makeUserWithPassword(string $emailPrefix, string $plainPassword): User
+    {
+        $user = new User();
+        $user->setEmail($emailPrefix.'_'.bin2hex(random_bytes(6)).'@test.local');
+
+        $hasher = self::getContainer()->get(UserPasswordHasherInterface::class);
+        $user->setPasswordHash($hasher->hashPassword($user, $plainPassword));
+
+        $this->em->persist($user);
+
+        return $user;
+    }
+
+    // * farmName paramétrable (comme makeCategory()/makeProduct()) : nécessaire dès qu'un test doit
+    // * distinguer plusieurs producteurs par leur nom (ex. un actif et un inactif dans la même liste).
     protected function makeProducerProfile(
         User $owner,
         Country $country,
         VerificationStatus $verificationStatus = VerificationStatus::Verified,
+        string $farmName = 'Ferme Test',
     ): ProducerProfile {
         $producer = new ProducerProfile();
         $producer->setOwner($owner);
-        $producer->setFarmName('Ferme Test');
+        $producer->setFarmName($farmName);
         $producer->setSlug('ferme-test-'.bin2hex(random_bytes(6)));
         $producer->setCountry($country);
         $producer->setVerificationStatus($verificationStatus);
@@ -111,11 +132,13 @@ trait EntityFactoryTrait
         $plan->setCode('plan-'.bin2hex(random_bytes(6)));
         $plan->setName('Basic');
         $plan->setFeatures($features);
+        $plan->setIsActive(true);
         $this->em->persist($plan);
 
         $planPrice = new PlanPrice();
         $planPrice->setPlan($plan);
         $planPrice->setBillingCycle(BillingCycle::Monthly);
+        $planPrice->setIsActive(true);
         $this->em->persist($planPrice);
 
         $subscription = new Subscription();

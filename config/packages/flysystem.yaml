@@ -1,0 +1,53 @@
+flysystem:
+    storages:
+        producer_media.storage:
+            adapter: 'aws'
+            options:
+                client: 'Aws\S3\S3Client'
+                bucket: '%env(STORAGE_BUCKET)%'
+                prefix: 'producer-media'
+            public_url: '%env(STORAGE_PUBLIC_URL)%'
+
+        message_attachments.storage:
+            adapter: 'aws'
+            options:
+                client: 'Aws\S3\S3Client'
+                bucket: '%env(STORAGE_BUCKET_ATTACHMENTS)%'
+                prefix: 'attachments'
+            # ! Pas de public_url ici, volontairement (cahier fonctionnel : "les pièces jointes sont
+            # ! protégées et non publiques par défaut"). L'accès passe exclusivement par temporaryUrl()
+            # ! (URL signée à durée limitée), jamais par une URL persistée.
+
+when@test:
+    flysystem:
+        storages:
+            # ! Pas de vrai MinIO dans les tests automatisés : adaptateur local (écrit dans var/storage/test*,
+            # ! gitignoré) pour rester rapide et déterministe, même pattern que FakePaymentGateway pour Stripe.
+            producer_media.storage:
+                adapter: 'local'
+                options:
+                    directory: '%kernel.project_dir%/var/storage/test'
+                public_url: 'http://localhost/test-storage'
+
+            message_attachments.storage:
+                adapter: 'local'
+                options:
+                    directory: '%kernel.project_dir%/var/storage/test-attachments'
+                # ! L'adaptateur local ne sait pas générer d'URL signée (ça n'a pas de sens sur disque) :
+                # ! FakeTemporaryUrlGenerator le remplace uniquement en test.
+                temporary_url_generator: 'App\Service\Storage\FakeTemporaryUrlGenerator'
+
+when@dev:
+    flysystem:
+        storages:
+            producer_media.storage:
+                adapter: 'local'
+                options:
+                    directory: '%kernel.project_dir%/var/storage/dev'
+                public_url: 'http://localhost:8000/dev-storage'
+
+            message_attachments.storage:
+                adapter: 'local'
+                options:
+                    directory: '%kernel.project_dir%/var/storage/dev-attachments'
+                temporary_url_generator: 'App\Service\Storage\FakeTemporaryUrlGenerator'

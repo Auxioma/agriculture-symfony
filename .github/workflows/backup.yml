@@ -1,0 +1,27 @@
+name: Database Backup
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    env:
+      SSHPASS: ${{ secrets.APP_PASS }}
+
+    steps:
+      - name: Install sshpass
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+
+      - name: Exécuter la sauvegarde PostgreSQL
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no -p 5022 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
+            set -e
+            cd ~/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
+            bash scripts/db/backup.sh
+          EOF

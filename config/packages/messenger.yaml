@@ -18,7 +18,14 @@ framework:
             messenger.bus.default: []
 
         routing:
-            Symfony\Component\Mailer\Messenger\SendEmailMessage: async
+            # ! SendEmailMessage était routé vers "async" (doctrine, MESSENGER_TRANSPORT_DSN) mais aucun
+            # ! worker "messenger:consume" ne tourne nulle part dans ce projet (ni CI/CD, ni déploiement, ni
+            # ! documentation) -- chaque email envoyé via Mailer était donc seulement mis en file dans
+            # ! messenger_messages et jamais réellement délivré, y compris le mot de passe oublié existant
+            # ! avant ce round. Retiré pour un envoi synchrone réel, cohérent avec le reste du projet qui
+            # ! évite délibérément l'infrastructure supplémentaire (pas de Docker, pas de scheduler...).
+            # ! Si un worker est mis en place plus tard (cahier DevOps : "workers Messenger"), cette route
+            # ! peut être réactivée.
             Symfony\Component\Notifier\Message\ChatMessage: async
             Symfony\Component\Notifier\Message\SmsMessage: async
 

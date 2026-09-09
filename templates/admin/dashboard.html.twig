@@ -1,0 +1,88 @@
+{% extends '@EasyAdmin/layout.html.twig' %}
+
+{% block content_title %}Tableau de bord{% endblock %}
+
+{% block main %}
+    <div class="row">
+        <div class="col-md-3 mb-4">
+            <a href="{{ ea_url().setController('App\\Controller\\Admin\\UserCrudController').generateUrl() }}" class="text-decoration-none text-body">
+                <div class="card text-center h-100">
+                    <div class="card-header">Utilisateurs</div>
+                    <div class="card-body">
+                        <h2 class="mb-0">{{ users.total }}</h2>
+                        <small class="text-muted">{{ users.active }} actifs</small>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-3 mb-4">
+            <a href="{{ ea_url().setController('App\\Controller\\Admin\\ProducerProfileCrudController').generateUrl() }}" class="text-decoration-none text-body">
+                <div class="card text-center h-100">
+                    <div class="card-header">Producteurs</div>
+                    <div class="card-body">
+                        <h2 class="mb-0">{{ producers.total }}</h2>
+                        <small class="text-muted">{{ producers.pending }} en attente de validation</small>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-3 mb-4">
+            <a href="{{ ea_url().setController('App\\Controller\\Admin\\ClientRequestCrudController').generateUrl() }}" class="text-decoration-none text-body">
+                <div class="card text-center h-100">
+                    <div class="card-header">Demandes</div>
+                    <div class="card-body">
+                        <h2 class="mb-0">{{ requests.total }}</h2>
+                        <small class="text-muted">{{ requests.active }} en cours</small>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-3 mb-4">
+            <a href="{{ ea_url().setController('App\\Controller\\Admin\\ConversationCrudController').generateUrl() }}" class="text-decoration-none text-body">
+                <div class="card text-center h-100">
+                    <div class="card-header">Conversations</div>
+                    <div class="card-body">
+                        <h2 class="mb-0">{{ conversations.total }}</h2>
+                        <small class="text-muted">{{ conversations.reported }} signalées</small>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4 mb-4">
+            <a href="{{ path('admin_reporting') }}" class="text-decoration-none text-body">
+                <div class="card text-center h-100">
+                    <div class="card-header">Revenus (ce mois-ci)</div>
+                    <div class="card-body">
+                        <h2 class="mb-0">{{ revenueThisMonth|number_format(2, ',', ' ') }}</h2>
+                        <small class="text-muted">Voir le détail dans Reporting</small>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-4 mb-4">
+            <a href="{{ ea_url().setController('App\\Controller\\Admin\\ConversationCrudController').generateUrl() }}" class="text-decoration-none text-body">
+                <div class="card text-center h-100">
+                    <div class="card-header">Signalements ouverts</div>
+                    <div class="card-body">
+                        <h2 class="mb-0">{{ openReports }}</h2>
+                        <small class="text-muted">Non encore traités</small>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-4 mb-4">
+            <a href="{{ ea_url().setController('App\\Controller\\Admin\\TicketCrudController').generateUrl() }}" class="text-decoration-none text-body">
+                <div class="card text-center h-100">
+                    <div class="card-header">Tickets support ouverts</div>
+                    <div class="card-body">
+                        <h2 class="mb-0">{{ openTickets }}</h2>
+                        <small class="text-muted">Hors résolus/fermés</small>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
+{% endblock %}

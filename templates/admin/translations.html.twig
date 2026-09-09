@@ -1,0 +1,23 @@
+{% extends '@EasyAdmin/layout.html.twig' %}
+
+{% block content_title %}Traductions — {{ entityLabel }}{% endblock %}
+
+{% block main %}
+    <a href="{{ backUrl }}" class="btn btn-secondary mb-3">&larr; Retour</a>
+
+    {{ form_start(form) }}
+        <div class="row">
+            {% for child in form %}
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">{{ child.vars.label }}</div>
+                        <div class="card-body">
+                            {{ form_widget(child) }}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+    {{ form_end(form) }}
+{% endblock %}

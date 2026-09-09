@@ -16,9 +16,40 @@ security:
             # Ensure dev tools and static assets are always allowed
             pattern: ^/(_profiler|_wdt|assets|build)/
             security: false
-        main:
+
+        admin:
+            pattern: ^/admin
             lazy: true
             provider: app_user_provider
+            form_login:
+                login_path: admin_login
+                check_path: admin_login
+                enable_csrf: true
+                default_target_path: admin
+            logout:
+                path: admin_logout
+                target: admin_login
+
+        # ! api_login avavnt api sinon la requête
+        # ! continuait alors vers le routeur normal, qui ne trouve aucun contrôleur pour /login -> 404.
+
+        api_login:
+            pattern: ^/api/auth/login
+            stateless: true
+            json_login:
+                check_path: /api/auth/login
+                username_path: email
+                password_path: password
+                success_handler: lexik_jwt_authentication.handler.authentication_success
+                failure_handler: lexik_jwt_authentication.handler.authentication_failure
+            login_throttling:
+                max_attempts: 5
+                interval: '15 minutes'
+
+        api:
+            pattern: ^/api
+            stateless: true
+            jwt: ~
 
             # Activate different ways to authenticate:
             # https://symfony.com/doc/current/security.html#the-firewall
@@ -28,8 +59,14 @@ security:
 
     # Note: Only the *first* matching rule is applied
     access_control:
-        # - { path: ^/admin, roles: ROLE_ADMIN }
-        # - { path: ^/profile, roles: ROLE_USER }
+        - { path: ^/admin/login, roles: PUBLIC_ACCESS }
+        - { path: ^/admin, roles: [ROLE_ADMIN, ROLE_SUPER_ADMIN] }
+        - { path: ^/api/auth/(login|register-client|register-producer|forgot-password|reset-password), roles: PUBLIC_ACCESS }
+        - { path: ^/api/(categories|products|labels), roles: PUBLIC_ACCESS }
+        - { path: ^/api/producers, roles: PUBLIC_ACCESS }
+        - { path: ^/api/subscription/plans, roles: PUBLIC_ACCESS }
+        - { path: ^/api/webhooks/stripe, roles: PUBLIC_ACCESS }
+        - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
 
 when@test:
     security:

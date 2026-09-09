@@ -1,0 +1,86 @@
+{% extends '@EasyAdmin/layout.html.twig' %}
+
+{% block content_title %}Reporting{% endblock %}
+
+{% block main %}
+    <div class="row">
+        <div class="col-md-3 mb-4">
+            <div class="card text-center">
+                <div class="card-header">Taux de réponse</div>
+                <div class="card-body">
+                    <h2 class="mb-0">{{ responseRate is not null ? responseRate ~ ' %' : 'N/A' }}</h2>
+                    <small class="text-muted">{{ responseRateRow.with_reply }} / {{ responseRateRow.total }} demandes</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-4">
+            <div class="card text-center">
+                <div class="card-header">Taux de résiliation (churn)</div>
+                <div class="card-body">
+                    <h2 class="mb-0">{{ churnRate is not null ? churnRate ~ ' %' : 'N/A' }}</h2>
+                    <small class="text-muted">{{ churnRow.cancelled }} / {{ churnRow.total }} abonnements</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card text-center">
+                <div class="card-header">Revenus (factures payées)</div>
+                <div class="card-body">
+                    <h2 class="mb-0">{{ totalRevenue|number_format(2, ',', ' ') }}</h2>
+                    <small class="text-muted">Total cumulé, toutes périodes</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">Revenus par mois (6 derniers mois)</div>
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Mois</th><th class="text-end">Revenu</th></tr></thead>
+                    <tbody>
+                        {% for row in revenueByMonth %}
+                            <tr><td>{{ row.month }}</td><td class="text-end">{{ row.total|number_format(2, ',', ' ') }}</td></tr>
+                        {% else %}
+                            <tr><td colspan="2" class="text-muted">Aucune facture payée sur la période.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">Demandes par pays</div>
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Pays</th><th class="text-end">Demandes</th></tr></thead>
+                    <tbody>
+                        {% for row in requestsByCountry %}
+                            <tr><td>{{ row.name }}</td><td class="text-end">{{ row.total }}</td></tr>
+                        {% else %}
+                            <tr><td colspan="2" class="text-muted">Aucune demande.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">Catégories populaires</div>
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Catégorie</th><th class="text-end">Demandes</th></tr></thead>
+                    <tbody>
+                        {% for row in popularCategories %}
+                            <tr><td>{{ row.name }}</td><td class="text-end">{{ row.total }}</td></tr>
+                        {% else %}
+                            <tr><td colspan="2" class="text-muted">Aucune demande catégorisée.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% endblock %}

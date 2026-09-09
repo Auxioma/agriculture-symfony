@@ -1,0 +1,58 @@
+name: Backup Restore Test
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  restore-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: restore_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Installer AWS CLI et psql
+        run: sudo apt-get update && sudo apt-get install -y awscli postgresql-client
+
+      - name: Récupérer la dernière sauvegarde
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.STORAGE_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_SECRET }}
+        run: |
+          LATEST=$(aws s3 ls "s3://${{ secrets.STORAGE_BUCKET }}/backups/" --endpoint-url "${{ secrets.STORAGE_ENDPOINT }}" | sort | tail -n 1 | awk '{print $4}')
+          if [ -z "$LATEST" ]; then
+            echo "Aucune sauvegarde trouvée." >&2
+            exit 1
+          fi
+          aws s3 cp "s3://${{ secrets.STORAGE_BUCKET }}/backups/$LATEST" backup.sql.gz --endpoint-url "${{ secrets.STORAGE_ENDPOINT }}"
+          gunzip backup.sql.gz
+
+      - name: Restaurer dans une base jetable
+        env:
+          PGPASSWORD: postgres
+        run: psql -h 127.0.0.1 -U postgres -d restore_test -f backup.sql
+
+      - name: Vérifier que la restauration contient de vraies données
+        env:
+          PGPASSWORD: postgres
+        run: |
+          COUNT=$(psql -h 127.0.0.1 -U postgres -d restore_test -tAc "SELECT count(*) FROM identity.users")
+          echo "Utilisateurs restaurés : $COUNT"
+          if [ "$COUNT" -lt 1 ]; then
+            echo "La sauvegarde restaurée ne contient aucun utilisateur -- suspect." >&2
+            exit 1
+          fi

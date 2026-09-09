@@ -1,0 +1,308 @@
+<?php
+
+namespace App\Controller\Api;
+
+use App\Dto\Request\CreateClientRequestRequest;
+use App\Entity\Catalog\Category;
+use App\Entity\Catalog\Country;
+use App\Entity\Catalog\Currency;
+use App\Entity\Catalog\Product;
+use App\Entity\Catalog\Unit;
+use App\Entity\Identity\User;
+use App\Entity\Matching\ClientRequest;
+use App\Entity\Matching\RequestMatch;
+use App\Enum\RequestStatus;
+use App\Service\Notification\NotificationService;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
+use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Security\Http\Attribute\CurrentUser;
+
+final class ClientRequestController extends AbstractController
+{
+    // * "Modifiable" s'arrête dès qu'un producteur a réellement engagé la conversation -- éditer une demande
+    // * à laquelle on a déjà répondu serait déloyal envers ce producteur. Absent du cahier, choix délibéré.
+    private const EDITABLE_STATUSES = [RequestStatus::Draft, RequestStatus::Sent, RequestStatus::WaitingReplies];
+
+    #[Route('/api/requests', methods: ['POST'])]
+    public function createRequest(
+        #[MapRequestPayload] CreateClientRequestRequest $request,
+        #[CurrentUser] User $client,
+        EntityManagerInterface $em,
+        NotificationService $notificationService,
+    ): JsonResponse {
+        $clientRequest = new ClientRequest();
+        $clientRequest->setClient($client);
+        // ! RequestStatus n'a pas de valeur par défaut dans le constructeur de ClientRequest : l'oublier
+        // ! plante le flush() avec propriété typée non initialisée
+        $clientRequest->setStatus(RequestStatus::Sent);
+        $clientRequest->setExpiresAt(new \DateTimeImmutable('+30 days'));
+
+        $error = $this->applyRequestData($clientRequest, $request, $em);
+        if ($error !== null) {
+            return $error;
+        }
+
+        $em->persist($clientRequest);
+        $em->flush();
+
+        $em->getConnection()->executeStatement(
+            'SELECT matching.populate_request_matches(:id)',
+            ['id' => $clientRequest->getId()->toRfc4122()]
+        );
+
+        $notificationService->notify(
+            $client,
+            'request_sent',
+            'Demande envoyée',
+            'Votre demande a bien été envoyée et est en cours de traitement.'
+        );
+
+        // * Notifie chaque producteur matché -- populate_request_matches() vient de créer les RequestMatch,
+        // * on les relit pour savoir à qui envoyer "Nouvelle demande pertinente" (cahier fonctionnel).
+        $matches = $em->getRepository(RequestMatch::class)->findBy(['request' => $clientRequest]);
+        foreach ($matches as $match) {
+            $notificationService->notify(
+                $match->getProducer()->getOwner(),
+                'new_relevant_request',
+                'Nouvelle demande pertinente',
+                'Une nouvelle demande correspond à votre profil.'
+            );
+        }
+
+        $em->flush();
+
+        return $this->json(['id' => $clientRequest->getId()->toRfc4122()], 201);
+    }
+
+    #[Route('/api/client/requests', methods: ['GET'])]
+    public function listMyRequests(#[CurrentUser] User $client, EntityManagerInterface $em): JsonResponse
+    {
+        $requests = $em->getRepository(ClientRequest::class)->findBy(
+            ['client' => $client],
+            ['createdAt' => 'DESC']
+        );
+
+        return $this->json(array_map(
+            static fn (ClientRequest $r) => [
+                'id' => $r->getId()->toRfc4122(),
+                'needType' => $r->getNeedType()->value,
+                'status' => $r->getStatus()->value,
+                'customProduct' => $r->getCustomProduct(),
+                'productId' => $r->getProduct()?->getId()->toRfc4122(),
+                'categoryId' => $r->getCategory()?->getId()->toRfc4122(),
+                'createdAt' => $r->getCreatedAt()->format(DATE_ATOM),
+            ],
+            $requests
+        ));
+    }
+
+    #[Route('/api/client/requests/{id}', methods: ['GET'])]
+    public function getRequestDetail(string $id, #[CurrentUser] User $client, EntityManagerInterface $em): JsonResponse
+    {
+        $result = $this->findOwnedRequest($id, $client, $em);
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+        $clientRequest = $result;
+
+        return $this->json([
+            'id' => $clientRequest->getId()->toRfc4122(),
+            'needType' => $clientRequest->getNeedType()->value,
+            'status' => $clientRequest->getStatus()->value,
+            'customProduct' => $clientRequest->getCustomProduct(),
+            'productId' => $clientRequest->getProduct()?->getId()->toRfc4122(),
+            'categoryId' => $clientRequest->getCategory()?->getId()->toRfc4122(),
+            'quantity' => $clientRequest->getQuantity(),
+            'budgetMin' => $clientRequest->getBudgetMin(),
+            'budgetMax' => $clientRequest->getBudgetMax(),
+            'desiredDate' => $clientRequest->getDesiredDate()?->format('Y-m-d'),
+            'urgencyLevel' => $clientRequest->getUrgencyLevel(),
+            'city' => $clientRequest->getCity(),
+            'postalCode' => $clientRequest->getPostalCode(),
+            'pickupWanted' => $clientRequest->isPickupWanted(),
+            'deliveryWanted' => $clientRequest->isDeliveryWanted(),
+            'message' => $clientRequest->getMessage(),
+            'createdAt' => $clientRequest->getCreatedAt()->format(DATE_ATOM),
+        ]);
+    }
+
+    #[Route('/api/client/requests/{id}', methods: ['PUT'])]
+    public function updateRequest(
+        string $id,
+        #[MapRequestPayload] CreateClientRequestRequest $request,
+        #[CurrentUser] User $client,
+        EntityManagerInterface $em,
+    ): JsonResponse {
+        $result = $this->findOwnedRequest($id, $client, $em);
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+        $clientRequest = $result;
+
+        if (!\in_array($clientRequest->getStatus(), self::EDITABLE_STATUSES, true)) {
+            return $this->json(['error' => 'Cette demande ne peut plus être modifiée.'], 409);
+        }
+
+        $error = $this->applyRequestData($clientRequest, $request, $em);
+        if ($error !== null) {
+            return $error;
+        }
+
+        $em->flush();
+
+        // * Les critères ont pu changer (catégorie, localisation...) -- upsert idempotent
+        // * (ON CONFLICT DO UPDATE dans la fonction SQL), sans risque à rejouer.
+        $em->getConnection()->executeStatement(
+            'SELECT matching.populate_request_matches(:id)',
+            ['id' => $clientRequest->getId()->toRfc4122()]
+        );
+
+        return $this->json(['id' => $clientRequest->getId()->toRfc4122()]);
+    }
+
+    private function findOwnedRequest(string $id, User $client, EntityManagerInterface $em): ClientRequest|JsonResponse
+    {
+        $clientRequest = $em->find(ClientRequest::class, $id);
+
+        if ($clientRequest === null) {
+            return $this->json(['error' => 'Demande introuvable.'], 404);
+        }
+
+        if ($clientRequest->getClient() !== $client) {
+            return $this->json(['error' => 'Accès refusé.'], 403);
+        }
+
+        return $clientRequest;
+    }
+
+    // * Factorise l'hydratation partagée par createRequest()/updateRequest(). Remet chaque association à
+    // * null avant de la re-poser : sans effet sur la création (déjà null), mais nécessaire à la mise à jour
+    // * pour qu'un champ omis dans le payload PUT efface bien l'ancienne valeur (sémantique "remplacement complet").
+    private function applyRequestData(ClientRequest $clientRequest, CreateClientRequestRequest $request, EntityManagerInterface $em): ?JsonResponse
+    {
+        // ! Reflète exactement chk_client_requests_product_or_custom (matching.client_requests) : categoryId
+        // ! seul ne satisfait PAS cette contrainte -- une demande avec seulement une catégorie plantait donc
+        // ! en 500 (violation de contrainte) au lieu d'un 422 propre. category reste un filtre optionnel,
+        // ! jamais une réponse suffisante à "que demande le client ?".
+        if ($request->productId === null && $request->customProduct === null) {
+            return $this->json(['error' => 'product ou customProduct est requis.'], 422);
+        }
+
+        $clientRequest->setNeedType($request->needType);
+        $clientRequest->setCustomProduct($request->customProduct);
+        $clientRequest->setQuantity($request->quantity);
+        $clientRequest->setBudgetMin($request->budgetMin);
+        $clientRequest->setBudgetMax($request->budgetMax);
+        $clientRequest->setDesiredDate($request->desiredDate);
+        $clientRequest->setUrgencyLevel($request->urgencyLevel);
+        $clientRequest->setCity($request->city);
+        $clientRequest->setPostalCode($request->postalCode);
+        $clientRequest->setPickupWanted($request->pickupWanted);
+        $clientRequest->setDeliveryWanted($request->deliveryWanted);
+        $clientRequest->setMessage($request->message);
+
+        if ($request->radiusKm !== null) {
+            $clientRequest->setRadiusKm($request->radiusKm);
+        }
+
+        $clientRequest->setCategory(null);
+        if ($request->categoryId !== null) {
+            $category = $em->find(Category::class, $request->categoryId);
+            if ($category === null) {
+                return $this->json(['error' => 'Catégorie inconnue.'], 422);
+            }
+            $clientRequest->setCategory($category);
+        }
+
+        $clientRequest->setProduct(null);
+        if ($request->productId !== null) {
+            $product = $em->find(Product::class, $request->productId);
+            if ($product === null) {
+                return $this->json(['error' => 'Produit inconnu.'], 422);
+            }
+            $clientRequest->setProduct($product);
+        }
+
+        $clientRequest->setUnit(null);
+        if ($request->unitId !== null) {
+            $unit = $em->find(Unit::class, $request->unitId);
+            if ($unit === null) {
+                return $this->json(['error' => 'Unité inconnue.'], 422);
+            }
+            $clientRequest->setUnit($unit);
+        }
+
+        $clientRequest->setCurrency(null);
+        if ($request->currencyCode !== null) {
+            $currency = $em->find(Currency::class, strtoupper($request->currencyCode));
+            if ($currency === null) {
+                return $this->json(['error' => 'Devise inconnue.'], 422);
+            }
+            $clientRequest->setCurrency($currency);
+        }
+
+        $clientRequest->setCountry(null);
+        if ($request->countryCode !== null) {
+            $country = $em->find(Country::class, strtoupper($request->countryCode));
+            if ($country === null) {
+                return $this->json(['error' => 'Pays inconnu.'], 422);
+            }
+            $clientRequest->setCountry($country);
+        }
+
+        // * Même format EWKT que pour ProducerProfile/DeliveryZone (PostGisMappingTest) : "SRID=4326;POINT(lon lat)".
+        $clientRequest->setLocation(
+            $request->latitude !== null && $request->longitude !== null
+                ? sprintf('SRID=4326;POINT(%F %F)', $request->longitude, $request->latitude)
+                : null
+        );
+
+        return null;
+    }
+
+    #[Route('/api/client/requests/{id}/cancel', methods: ['POST'])]
+    public function cancelRequest(string $id, #[CurrentUser] User $client, EntityManagerInterface $em): JsonResponse
+    {
+        $result = $this->findOwnedRequest($id, $client, $em);
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+
+        $result->setStatus(RequestStatus::Cancelled);
+        $em->flush();
+
+        return $this->json(null, 200);
+    }
+
+    #[Route('/api/client/requests/{id}/archive', methods: ['POST'])]
+    public function archiveRequest(string $id, #[CurrentUser] User $client, EntityManagerInterface $em): JsonResponse
+    {
+        $result = $this->findOwnedRequest($id, $client, $em);
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+
+        $result->setStatus(RequestStatus::Archived);
+        $em->flush();
+
+        return $this->json(null, 200);
+    }
+
+    #[Route('/api/client/requests/{id}/duplicate', methods: ['POST'])]
+    public function duplicateRequest(string $id, #[CurrentUser] User $client, EntityManagerInterface $em): JsonResponse
+    {
+        $result = $this->findOwnedRequest($id, $client, $em);
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+
+        $duplicate = $result->duplicate();
+        $em->persist($duplicate);
+        $em->flush();
+
+        return $this->json(['id' => $duplicate->getId()->toRfc4122()], 201);
+    }
+}
