@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Unité de mesure (cahier fonctionnel : "kg, tonne, litre, unité, caisse, palette, lot, botte, bouteille,
+ * barquette, panier"). $localeLabels permet un intitulé différent par langue directement en JSON sur cette
+ * table (contrairement à Category/Product/Label, pas de table *Translation séparée ici -- plus simple car
+ * une unité n'a pas de description longue à traduire, juste un libellé court).
  */
 
 namespace App\Entity\Catalog;

@@ -1,13 +1,9 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Action de modération prise par un admin suite à un Report, créée par MessageCrudController lors de la
+ * modération d'un message signalé (AuditLogger trace en parallèle l'action au niveau plateforme, celle-ci
+ * en garde le détail métier propre au signalement). $payload (json) porte le détail libre de l'action prise.
  */
 
 namespace App\Entity\Trust;

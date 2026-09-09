@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Code de réduction (cahier fonctionnel : coupons promotionnels sur les abonnements producteur).
+ * $maxRedemptions plafonne le nombre d'utilisations, chaque utilisation individuelle étant tracée dans
+ * CouponRedemption. Aucun écran back-office ni flux applicatif ne crée/applique encore de coupon : la
+ * table existe dans le schéma, prête pour un futur usage sur le tunnel de souscription (ChangePlanRequest/
+ * CheckoutRequest), mais n'est pas encore branchée.
  */
 
 namespace App\Entity\Billing;

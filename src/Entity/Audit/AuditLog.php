@@ -1,13 +1,12 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Trace d'audit d'une action sensible. Deux voies distinctes alimentent cette table : le service PHP
+ * App\Service\Audit\AuditLogger (appelé explicitement depuis UserCrudController, ProducerProfileCrudController,
+ * ConversationCrudController et MessageCrudController -- $actor y est toujours renseigné avec l'admin
+ * connecté) et des triggers PostgreSQL (trg_users_audit, trg_producer_profiles_audit, etc., fonction
+ * audit.log_row_change) qui capturent aussi certains changements au niveau base de données ($actor reste
+ * NULL sur ces lignes-là, faute de contexte applicatif transmis au trigger).
  */
 
 namespace App\Entity\Audit;

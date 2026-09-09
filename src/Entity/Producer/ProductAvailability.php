@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Créneau de disponibilité réel d'un ProducerProduct (période $availableFrom/$availableTo, quantité
+ * estimée, options retrait/livraison) -- c'est cette table, et non les champs de saisonnalité du catalogue
+ * (Product::$seasonStartMonth/EndMonth), qui alimente le matching effectif entre une ClientRequest et les
+ * producteurs disponibles. $unit permet une unité différente de celle par défaut du produit.
  */
 
 namespace App\Entity\Producer;

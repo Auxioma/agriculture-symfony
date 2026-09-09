@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Fil de discussion entre un client et un producteur au sujet d'une ClientRequest précise. $status
+ * (ConversationStatus, défaut Open) est mis à jour par ConversationController::reportConversation()
+ * (-> Reported) et gérable en back-office via ConversationCrudController (AuditLogger y trace les actions
+ * admin sensibles). $messages/$participants alimentés par ConversationController::sendMessage()/
+ * uploadAttachment().
  */
 
 namespace App\Entity\Messaging;

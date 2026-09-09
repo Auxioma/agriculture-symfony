@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Label ou pratique agricole certifiable (cahier fonctionnel : "Bio, HVE, AOP/AOC, agriculture raisonnée...").
+ * $countryScope restreint un label à certains pays (ex. AOP n'a de sens qu'en zone UE). Rattaché à un
+ * producteur via ProducerLabel et à une demande cliente via RequestLabel (souhait explicite d'un label
+ * précis). GET /api/labels l'expose publiquement mais sans back-office de gestion dédié.
  */
 
 namespace App\Entity\Catalog;

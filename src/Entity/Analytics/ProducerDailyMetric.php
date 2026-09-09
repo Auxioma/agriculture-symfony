@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Équivalent de PlatformDailyMetric mais par producteur (clé composite producer+metricDate -- l'une des
+ * 10 entités à clé composite intentionnelle du projet, voir trouvemoi-agri-make-entity-guide.md). Destinée
+ * au futur tableau de bord producteur (statistiques de vues de profil, taux de réponse...). Comme
+ * PlatformDailyMetric, aucun code applicatif ne lit ni n'écrit encore dans cette table.
  */
 
 namespace App\Entity\Analytics;

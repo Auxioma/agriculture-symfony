@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Repository Doctrine pour OpeningHour -- aucune requête personnalisée, hérite uniquement des
+ * méthodes CRUD standard de ServiceEntityRepository (find/findBy/findOneBy/findAll). Les accès plus
+ * complexes de ce projet passent directement par EntityManagerInterface (QueryBuilder ou SQL brut)
+ * dans les contrôleurs plutôt que par des méthodes dédiées ici.
  */
 
 namespace App\Repository\Producer;

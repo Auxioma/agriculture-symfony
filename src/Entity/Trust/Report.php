@@ -1,13 +1,12 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Signalement générique, créé par ConversationController::reportConversation() (payload validé par
+ * ReportConversationRequest) -- $targetType/$targetId forment une référence polymorphe (comme sur
+ * Favorite), ici toujours vers une Conversation dans l'usage actuel. $status (ReportStatus, défaut Open)
+ * suit le traitement admin, $moderationActions détaille les actions prises en réponse (voir
+ * ModerationAction). À ne pas confondre avec ConversationStatus::Reported, posé sur l'entité Conversation
+ * elle-même par le même contrôleur, en parallèle de la création de ce Report.
  */
 
 namespace App\Entity\Trust;

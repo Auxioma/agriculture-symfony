@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Message d'échange dans un Ticket de support (entre l'utilisateur et l'agent support), géré via
+ * TicketCrudController -- même remarque que Ticket : pas encore de route API dédiée hors back-office.
+ * $sender identifie qui a écrit le message (utilisateur ou agent), à ne pas confondre avec $idUser sur
+ * Ticket (le propriétaire du ticket, fixe pour toute sa durée de vie).
  */
 
 namespace App\Entity\Support;

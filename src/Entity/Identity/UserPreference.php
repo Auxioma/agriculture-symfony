@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Préférences d'affichage d'un utilisateur (langue, devise, unité de distance, notifications) -- distinct
+ * de User::$locale, qui est le réglage minimal réellement utilisé aujourd'hui (register/API). Exemple
+ * "PK = FK" du projet (trouvemoi-agri-make-entity-guide.md) : $idUser est à la fois clé primaire et clé
+ * étrangère, pas de colonne id séparée. Table vide en pratique, aucune route ne la peuple encore.
  */
 
 namespace App\Entity\Identity;

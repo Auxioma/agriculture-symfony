@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Message d'une Conversation, créé par ConversationController::sendMessage() (payload validé par
+ * SendMessageRequest). $isSystem distingue un message généré par la plateforme (ex. notification de
+ * changement de statut) d'un message humain. $moderatedAt est posé par un admin depuis
+ * MessageCrudController lors d'une modération (AuditLogger trace alors l'action). $attachments alimentées
+ * par ConversationController::uploadAttachment().
  */
 
 namespace App\Entity\Messaging;

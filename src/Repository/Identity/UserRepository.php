@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Repository Doctrine pour User -- la seule méthode personnalisée du projet parmi tous les repositories,
+ * upgradePassword(), implémente PasswordUpgraderInterface : Symfony l'appelle automatiquement après une
+ * connexion réussie pour réencoder le mot de passe si l'algorithme de hashage a changé entre-temps (config
+ * "auto" dans security.yaml). Le reste des accès passe par les méthodes Doctrine standard (find/findBy...).
  */
 
 namespace App\Repository\Identity;

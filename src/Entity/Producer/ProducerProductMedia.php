@@ -1,13 +1,9 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Photo spécifique à un ProducerProduct (à ne pas confondre avec ProducerMedia, qui couvre la fiche
+ * producteur en général). $producerProduct est nullable pour permettre l'upload avant rattachement final
+ * dans certains flux de formulaire. $position ordonne l'affichage dans la galerie du produit.
  */
 
 namespace App\Entity\Producer;

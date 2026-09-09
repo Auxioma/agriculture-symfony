@@ -1,13 +1,12 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Statut de Report::$status (signalement polymorphe -- targetType/targetId, pas de FK directe). Open est la
+ * seule valeur réellement posée aujourd'hui (valeur par défaut de l'entité) ; le tableau de bord admin
+ * compte les signalements "Open" comme non traités (DashboardController::index()). InReview/Resolved/
+ * Rejected existent dans le schéma pour un futur écran de traitement des signalements, mais aucune route ne
+ * les pose encore -- la modération réelle passe aujourd'hui par ConversationStatus (voir ce fichier) plutôt
+ * que par ce statut-ci.
  */
 
 namespace App\Enum;

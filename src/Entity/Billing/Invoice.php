@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Facture d'un abonnement producteur, créée par StripeWebhookController lors de la réception des
+ * événements Stripe (invoice.paid, etc.) -- $providerInvoiceId/$invoiceUrl viennent directement de Stripe.
+ * Visible et gérable dans le back-office via InvoiceCrudController. $payments (orphanRemoval) reste pour
+ * l'instant vide en pratique : aucun code n'y ajoute de Payment (voir la note sur Payment).
  */
 
 namespace App\Entity\Billing;

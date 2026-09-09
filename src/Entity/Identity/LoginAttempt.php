@@ -1,13 +1,9 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Historique brut des tentatives de connexion (email, IP, succès/échec). Distinct du login_throttling déjà
+ * actif dans security.yaml (qui bloque après 5 tentatives sans persister de trace) -- cette table existe
+ * dans le schéma pour un futur écran d'audit des connexions, mais rien ne l'alimente encore.
  */
 
 namespace App\Entity\Identity;

@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Ticket de support (cahier fonctionnel : module Support). Géré aujourd'hui uniquement côté back-office
+ * via TicketCrudController -- aucune route API publique ne permet encore à un client/producteur de créer
+ * un ticket lui-même ; $idUser identifie simplement à qui appartient le ticket. $assignedTo distingue
+ * l'agent support en charge du propriétaire du ticket ($idUser).
  */
 
 namespace App\Entity\Support;

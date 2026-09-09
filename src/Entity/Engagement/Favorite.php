@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Favori d'un utilisateur (cahier fonctionnel : mettre en favori un producteur ou un produit). $targetType/
+ * $targetId forment une référence polymorphe générique plutôt qu'une FK Doctrine classique -- $targetType
+ * indique quelle entité $targetId désigne (ex. "producer_profile"), résolue manuellement en code plutôt que
+ * mappée en relation. Aucun contrôleur n'existe encore pour cette entité.
  */
 
 namespace App\Entity\Engagement;

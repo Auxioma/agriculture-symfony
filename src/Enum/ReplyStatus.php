@@ -1,13 +1,9 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Cycle de vie de ProducerReply::$status (réponse d'un producteur à une demande client). Sent est posé par
+ * ProducerRequestController::replyToRequest(), Declined par son pendant declineRequest() -- Draft, Seen,
+ * Accepted et Archived existent dans le schéma mais ne sont posés par aucune route actuelle.
  */
 
 namespace App\Enum;

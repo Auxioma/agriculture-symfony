@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Label souhaité par le client sur une ClientRequest (ex. "je veux du Bio"). Clé composite (request, label)
+ * -- l'une des 10 entités à clé composite intentionnelle du projet, voir trouvemoi-agri-make-entity-guide.md.
+ * $required distingue un critère obligatoire d'une simple préférence -- utile pour le calcul de score dans
+ * matching.populate_request_matches(). Aucun contrôleur n'écrit encore dans cette table.
  */
 
 namespace App\Entity\Matching;

@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Règle de récurrence pour republier automatiquement une ClientRequest ($frequency, $nextRunAt) -- cahier
+ * fonctionnel : "demande récurrente" (ex. un client qui a besoin du même produit chaque semaine). Aucun
+ * contrôleur ni commande ne lit/écrit encore cette table : la table existe dans le schéma, prête pour une
+ * future commande planifiée (sur le même principe que SendExpiryRemindersCommand), mais pas encore
+ * implémentée.
  */
 
 namespace App\Entity\Matching;

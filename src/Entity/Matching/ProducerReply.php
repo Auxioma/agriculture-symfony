@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Réponse d'un producteur à une ClientRequest, avec prix/conditions/disponibilité proposés. Créée par
+ * ProducerRequestController (deux endroits distincts pour la création selon le flux d'entrée). $status
+ * (ReplyStatus, défaut Draft) suit le cycle brouillon -> envoyé -> accepté/refusé. $attachments porte les
+ * pièces jointes de la réponse (voir ReplyAttachment).
  */
 
 namespace App\Entity\Matching;

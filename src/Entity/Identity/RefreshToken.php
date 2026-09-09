@@ -1,13 +1,9 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Table prévue pour le renouvellement de JWT (refresh token), IP incluse pour la traçabilité. L'authentification
+ * réelle de ce projet est un JWT stateless simple (lexik/jwt-authentication-bundle, firewall "api") sans
+ * mécanisme de refresh branché -- cette entité existe dans le schéma mais n'est utilisée par aucune route.
  */
 
 namespace App\Entity\Identity;

@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Statut de vérification d'un ProducerProfile. Pending à l'inscription (registerProducer), puis Verified
+ * ou Rejected posés par les actions "Valider"/"Refuser" de ProducerProfileCrudController -- ce contrôleur
+ * n'expose volontairement pas ce champ en édition libre pour garantir qu'un changement de statut déclenche
+ * toujours la notification associée. Draft et Suspended existent dans le schéma mais ne sont posés par
+ * aucune route actuelle.
  */
 
 namespace App\Enum;

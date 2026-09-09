@@ -1,13 +1,13 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Cycle de vie de ClientRequest::$status (cahier fonctionnel, tunnel de demande). Sent posé à la création
+ * (ClientRequestController::createRequest()) ; ConversationOpen posé dès le premier vrai message échangé
+ * (ConversationController::sendMessage()/uploadAttachment(), uniquement depuis un statut encore actif,
+ * jamais depuis un statut terminal) ; Cancelled/Archived posés par le client via les actions dédiées.
+ * Reported n'est PAS posé par le signalement d'une conversation -- ça, c'est ConversationStatus::Reported,
+ * sur une entité différente (Conversation). WaitingReplies, RepliesReceived, DealFound, Expired et Reported
+ * existent dans le schéma mais ne sont posés par aucune route actuelle.
  */
 
 namespace App\Enum;

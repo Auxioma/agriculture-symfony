@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Historique d'événements sur une ClientRequest (ex. changement de statut, message envoyé) -- $payload
+ * (json) porte le détail libre de l'événement, $actor qui l'a déclenché. Distinct de AuditLog (qui trace
+ * les actions admin sensibles au niveau plateforme) : celui-ci est un fil d'activité propre à une demande.
+ * Aucun contrôleur n'écrit encore dans cette table -- prête pour un futur historique visible côté client.
  */
 
 namespace App\Entity\Matching;

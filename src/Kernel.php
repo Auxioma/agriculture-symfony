@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Kernel Symfony standard (MicroKernelTrait, bundles/routes chargés depuis config/bundles.php et
+ * config/{packages,routes}/). getAllowedEnvs() restreint APP_ENV aux trois environnements réellement
+ * supportés par le projet (prod/dev/test), pour échouer tôt sur une valeur invalide plutôt qu'un
+ * comportement indéfini plus loin dans le boot.
  */
 
 namespace App;

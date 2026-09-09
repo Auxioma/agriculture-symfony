@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Produit du catalogue tel que proposé par un producteur donné (toujours rattaché à un Product du
+ * catalogue global, jamais un produit libre). $variety précise la variété (ex. "Golden" pour le Product
+ * "Pomme"), $defaultPrice/$currency portent le prix de référence affiché sur la fiche. $productAvailabilities
+ * (orphanRemoval) détaille les créneaux de disponibilité réels utilisés par le matching, $media les photos
+ * spécifiques à ce produit (distinctes des photos générales de ProducerMedia).
  */
 
 namespace App\Entity\Producer;

@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Participant à une Conversation, avec son rôle et la date de dernière consultation ($lastSeenAt, base
+ * d'un futur indicateur "non lu"). Clé composite (conversation, idUser) -- l'une des 10 entités à clé
+ * composite intentionnelle du projet, voir trouvemoi-agri-make-entity-guide.md. Aucune route n'écrit
+ * encore explicitement de ligne ici : Conversation identifie aujourd'hui ses deux parties directement via
+ * $client/$producer plutôt que via cette table de participants.
  */
 
 namespace App\Entity\Messaging;

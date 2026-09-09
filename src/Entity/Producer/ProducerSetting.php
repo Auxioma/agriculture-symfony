@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Préférences de vente d'un producteur (cahier fonctionnel : type de clientèle acceptée, retrait/livraison).
+ * Exemple du pattern "PK=FK" du projet (trouvemoi-agri-make-entity-guide.md) : $producer est lui-même la
+ * clé primaire via une relation OneToOne, il n'y a pas de colonne id séparée -- une ProducerProfile a au
+ * plus une seule ligne ProducerSetting, créée en même temps que le profil.
  */
 
 namespace App\Entity\Producer;
