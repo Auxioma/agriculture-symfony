@@ -8,6 +8,8 @@
  *
  * Ce code source est la propriété exclusive de Auxioma Web Agency et.
  * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * 
+ * * Ajouter contrainte 1 mail = 1 compte (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf : "Un utilisateur ne peut pas créer plusieurs comptes avec la même adresse email.").
  */
 
 namespace App\Entity\Identity;
