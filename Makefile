@@ -1,3 +1,15 @@
+# -----------------------------------------------------------------------------
+# COMMANDES DE DÉVELOPPEMENT ET D'EXÉCUTION
+#
+# Ce fichier centralise et automatise les tâches courantes du projet :
+# 1. Initialisation de l'environnement local (install, clés JWT, migrations).
+# 2. Gestion du serveur de développement Symfony (start/stop).
+# 3. Réinitialisation rapide de la base de données.
+# 4. Exécution de la suite de tests unitaires/intégration (PHPUnit).
+# 5. Contrôle de la qualité du code (PHP-CS-Fixer, PHPStan).
+# 6. Consultation des logs applicatifs et déclenchement des sauvegardes.
+# -----------------------------------------------------------------------------
+
 .PHONY: setup up down db-reset test quality logs backup
 
 setup: ## Installe les dépendances et prépare l'environnement local
