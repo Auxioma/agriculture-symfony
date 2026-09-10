@@ -20,6 +20,10 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: InvoiceRepository::class)]
 #[ORM\Table(name: 'invoices', schema: 'billing')]
+// * Filtrée en plage de dates par DashboardController::index() (revenu du mois en cours) et reporting()
+// * (revenu total, revenu par mois sur 6 mois) -- une colonne de date filtrée par plage bénéficie autant
+// * d'un index qu'une colonne de statut filtrée par égalité.
+#[ORM\Index(name: 'idx_invoices_paid_at', columns: ['paid_at'])]
 class Invoice
 {
     #[ORM\Id]

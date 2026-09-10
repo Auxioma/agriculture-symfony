@@ -23,6 +23,9 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: ReportRepository::class)]
 #[ORM\Table(name: 'reports', schema: 'trust')]
+// * Filtrée par DashboardController::index() (compte des signalements ouverts) -- pas une FK, donc jamais
+// * indexée automatiquement par Doctrine.
+#[ORM\Index(name: 'idx_reports_status', columns: ['status'])]
 class Report
 {
     #[ORM\Id]

@@ -34,6 +34,10 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: ProducerProfileRepository::class)]
 #[ORM\Table(name: 'producer_profiles', schema: 'producer')]
+// * Filtrée par DashboardController::index() (compte des producteurs en attente de validation) et par
+// * ProducerProfileCrudController (file d'attente de validation) -- pas une FK, donc jamais indexée
+// * automatiquement par Doctrine.
+#[ORM\Index(name: 'idx_producer_profiles_verification_status', columns: ['verification_status'])]
 class ProducerProfile
 {
     #[ORM\Id]

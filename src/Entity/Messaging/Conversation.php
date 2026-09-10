@@ -24,6 +24,10 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: ConversationRepository::class)]
 #[ORM\Table(name: 'conversations', schema: 'messaging')]
+// * Filtrée par DashboardController::index() (compte des conversations signalées) et par
+// * ConversationCrudController (liste des conversations à modérer) -- pas une FK, donc jamais indexée
+// * automatiquement par Doctrine.
+#[ORM\Index(name: 'idx_conversations_status', columns: ['status'])]
 class Conversation
 {
     #[ORM\Id]

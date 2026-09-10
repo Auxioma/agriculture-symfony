@@ -20,6 +20,9 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: TicketRepository::class)]
 #[ORM\Table(name: 'tickets', schema: 'support')]
+// * Filtrée par DashboardController::index() (compte des tickets non résolus) et par TicketCrudController
+// * -- pas une FK, donc jamais indexée automatiquement par Doctrine.
+#[ORM\Index(name: 'idx_tickets_status', columns: ['status'])]
 class Ticket
 {
     #[ORM\Id]

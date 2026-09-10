@@ -22,6 +22,9 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: SubscriptionRepository::class)]
 #[ORM\Table(name: 'subscriptions', schema: 'billing')]
+// * Filtrée par DashboardController::reporting() pour le taux de churn (abonnements annulés / total) --
+// * pas une FK, donc jamais indexée automatiquement par Doctrine.
+#[ORM\Index(name: 'idx_subscriptions_status', columns: ['status'])]
 #[ORM\HasLifecycleCallbacks]
 class Subscription
 {

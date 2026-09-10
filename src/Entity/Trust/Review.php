@@ -21,6 +21,10 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: ReviewRepository::class)]
 #[ORM\Table(name: 'reviews', schema: 'trust')]
+// * Anticipe le futur écran de modération des avis (aucun contrôleur ne filtre encore par $status
+// * aujourd'hui, voir la note plus haut) -- ajouté maintenant par cohérence avec les autres colonnes de
+// * statut du projet, pour ne pas avoir à repenser l'indexation le jour où cet écran arrivera.
+#[ORM\Index(name: 'idx_reviews_status', columns: ['status'])]
 #[ORM\UniqueConstraint(name: 'uniq_client_request_producer', columns: ['client_id', 'request_id', 'producer_id'])]
 class Review
 {

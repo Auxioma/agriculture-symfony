@@ -33,6 +33,13 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: ClientRequestRepository::class)]
 #[ORM\Table(name: 'client_requests', schema: 'matching')]
+// * $status n'est pas une FK (donc pas indexée automatiquement par Doctrine) et est filtrée à chaque
+// * chargement de DashboardController::index() (compte des demandes actives par statut) ainsi que par les
+// * filtres de ClientRequestCrudController -- sans index, Postgres doit scanner toute la table à chaque fois.
+#[ORM\Index(name: 'idx_client_requests_status', columns: ['status'])]
+// * Lu par SendExpiryRemindersCommand pour retrouver les demandes proches de leur expiration -- même
+// * logique que ci-dessus, colonne filtrée en dehors de toute clé étrangère.
+#[ORM\Index(name: 'idx_client_requests_expires_at', columns: ['expires_at'])]
 class ClientRequest
 {
     #[ORM\Id]
