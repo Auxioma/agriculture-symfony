@@ -19,8 +19,14 @@ use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 
+/**
+ * Traitement des demandes clients côté producteur (consultation et réponses).
+ */
 final class ProducerRequestController extends AbstractController
 {
+    /**
+     * Liste des demandes matching accessibles au producteur.
+     */
     #[Route('/api/producer/requests/available', methods: ['GET'])]
     public function listAvailableRequests(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
@@ -48,6 +54,9 @@ final class ProducerRequestController extends AbstractController
         ));
     }
 
+    /**
+     * Détail d'une demande client spécifique.
+     */
     #[Route('/api/producer/requests/{id}', methods: ['GET'])]
     public function getRequestDetailForProducer(string $id, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
@@ -68,26 +77,9 @@ final class ProducerRequestController extends AbstractController
         ]);
     }
 
-    private function findMatchedRequest(string $id, User $user, EntityManagerInterface $em): array|JsonResponse
-    {
-        $producer = $user->getProducerProfile();
-        if ($producer === null) {
-            return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
-        }
-
-        $clientRequest = $em->find(ClientRequest::class, $id);
-        if ($clientRequest === null) {
-            return $this->json(['error' => 'Demande introuvable.'], 404);
-        }
-
-        $match = $em->getRepository(RequestMatch::class)->findOneBy(['request' => $clientRequest, 'producer' => $producer]);
-        if ($match === null) {
-            return $this->json(['error' => 'Cette demande ne vous est pas accessible.'], 403);
-        }
-
-        return [$clientRequest, $producer, $match];
-    }
-
+    /**
+     * Répondre à une demande (message et/ou devis chiffé).
+     */
     #[Route('/api/producer/requests/{id}/reply', methods: ['POST'])]
     public function replyToRequest(
         string $id,
@@ -106,8 +98,7 @@ final class ProducerRequestController extends AbstractController
             return $this->json(['error' => 'replyText ou priceAmount est requis.'], 422);
         }
 
-        // ! Règle du CDC "un producteur ne peut répondre que s'il dispose des droits nécessaires"
-        // ! exactement ce que teste déjà ProducerHasFeatureTest, jamais branché à une vraie route jusqu'ici.
+        // Vérification des droits d'abonnement producteur (feature 'reply_to_requests')
         $hasFeature = $em->getConnection()->fetchOne(
             "SELECT billing.producer_has_feature(:pid, 'reply_to_requests')",
             ['pid' => $producer->getId()->toRfc4122()]
@@ -142,9 +133,7 @@ final class ProducerRequestController extends AbstractController
             $reply->setCurrency($currency);
         }
 
-        // ! Le cahier fonctionnel n'expose aucune route de création dédiée pour les conversations :
-        // ! elle s'ouvre implicitement dès la première réponse du producteur (cf. cahier fonctionnel, statut
-        // ! "Conversation ouverte" distinct de "Réponses reçues"), pour être immédiatement visible via GET /api/conversations.
+        // Création implicite de la conversation au premier message/devis
         $conversation = $em->getRepository(Conversation::class)->findOneBy(['request' => $clientRequest, 'producer' => $producer]);
         if ($conversation === null) {
             $conversation = new Conversation();
@@ -167,6 +156,9 @@ final class ProducerRequestController extends AbstractController
         return $this->json(['id' => $reply->getId()->toRfc4122()], 201);
     }
 
+    /**
+     * Refuser une demande transmise.
+     */
     #[Route('/api/producer/requests/{id}/decline', methods: ['POST'])]
     public function declineRequest(string $id, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
@@ -186,5 +178,27 @@ final class ProducerRequestController extends AbstractController
 
         return $this->json(['id' => $reply->getId()->toRfc4122()], 201);
     }
-    
+
+    /**
+     * Vérifie le profil producteur et l'accès au match de la demande.
+     */
+    private function findMatchedRequest(string $id, User $user, EntityManagerInterface $em): array|JsonResponse
+    {
+        $producer = $user->getProducerProfile();
+        if ($producer === null) {
+            return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
+        }
+
+        $clientRequest = $em->find(ClientRequest::class, $id);
+        if ($clientRequest === null) {
+            return $this->json(['error' => 'Demande introuvable.'], 404);
+        }
+
+        $match = $em->getRepository(RequestMatch::class)->findOneBy(['request' => $clientRequest, 'producer' => $producer]);
+        if ($match === null) {
+            return $this->json(['error' => 'Cette demande ne vous est pas accessible.'], 403);
+        }
+
+        return [$clientRequest, $producer, $match];
+    }
 }

@@ -11,8 +11,14 @@ use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 
+/**
+ * Gestion du profil producteur pour l'utilisateur connecté.
+ */
 final class ProducerProfileController extends AbstractController
 {
+    /**
+     * Récupère les données du profil producteur de l'utilisateur.
+     */
     #[Route('/api/producer/profile', methods: ['GET'])]
     public function getMyProfile(#[CurrentUser] User $user): JsonResponse
     {
@@ -36,6 +42,9 @@ final class ProducerProfileController extends AbstractController
         ]);
     }
 
+    /**
+     * Mettre à jour les informations du profil producteur.
+     */
     #[Route('/api/producer/profile', methods: ['PUT'])]
     public function updateMyProfile(
         #[MapRequestPayload] UpdateProducerProfileRequest $request,
@@ -54,6 +63,7 @@ final class ProducerProfileController extends AbstractController
         $producer->setPostalCode($request->postalCode);
         $producer->setAddressVisibility($request->addressVisibility);
 
+        // Mise à jour du point spatial (PostGIS / EWKT format SRID 4326)
         if ($request->latitude !== null && $request->longitude !== null) {
             $producer->setLocation(sprintf('SRID=4326;POINT(%F %F)', $request->longitude, $request->latitude));
         }

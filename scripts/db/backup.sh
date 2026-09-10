@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# Script Bash qui automatise la sauvegarde quotidienne (dump) de la BDD PostgreSQL et son envoi vers un stockage distant S3.
+# Gère également une rotation automatique des 30 derniers jours.
+
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 

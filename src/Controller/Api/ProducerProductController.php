@@ -15,8 +15,32 @@ use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 
+/**
+ * Contrôleur API pour la gestion du catalogue de produits d'un producteur.
+ *
+ * Permet aux producteurs authentifiés d'ajouter, de modifier et de supprimer
+ * des produits au sein de leur propre catalogue (entité ProducerProduct).
+ *
+ * Les requêtes entrantes exploite l'attribut `#[MapRequestPayload]` pour désérialiser
+ * et valider automatiquement les DTOs (`CreateProducerProductRequest` et `UpdateProducerProductRequest`).
+ */
 final class ProducerProductController extends AbstractController
 {
+    /**
+     * Ajoute un nouveau produit au catalogue du producteur connecté.
+     *
+     * Étapes de validation et traitement :
+     * 1. Vérifie l'existence d'un profil producteur rattaché à l'utilisateur (403).
+     * 2. Vérifie l'existence du produit générique référencé dans le DTO (422).
+     * 3. S'assure que le produit n'est pas déjà présent dans le catalogue du producteur (409).
+     * 4. Valide la devise si un code est fourni (422).
+     * 5. Instancie et persiste la nouvelle entité `ProducerProduct`.
+     *
+     * @param CreateProducerProductRequest $request DTO contenant les données de création (validé automatiquement).
+     * @param User                         $user    Utilisateur authentifié effectuant la requête.
+     *
+     * @return JsonResponse Identifiant UUID du produit créé (201 Created) ou erreur HTTP appropriée.
+     */
     #[Route('/api/producer/products', methods: ['POST'])]
     public function createProduct(
         #[MapRequestPayload] CreateProducerProductRequest $request,
@@ -61,6 +85,12 @@ final class ProducerProductController extends AbstractController
         return $this->json(['id' => $producerProduct->getId()->toRfc4122()], 201);
     }
 
+    /**
+     * Met à jour un produit existant dans le catalogue du producteur connecté.
+     *
+     * Récupère le produit via `findOwnedProducerProduct` pour valider l'existence et la propriété,
+     * puis applique les modifications transmises dans le DTO `UpdateProducerProductRequest`.
+     */
     #[Route('/api/producer/products/{id}', methods: ['PUT'])]
     public function updateProduct(
         string $id,
@@ -93,6 +123,9 @@ final class ProducerProductController extends AbstractController
         return $this->json(null, 200);
     }
 
+    /**
+     * Supprime un produit du catalogue du producteur connecté.
+     */
     #[Route('/api/producer/products/{id}', methods: ['DELETE'])]
     public function deleteProduct(string $id, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
@@ -107,6 +140,14 @@ final class ProducerProductController extends AbstractController
         return $this->json(null, 204);
     }
 
+    /**
+     * Helper privé pour charger un produit du catalogue et vérifier sa propriété.
+     *
+     * Contrôle successivement :
+     * 1. Que l'utilisateur courant possède bien un profil producteur.
+     * 2. Que le `ProducerProduct` existe en base de données.
+     * 3. Que ce produit appartient bien au producteur connecté.
+     */
     private function findOwnedProducerProduct(string $id, User $user, EntityManagerInterface $em): ProducerProduct|JsonResponse
     {
         $producer = $user->getProducerProfile();
