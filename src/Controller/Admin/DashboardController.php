@@ -5,6 +5,7 @@ namespace App\Controller\Admin;
 use App\Controller\Admin\CategoryCrudController;
 use App\Controller\Admin\ClientRequestCrudController;
 use App\Controller\Admin\ConversationCrudController;
+use App\Controller\Admin\LegalPageCrudController;
 use App\Controller\Admin\MessageCrudController;
 use App\Controller\Admin\ProducerProfileCrudController;
 use App\Controller\Admin\PaymentCrudController;
@@ -102,6 +103,7 @@ class DashboardController extends AbstractDashboardController
             MenuItem::linkTo(PaymentCrudController::class, 'Paiements', 'fa fa-money-check'),
         ]);
         yield MenuItem::linkTo(TicketCrudController::class, 'Support', 'fa fa-headset');
+        yield MenuItem::linkTo(LegalPageCrudController::class, 'Pages légales', 'fa fa-scale-balanced');
         yield MenuItem::linkToRoute('Reporting', 'fa fa-chart-line', 'admin_reporting');
     }
 

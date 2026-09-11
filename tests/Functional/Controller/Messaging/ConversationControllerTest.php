@@ -286,6 +286,62 @@ final class ConversationControllerTest extends ApiTestCase
         self::assertResponseStatusCodeSame(403);
     }
 
+    public function testGetConversationMarksOtherPartysMessagesAsReadAndReportsReadStatus(): void
+    {
+        [$conversationId, $tokenClient, $tokenProducer] = $this->setUpOpenConversation();
+
+        // * Le producteur envoie un message : il n'est pas encore lu par le client tant que ce dernier
+        // * n'a pas ouvert la conversation (readAt doit rester null de son point de vue).
+        $this->client->request('POST', '/api/conversations/'.$conversationId.'/messages', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$tokenProducer,
+        ], content: json_encode(['content' => 'Oui, toujours disponible.']));
+        self::assertResponseStatusCodeSame(201);
+
+        $this->client->request('GET', '/api/conversations/'.$conversationId, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$tokenProducer]);
+        $asProducer = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertNull($asProducer['messages'][0]['readAt'], 'Le client ne l\'a pas encore lu.');
+
+        // * Le client ouvre la conversation : ça doit marquer le message du producteur comme lu par lui.
+        $this->client->request('GET', '/api/conversations/'.$conversationId, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$tokenClient]);
+        self::assertResponseIsSuccessful();
+
+        // * Le producteur reconsulte : readAt doit maintenant être renseigné, puisque le client (le
+        // * destinataire de CE message) l'a lu entre-temps.
+        $this->client->request('GET', '/api/conversations/'.$conversationId, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$tokenProducer]);
+        $asProducer = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertNotNull($asProducer['messages'][0]['readAt']);
+    }
+
+    public function testListConversationsReportsUnreadCount(): void
+    {
+        [$conversationId, $tokenClient, $tokenProducer] = $this->setUpOpenConversation();
+
+        $this->client->request('POST', '/api/conversations/'.$conversationId.'/messages', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$tokenProducer,
+        ], content: json_encode(['content' => 'Oui, toujours disponible.']));
+        self::assertResponseStatusCodeSame(201);
+
+        $this->client->request('GET', '/api/conversations', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$tokenClient]);
+        $asClient = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame(1, $asClient[0]['unreadCount']);
+
+        // * Ouvrir la conversation marque le message comme lu : le compteur doit retomber à 0.
+        $this->client->request('GET', '/api/conversations/'.$conversationId, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$tokenClient]);
+        self::assertResponseIsSuccessful();
+
+        $this->client->request('GET', '/api/conversations', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$tokenClient]);
+        $asClient = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame(0, $asClient[0]['unreadCount']);
+
+        // * Le producteur n'a jamais lu son propre message envoyé -- il n'est pas non plus compté comme
+        // * "non lu" pour lui (on ne compte que les messages reçus, pas les siens).
+        $this->client->request('GET', '/api/conversations', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$tokenProducer]);
+        $asProducer = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame(0, $asProducer[0]['unreadCount']);
+    }
+
     public function testUploadAttachmentRejectsWhenRecipientHasBlockedSender(): void
     {
         [$conversationId, $tokenClient, , $client] = $this->setUpOpenConversation();

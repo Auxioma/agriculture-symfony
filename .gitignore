@@ -23,6 +23,9 @@
 
 ####> notes ###
 NOTES.md
+TODO.md
+###< notes ###
+
 ###> phpstan/phpstan ###
 phpstan.neon
 ###< phpstan/phpstan ###
