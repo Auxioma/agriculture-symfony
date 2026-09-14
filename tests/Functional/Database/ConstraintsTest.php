@@ -13,6 +13,7 @@
 namespace App\Tests\Functional\Database;
 
 use App\Entity\Trust\Review;
+use App\Enum\ReviewStatus;
 use App\Tests\DatabaseTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
@@ -104,7 +105,7 @@ final class ConstraintsTest extends DatabaseTestCase
         $review->setProducer($producer);
         $review->setRequest($request);
         $review->setRating(6);
-        $review->setStatus('published');
+        $review->setStatus(ReviewStatus::Published);
         $this->em->persist($review);
 
         $this->assertFlushRejectedWith('chk_reviews_rating');

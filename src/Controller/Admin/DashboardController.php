@@ -11,6 +11,7 @@ use App\Controller\Admin\ProducerProfileCrudController;
 use App\Controller\Admin\PaymentCrudController;
 use App\Controller\Admin\PlanPriceCrudController;
 use App\Controller\Admin\ProductCrudController;
+use App\Controller\Admin\ReviewCrudController;
 use App\Controller\Admin\SubscriptionCrudController;
 use App\Controller\Admin\SubscriptionPlanCrudController;
 use App\Controller\Admin\UnitCrudController;
@@ -90,6 +91,7 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkTo(ClientRequestCrudController::class, 'Demandes clients', 'fa fa-inbox');
         yield MenuItem::linkTo(ConversationCrudController::class, 'Conversations signalées', 'fa fa-flag');
         yield MenuItem::linkTo(MessageCrudController::class, 'Messages signalés', 'fa fa-comment-slash');
+        yield MenuItem::linkTo(ReviewCrudController::class, 'Avis clients', 'fa fa-star');
         yield MenuItem::subMenu('Catalogue', 'fa fa-tags')->setSubItems([
             MenuItem::linkTo(CategoryCrudController::class, 'Catégories', 'fa fa-folder-tree'),
             MenuItem::linkTo(ProductCrudController::class, 'Produits', 'fa fa-carrot'),

@@ -13,6 +13,12 @@
     <php>
         <ini name="display_errors" value="1" />
         <ini name="error_reporting" value="-1" />
+        <!-- ! Certaines installations locales (php.ini avec memory_limit=128M, valeur par défaut de
+             ! WAMP/XAMPP) plantent en fatal error sur les tests admin les plus lourds (compilation Twig
+             ! EasyAdmin), bien avant toute fuite mémoire réelle ; ce n'est pas le cas sur les runners CI,
+             ! qui n'ont généralement pas cette limite. -1 aligne la CLI de test sur ce que la CI a
+             ! toujours eu. -->
+        <ini name="memory_limit" value="-1" />
         <server name="APP_ENV" value="test" force="true" />
         <server name="SHELL_VERBOSITY" value="-1" />
     </php>

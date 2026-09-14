@@ -22,7 +22,7 @@ n'en a qu'un de déployé automatiquement.
 
 1. Enregistre la clé d'hôte SSH réelle du serveur (`ssh-keyscan`) avant de s'y connecter -- au lieu de
    désactiver la vérification, comme c'était le cas avant.
-2. Se connecte en SSH (port 5022, mot de passe via `sshpass`) et exécute, dans l'ordre :
+2. Se connecte en SSH (port 22, mot de passe via `sshpass`) et exécute, dans l'ordre :
    1. `git pull origin master`
    2. `composer install --no-interaction --prefer-dist --optimize-autoloader`
    3. `composer dump-env prod` (compile `.env.local.php` en environnement `prod` -- voir
@@ -120,7 +120,7 @@ niveau Git :
 3. Si une intervention manuelle immédiate est nécessaire avant qu'un `git revert` ne soit prêt (le
    pipeline ne permet pas de cibler un SHA arbitraire autre que `master`, voir "Écarts") :
    ```bash
-   ssh -p 5022 <user>@<host>
+   ssh -p 22 <user>@<host>
    cd ~/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
    git fetch origin
    git checkout <sha-du-dernier-déploiement-sain>   # laisse le dépôt en HEAD détachée

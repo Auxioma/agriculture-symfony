@@ -18,10 +18,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y sshpass
 
+      # ! Même correctif que .github/workflows/main.yml : ssh-keyscan peut renvoyer un code de
+      # ! sortie non nul même en récupérant une clé valide -- "|| true" + "test -s" évite qu'un
+      # ! échec partiel casse tout le job (incident réel constaté sur le déploiement, voir TODO.md),
+      # ! tout en remplaçant StrictHostKeyChecking=no (qui désactivait toute vérification).
+      - name: Enregistrer la clé d'hôte SSH du serveur
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p 22 ${{ secrets.APP_HOST }} >> ~/.ssh/known_hosts 2>&1 || true
+          test -s ~/.ssh/known_hosts
+
+      # ! --env=dev -> --env=prod : même bug que main.yml avant correction (le serveur ne doit
+      # ! jamais tourner en environnement dev, voir docs/runbooks/deploiement.md).
       - name: Envoyer les rappels d'expiration
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no -p 5022 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
+          sshpass -e ssh -p 22 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
             set -e
             cd ~/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
-            bin/console app:send-expiry-reminders --env=dev --no-interaction
+            bin/console app:send-expiry-reminders --env=prod --no-interaction
           EOF
