@@ -35,11 +35,18 @@ jobs:
       # ! Remplace -o StrictHostKeyChecking=no (qui désactive toute vérification et expose à une
       # ! attaque MITM sur la connexion) : on récupère la clé d'hôte réelle du serveur au début de
       # ! CE run et on ne fait confiance qu'à elle pour la suite. Moins fort qu'une clé d'hôte
-      # ! épinglée une fois pour toutes en secret, mais très supérieur à une désactivation totale
+      # ! épinglée une fois pour toutes en secret, mais très supérieur à une désactivation totale.
+      # ! "|| true" : ssh-keyscan peut renvoyer un code de sortie non nul même en ayant récupéré une
+      # ! clé valide (ex. un des types de clé qu'il essaie en plus échoue) -- confirmé en prod, ce
+      # ! comportement faisait échouer tout le déploiement avant même la connexion réelle. Le
+      # ! "test -s" qui suit vérifie explicitement qu'au moins une clé a été écrite ; si le fichier
+      # ! est vide, on échoue quand même ici plutôt que de laisser échouer l'étape Deploy plus loin
+      # ! avec un message moins clair.
       - name: Enregistrer la clé d'hôte SSH du serveur
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -p 5022 ${{ secrets.APP_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -p 5022 ${{ secrets.APP_HOST }} >> ~/.ssh/known_hosts 2>&1 || true
+          test -s ~/.ssh/known_hosts
 
       - name: Deploy
         run: |
