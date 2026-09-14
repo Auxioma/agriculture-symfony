@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Devise de référence (cahier fonctionnel : "EUR, GBP, CHF, USD ou devise locale selon pays"). Comme
+ * Country, clé naturelle : $code (ISO 4217, ex. "EUR") sert directement de clé primaire. Référencée par
+ * quasiment toutes les entités qui manipulent un montant (ProducerProduct, ClientRequest, ProducerReply,
+ * PlanPrice, Invoice, Payment).
  */
 
 namespace App\Entity\Catalog;

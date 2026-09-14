@@ -98,4 +98,83 @@ final class ProducerProfileControllerTest extends ApiTestCase
         ], content: json_encode(['farmName' => 'Peu importe']));
         self::assertResponseStatusCodeSame(403);
     }
+
+    // * Simule un client promu ROLE_PRODUCER depuis le back-office (UserCrudController::configureFields(),
+    // * champ "roles" générique) sans jamais passer par AuthController::registerProducer() -- donc sans
+    // * ProducerProfile associé. C'est le seul cas réel où POST /api/producer/profile a un sens.
+    private function promoteToProducerWithoutProfileAndLogin(): string
+    {
+        $owner = $this->makeUserWithPassword('promoted', 'motdepasse123');
+        $owner->setRoles([User::ROLE_PRODUCER]);
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/auth/login', server: ['CONTENT_TYPE' => 'application/json'], content: json_encode([
+            'email' => $owner->getEmail(),
+            'password' => 'motdepasse123',
+        ]));
+        self::assertResponseIsSuccessful();
+
+        return json_decode($this->client->getResponse()->getContent(), true)['token'];
+    }
+
+    public function testCreateMyProfileSucceedsForPromotedProducerAccount(): void
+    {
+        $country = $this->makeCountry();
+        $this->em->flush();
+        $token = $this->promoteToProducerWithoutProfileAndLogin();
+
+        $this->client->request('POST', '/api/producer/profile', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode([
+            'farmName' => 'Ferme Nouvellement Créée',
+            'countryCode' => $country->getCode(),
+            'city' => 'Nantes',
+        ]));
+
+        self::assertResponseStatusCodeSame(201);
+
+        $this->client->request('GET', '/api/producer/profile', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame('Ferme Nouvellement Créée', $data['farmName']);
+    }
+
+    public function testCreateMyProfileRejectsAccountWithoutProducerRole(): void
+    {
+        $country = $this->makeCountry();
+        $this->em->flush();
+        $token = $this->registerClientAndLogin();
+
+        $this->client->request('POST', '/api/producer/profile', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['farmName' => 'Peu importe', 'countryCode' => $country->getCode()]));
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testCreateMyProfileRejectsWhenProfileAlreadyExists(): void
+    {
+        $token = $this->registerProducerAndLogin();
+
+        $this->client->request('POST', '/api/producer/profile', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['farmName' => 'Autre ferme', 'countryCode' => 'FR']));
+
+        self::assertResponseStatusCodeSame(409);
+    }
+
+    public function testCreateMyProfileRejectsUnknownCountry(): void
+    {
+        $token = $this->promoteToProducerWithoutProfileAndLogin();
+
+        $this->client->request('POST', '/api/producer/profile', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['farmName' => 'Ferme Test', 'countryCode' => 'ZZ']));
+
+        self::assertResponseStatusCodeSame(422);
+    }
 }

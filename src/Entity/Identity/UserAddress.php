@@ -1,13 +1,9 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Carnet d'adresses d'un client (cahier fonctionnel, dashboard client : "Adresses"). Plusieurs adresses par
+ * utilisateur possibles (label + isDefault pour désigner la principale) -- aucune route API ne l'expose
+ * encore, cette gestion revient au dashboard Angular à construire.
  */
 
 namespace App\Entity\Identity;

@@ -1,13 +1,9 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Pièce jointe d'un Message, créée par ConversationController::uploadAttachment() (soumis aux mêmes
+ * vérifications de blocage que sendMessage() -- voir BlockedUser). $message non-nullable : contrairement à
+ * ReplyAttachment/ProducerProductMedia, pas de flux d'upload préalable au rattachement ici.
  */
 
 namespace App\Entity\Messaging;

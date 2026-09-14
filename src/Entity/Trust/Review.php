@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Avis client sur un producteur suite à une ClientRequest précise. La contrainte unique
+ * uniq_client_request_producer (client+request+producer) limite un client à un seul avis par demande et
+ * par producteur. $producerResponse permet au producteur de répondre publiquement à l'avis. Aucun
+ * contrôleur n'existe encore pour cette entité -- la table est présente dans le schéma mais pas encore
+ * exploitée par l'application.
  */
 
 namespace App\Entity\Trust;
@@ -23,6 +21,10 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: ReviewRepository::class)]
 #[ORM\Table(name: 'reviews', schema: 'trust')]
+// * Anticipe le futur écran de modération des avis (aucun contrôleur ne filtre encore par $status
+// * aujourd'hui, voir la note plus haut) -- ajouté maintenant par cohérence avec les autres colonnes de
+// * statut du projet, pour ne pas avoir à repenser l'indexation le jour où cet écran arrivera.
+#[ORM\Index(name: 'idx_reviews_status', columns: ['status'])]
 #[ORM\UniqueConstraint(name: 'uniq_client_request_producer', columns: ['client_id', 'request_id', 'producer_id'])]
 class Review
 {

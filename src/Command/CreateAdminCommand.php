@@ -12,6 +12,23 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
+/**
+ * Cette commande permet d'insérer un nouvel utilisateur ayant le rôle ROLE_ADMIN
+ * directement depuis le terminal. Elle vérifie l'unicité de l'adresse email
+ * et se charge de hasher le mot de passe avant la mise en base de données.
+ *
+ * Utilisation :
+ *   php bin/console app:create-admin <email> <password>
+ *
+ * Arguments :
+ *   - email    (string, requis) : Adresse email du compte admin.
+ *   - password (string, requis) : Mot de passe en clair (sera hashé automatiquement).
+ *
+ * Codes de retour :
+ *   - Command::SUCCESS (0) : Compte administrateur créé avec succès.
+ *   - Command::FAILURE (1) : L'adresse email existe déjà en base de données.
+ */
+
 #[AsCommand(name: 'app:create-admin', description: 'Crée un compte administrateur back-office')]
 final class CreateAdminCommand extends Command
 {

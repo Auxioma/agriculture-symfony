@@ -1,13 +1,9 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Une utilisation effective d'un Coupon, par un producteur, sur un abonnement précis (les trois relations
+ * sont non-nullables). Comme Coupon, aucun code applicatif n'écrit encore de ligne ici -- le tunnel de
+ * souscription (StripeWebhookController, SubscriptionController) ne gère pas encore les coupons.
  */
 
 namespace App\Entity\Billing;

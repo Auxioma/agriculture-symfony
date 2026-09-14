@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Moyen de paiement enregistré par un producteur (ex. carte bancaire tokenisée côté Stripe --
+ * $providerPaymentMethodId, $brand/$last4 pour l'affichage, jamais le PAN complet). Aucun écran back-office
+ * ni flux applicatif ne crée encore de ligne ici : la table existe dans le schéma, prête pour un futur
+ * usage (gestion des moyens de paiement enregistrés côté producteur), mais n'est pas encore branchée.
  */
 
 namespace App\Entity\Billing;

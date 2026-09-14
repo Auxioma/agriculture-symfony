@@ -17,9 +17,11 @@ final readonly class RegisterClientRequest
         #[Assert\Email]
         public string $email,
 
-        // * 8 caractères minimum : aucune règle de complexité précise n'est fixée par les cahiers des charges.
+        // * 12 caractères minimum (obligation CNIL en l'absence d'autres mesures de protection du compte,
+        // * ex. throttling) -- aucune règle de complexité précise n'est fixée par les cahiers des charges,
+        // * qui ne parlent pas du seuil exact.
         #[Assert\NotBlank]
-        #[Assert\Length(min: 8)]
+        #[Assert\Length(min: 12)]
         public string $password,
 
         #[Assert\NotBlank]

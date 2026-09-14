@@ -11,8 +11,27 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 
+/**
+ * Contrôleur API pour la gestion des notifications utilisateur.
+ *
+ * Fournit les points d'entrée (endpoints) REST permettant d'interroger 
+ * la liste des notifications et de mettre à jour leur état de lecture.
+ * Toutes les actions sont restreintes au périmètre de l'utilisateur connecté via #[CurrentUser].
+ */
 final class NotificationController extends AbstractController
 {
+    /**
+     * Récupère la liste des notifications de l'utilisateur connecté.
+     *
+     * Permet le filtrage optionnel des notifications non lues via le paramètre de requête `unreadOnly`.
+     * Les résultats sont ordonnés de la plus récente à la plus ancienne.
+     *
+     * @param Request                $request Paramètres HTTP (query parameter `unreadOnly=true|false`).
+     * @param User                   $user    Utilisateur authentifié effectuant la requête.
+     * @param EntityManagerInterface $em      Gestionnaire d'entités Doctrine.
+     *
+     * @return JsonResponse Liste des notifications sérialisées en JSON.
+     */
     #[Route('/api/notifications', methods: ['GET'])]
     public function listNotifications(Request $request, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
@@ -37,6 +56,19 @@ final class NotificationController extends AbstractController
         ));
     }
 
+    /**
+     * Marque une notification spécifique comme lue.
+     *
+     * Vérifie que la notification existe et qu'elle appartient bien à l'utilisateur connecté
+     * avant de mettre à jour la date de lecture (`readAt`).
+     *
+     * @param string                 $id   Identifiant UUID de la notification à marquer comme lue.
+     * @param User                   $user Utilisateur authentifié effectuant la requête.
+     * @param EntityManagerInterface $em   Gestionnaire d'entités Doctrine.
+     *
+     * @return JsonResponse Réponse vide (200 OK) ou erreur d'accès/non trouvée (404 Not Found).
+     */
+
     #[Route('/api/notifications/{id}/read', methods: ['POST'])]
     public function markAsRead(string $id, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
@@ -53,6 +85,17 @@ final class NotificationController extends AbstractController
         return $this->json(null, 200);
     }
 
+    /**
+     * Marque l'ensemble des notifications non lues de l'utilisateur comme lues.
+     *
+     * Exécute une requête DQL UPDATE directe en base de données pour passer 
+     * en une seule opération toutes les notifications non lues (`readAt IS NULL`) à la date courante.
+     *
+     * @param User                   $user Utilisateur authentifié effectuant la requête.
+     * @param EntityManagerInterface $em   Gestionnaire d'entités Doctrine.
+     *
+     * @return JsonResponse Réponse vide (200 OK).
+     */
     #[Route('/api/notifications/read-all', methods: ['POST'])]
     public function markAllAsRead(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {

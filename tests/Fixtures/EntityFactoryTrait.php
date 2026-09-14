@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Fabriques de fixtures minimales et réutilisables pour les tests fonctionnels en base. À ne pas confondre
+ * avec src/DataFixtures/ (données Faker pour peupler un environnement de dev/démo via
+ * doctrine:fixtures:load) : ce trait sert uniquement PHPUnit, ses fabriques créent le strict minimum requis
+ * par chaque test plutôt qu'un jeu de données réaliste. Chaque entité retournée est persistée mais pas
+ * flush -- appeler $this->em->flush() une seule fois par test.
  */
 
 namespace App\Tests\Fixtures;
@@ -29,10 +27,6 @@ use App\Enum\SubscriptionStatus;
 use App\Enum\VerificationStatus;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
-/**
- * Fabriques de fixtures minimales et réutilisables pour les tests fonctionnels en base.
- * Chaque entité retournée est persistée mais pas flush — appeler $this->em->flush() une seule fois par test.
- */
 trait EntityFactoryTrait
 {
     protected function makeCountry(string $code = 'FR', string $name = 'France'): Country

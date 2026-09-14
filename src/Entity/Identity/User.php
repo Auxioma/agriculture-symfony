@@ -1,13 +1,14 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
+ * Compte utilisateur central de la plateforme (schéma identity, table users) : client, producteur, membre
+ * d'équipe, support ou admin selon $roles -- pas de sous-classes séparées par type de compte, un seul User
+ * couvre tous les cas (implements UserInterface/PasswordAuthenticatedUserInterface pour le firewall Symfony).
+ * $email est stocké en citext (comparaison insensible à la casse). Un ProducerProfile est rattaché en
+ * OneToOne (owner) uniquement pour les comptes ROLE_PRODUCER, créé dans la même opération que le User à
+ * l'inscription (voir AuthController::registerProducer()).
  *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * * Ajouter contrainte 1 mail = 1 compte (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf : "Un utilisateur ne peut pas créer plusieurs comptes avec la même adresse email.").
  */
 
 namespace App\Entity\Identity;
@@ -45,8 +46,11 @@ use Symfony\Bridge\Doctrine\Types\UuidType;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Uid\Uuid;
+use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 
 #[ORM\Entity(repositoryClass: UserRepository::class)]
+#[ORM\UniqueConstraint(name: 'uniq_user_email', columns: ['email'])]
+#[UniqueEntity(fields: ['email'], message: 'Cet e-mail est déjà utilisé par un autre compte.')]
 #[ORM\Table(name: 'users', schema: 'identity')]
 #[ORM\HasLifecycleCallbacks]
 class User implements UserInterface, PasswordAuthenticatedUserInterface

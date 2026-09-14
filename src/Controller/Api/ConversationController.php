@@ -9,6 +9,7 @@ use App\Entity\Messaging\BlockedUser;
 use App\Entity\Messaging\Conversation;
 use App\Entity\Messaging\Message;
 use App\Entity\Messaging\MessageAttachment;
+use App\Entity\Messaging\MessageRead;
 use App\Entity\Trust\Report;
 use App\Enum\ConversationStatus;
 use App\Enum\RequestStatus;
@@ -42,15 +43,56 @@ final class ConversationController extends AbstractController
             ? $em->getRepository(Conversation::class)->findBy(['producer' => $producer], ['lastMessageAt' => 'DESC'])
             : $em->getRepository(Conversation::class)->findBy(['client' => $user], ['lastMessageAt' => 'DESC']);
 
+        $unreadCounts = $this->countUnreadMessages($conversations, $user, $em);
+
         return $this->json(array_map(
             static fn (Conversation $c) => [
                 'id' => $c->getId()->toRfc4122(),
                 'requestId' => $c->getRequest()->getId()->toRfc4122(),
                 'status' => $c->getStatus()->value,
                 'lastMessageAt' => $c->getLastMessageAt()?->format(DATE_ATOM),
+                'unreadCount' => $unreadCounts[$c->getId()->toRfc4122()] ?? 0,
             ],
             $conversations
         ));
+    }
+
+    /**
+     * Nombre de messages non envoyés par $user et jamais marqués lus par lui, groupés par conversation --
+     * une seule requête pour toutes les conversations de la liste plutôt qu'une par conversation.
+     *
+     * @param Conversation[] $conversations
+     *
+     * @return array<string, int> id de conversation (RFC4122) => nombre de messages non lus
+     */
+    private function countUnreadMessages(array $conversations, User $user, EntityManagerInterface $em): array
+    {
+        if ($conversations === []) {
+            return [];
+        }
+
+        $rows = $em->createQueryBuilder()
+            ->select('IDENTITY(m.conversation) AS conversationId', 'COUNT(m.id) AS unreadCount')
+            ->from(Message::class, 'm')
+            ->leftJoin(MessageRead::class, 'mr', 'WITH', 'mr.message = m AND mr.idUser = :user')
+            ->where('m.conversation IN (:conversations)')
+            // * Un message système (sender null) reste "non lu" tant que personne ne l'a consulté, comme
+            // * un message humain -- d'où le OR IS NULL plutôt qu'un simple != qui l'exclurait (NULL != x
+            // * n'est jamais vrai en SQL).
+            ->andWhere('m.sender IS NULL OR m.sender != :user')
+            ->andWhere('mr.message IS NULL')
+            ->groupBy('m.conversation')
+            ->setParameter('user', $user)
+            ->setParameter('conversations', $conversations)
+            ->getQuery()
+            ->getResult();
+
+        $counts = [];
+        foreach ($rows as $row) {
+            $counts[$row['conversationId']] = (int) $row['unreadCount'];
+        }
+
+        return $counts;
     }
 
     #[Route('/api/conversations/{id}', methods: ['GET'])]
@@ -70,34 +112,122 @@ final class ConversationController extends AbstractController
         // * peut pas se fier à l'ordre de la collection lazy-loadée.
         $messages = $em->getRepository(Message::class)->findBy(['conversation' => $conversation], ['createdAt' => 'ASC']);
 
+        // * readMap précalculée avant le marquage ci-dessous : consulter une conversation marque les
+        // * messages de l'autre partie comme lus par $user, mais readMap sert à afficher si CHAQUE
+        // * message a été lu par son destinataire (l'autre participant, pas $user) -- deux choses
+        // * différentes qui ne se marchent pas dessus.
+        $readMap = $this->buildMessageReadMap($messages, $em);
+        $this->markMessagesAsRead($messages, $user, $em, $readMap);
+        $em->flush();
+
         return $this->json([
             'id' => $conversation->getId()->toRfc4122(),
             'requestId' => $conversation->getRequest()->getId()->toRfc4122(),
             'status' => $conversation->getStatus()->value,
             'messages' => array_map(
-                static fn (Message $m) => [
-                    'id' => $m->getId()->toRfc4122(),
-                    'senderId' => $m->getSender()?->getId()->toRfc4122(),
-                    'content' => null !== $m->getModeratedAt() ? null : $m->getContent(),
-                    'moderated' => null !== $m->getModeratedAt(),
-                    'isSystem' => $m->isSystem(),
-                    'createdAt' => $m->getCreatedAt()->format(DATE_ATOM),
-                    // ! fileUrl en base est une clé objet privée, pas une URL -- l'URL signée est générée
-                    // ! à la demande ici, jamais persistée (elle expirerait), cf. message_attachments.storage.
-                    'attachments' => array_map(
-                        static fn (MessageAttachment $a) => [
-                            'id' => $a->getId()->toRfc4122(),
-                            'fileName' => $a->getFileName(),
-                            'mimeType' => $a->getMimeType(),
-                            'fileSize' => $a->getFileSize(),
-                            'url' => $attachmentStorage->temporaryUrl($a->getFileUrl(), new \DateTimeImmutable('+1 hour')),
-                        ],
-                        $m->getAttachments()->toArray()
-                    ),
-                ],
+                function (Message $m) use ($conversation, $readMap, $attachmentStorage) {
+                    $recipient = $this->otherParticipant($conversation, $m->getSender());
+                    $readAt = $recipient !== null ? $readMap[$m->getId()->toRfc4122()][$recipient->getId()->toRfc4122()] ?? null : null;
+
+                    return [
+                        'id' => $m->getId()->toRfc4122(),
+                        'senderId' => $m->getSender()?->getId()->toRfc4122(),
+                        'content' => null !== $m->getModeratedAt() ? null : $m->getContent(),
+                        'moderated' => null !== $m->getModeratedAt(),
+                        'isSystem' => $m->isSystem(),
+                        'createdAt' => $m->getCreatedAt()->format(DATE_ATOM),
+                        // * Lu par le destinataire (l'autre participant, jamais l'expéditeur lui-même) --
+                        // * null tant que non lu, ou pour un message système (pas de destinataire unique).
+                        'readAt' => $readAt?->format(DATE_ATOM),
+                        // ! fileUrl en base est une clé objet privée, pas une URL -- l'URL signée est générée
+                        // ! à la demande ici, jamais persistée (elle expirerait), cf. message_attachments.storage.
+                        'attachments' => array_map(
+                            static fn (MessageAttachment $a) => [
+                                'id' => $a->getId()->toRfc4122(),
+                                'fileName' => $a->getFileName(),
+                                'mimeType' => $a->getMimeType(),
+                                'fileSize' => $a->getFileSize(),
+                                'url' => $attachmentStorage->temporaryUrl($a->getFileUrl(), new \DateTimeImmutable('+1 hour')),
+                            ],
+                            $m->getAttachments()->toArray()
+                        ),
+                    ];
+                },
                 $messages
             ),
         ]);
+    }
+
+    /**
+     * Accusés de lecture déjà enregistrés pour ces messages, avant tout marquage par l'appel en cours.
+     *
+     * @param Message[] $messages
+     *
+     * @return array<string, array<string, \DateTimeImmutable>> id message => [id utilisateur => readAt]
+     */
+    private function buildMessageReadMap(array $messages, EntityManagerInterface $em): array
+    {
+        if ($messages === []) {
+            return [];
+        }
+
+        $existingReads = $em->getRepository(MessageRead::class)->createQueryBuilder('mr')
+            ->where('mr.message IN (:messages)')
+            ->setParameter('messages', $messages)
+            ->getQuery()
+            ->getResult();
+
+        $map = [];
+        foreach ($existingReads as $read) {
+            $map[$read->getMessage()->getId()->toRfc4122()][$read->getIdUser()->getId()->toRfc4122()] = $read->getReadAt();
+        }
+
+        return $map;
+    }
+
+    /**
+     * Marque comme lus par $user tous les messages de la conversation qu'il n'a pas envoyés lui-même
+     * (y compris les messages système, sender null) et qu'il n'avait pas encore lus. $readMap est passée
+     * par référence pour rester cohérente si jamais elle est relue après cet appel dans le même contrôleur.
+     *
+     * @param Message[]                                              $messages
+     * @param array<string, array<string, \DateTimeImmutable>>       &$readMap
+     */
+    private function markMessagesAsRead(array $messages, User $user, EntityManagerInterface $em, array &$readMap): void
+    {
+        $now = new \DateTimeImmutable();
+        $userId = $user->getId()->toRfc4122();
+
+        foreach ($messages as $message) {
+            if ($message->getSender() === $user) {
+                continue;
+            }
+            $messageId = $message->getId()->toRfc4122();
+            if (isset($readMap[$messageId][$userId])) {
+                continue;
+            }
+
+            $read = new MessageRead();
+            $read->setMessage($message);
+            $read->setIdUser($user);
+            $read->setReadAt($now);
+            $em->persist($read);
+
+            $readMap[$messageId][$userId] = $now;
+        }
+    }
+
+    /**
+     * L'autre participant d'une conversation à deux, relativement à l'expéditeur d'un message précis --
+     * null si $sender est lui-même null (message système, pas de destinataire unique pertinent).
+     */
+    private function otherParticipant(Conversation $conversation, ?User $sender): ?User
+    {
+        if ($sender === null) {
+            return null;
+        }
+
+        return $sender === $conversation->getClient() ? $conversation->getProducer()->getOwner() : $conversation->getClient();
     }
 
     #[Route('/api/conversations/{id}/messages', methods: ['POST'])]

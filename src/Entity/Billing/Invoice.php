@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Facture d'un abonnement producteur, créée par StripeWebhookController lors de la réception des
+ * événements Stripe (invoice.paid, etc.) -- $providerInvoiceId/$invoiceUrl viennent directement de Stripe.
+ * Visible et gérable dans le back-office via InvoiceCrudController. $payments (orphanRemoval) reste pour
+ * l'instant vide en pratique : aucun code n'y ajoute de Payment (voir la note sur Payment).
  */
 
 namespace App\Entity\Billing;
@@ -23,6 +20,10 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: InvoiceRepository::class)]
 #[ORM\Table(name: 'invoices', schema: 'billing')]
+// * Filtrée en plage de dates par DashboardController::index() (revenu du mois en cours) et reporting()
+// * (revenu total, revenu par mois sur 6 mois) -- une colonne de date filtrée par plage bénéficie autant
+// * d'un index qu'une colonne de statut filtrée par égalité.
+#[ORM\Index(name: 'idx_invoices_paid_at', columns: ['paid_at'])]
 class Invoice
 {
     #[ORM\Id]

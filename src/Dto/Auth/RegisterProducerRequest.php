@@ -19,7 +19,7 @@ final readonly class RegisterProducerRequest
         public string $email,
 
         #[Assert\NotBlank]
-        #[Assert\Length(min: 8)]
+        #[Assert\Length(min: 12)]
         public string $password,
 
         #[Assert\NotBlank]

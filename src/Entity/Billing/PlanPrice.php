@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Un tarif précis d'un SubscriptionPlan pour un cycle de facturation donné (BillingCycle : mensuel/annuel) --
+ * un plan a donc plusieurs PlanPrice, un par cycle proposé. $providerPriceId référence le Price Stripe
+ * correspondant, utilisé par ChangePlanRequest/CheckoutRequest et StripeGateway au moment de la
+ * souscription. Gérable dans le back-office via PlanPriceCrudController.
  */
 
 namespace App\Entity\Billing;

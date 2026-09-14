@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Type Doctrine personnalisé pour la colonne PostgreSQL CITEXT (texte insensible à la casse nativement en
+ * base, ex. email/slug/code un peu partout dans le schéma). Enregistré dans config/packages/doctrine.yaml
+ * (dbal.types.citext et dbal.connections.default.mapping_types.citext) -- sans ce mapping, Doctrine ne
+ * reconnaîtrait pas le type CITEXT lu depuis la base et échouerait au démarrage.
  */
 
 namespace App\Doctrine;

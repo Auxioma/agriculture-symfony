@@ -1,5 +1,7 @@
 framework:
     default_locale: fr
-    translator:
-        default_path: '%kernel.project_dir%/translations'
-        providers:
+    translator: # active et configure le service de traduction.
+        default_path: '%kernel.project_dir%/translations' # indique le dossier où Symfony doit aller chercher les fichiers de traduction
+        
+        providers: # Clé vide par défaut, mais possible d'ajouter des fournisseurs de traduction supplémentaires si nécessaire.
+            # Exemple : 'my_provider' : 'App\Translation\MyProvider'

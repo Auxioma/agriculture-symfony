@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Offre d'abonnement proposée aux producteurs (cahier fonctionnel : formules Standard/Premium...).
+ * $limits/$features (json) portent le contenu de l'offre affiché sur la page de tarifs, $position ordonne
+ * l'affichage. $prices détaille les tarifs par cycle de facturation (voir PlanPrice) -- SubscriptionPlan
+ * lui-même ne porte pas de montant.
  */
 
 namespace App\Entity\Billing;

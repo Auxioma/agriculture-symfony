@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Statut de présence d'un utilisateur (en ligne/absent/hors-ligne), destiné à un futur indicateur temps
+ * réel dans la messagerie. Pattern "PK=FK" du projet (trouvemoi-agri-make-entity-guide.md) : $idUser est
+ * lui-même la clé primaire via OneToOne, un utilisateur a au plus une seule ligne UserPresence. Aucune
+ * route n'écrit encore dans cette table -- prête pour une future intégration temps réel (websocket/Mercure).
  */
 
 namespace App\Entity\Messaging;

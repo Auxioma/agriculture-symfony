@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Ticket de support (cahier fonctionnel : module Support). Géré aujourd'hui uniquement côté back-office
+ * via TicketCrudController -- aucune route API publique ne permet encore à un client/producteur de créer
+ * un ticket lui-même ; $idUser identifie simplement à qui appartient le ticket. $assignedTo distingue
+ * l'agent support en charge du propriétaire du ticket ($idUser).
  */
 
 namespace App\Entity\Support;
@@ -23,6 +20,9 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: TicketRepository::class)]
 #[ORM\Table(name: 'tickets', schema: 'support')]
+// * Filtrée par DashboardController::index() (compte des tickets non résolus) et par TicketCrudController
+// * -- pas une FK, donc jamais indexée automatiquement par Doctrine.
+#[ORM\Index(name: 'idx_tickets_status', columns: ['status'])]
 class Ticket
 {
     #[ORM\Id]

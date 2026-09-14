@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Tentative de paiement individuelle rattachée à une Invoice (une facture peut avoir plusieurs tentatives
+ * en cas d'échec puis de réussite, d'où $failureReason). Gérable dans le back-office via
+ * PaymentCrudController, mais aucun code applicatif (StripeWebhookController compris) n'en crée encore
+ * automatiquement -- seul Invoice est actuellement peuplé par le webhook Stripe.
  */
 
 namespace App\Entity\Billing;

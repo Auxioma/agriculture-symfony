@@ -1,13 +1,12 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Fiche d'exploitation d'un producteur -- le "coeur business" du SaaS (cahier fonctionnel, dashboard
+ * producteur). Toujours rattachée en OneToOne à un User avec ROLE_PRODUCER ($owner), créée dans la même
+ * opération à l'inscription. $verificationStatus pilote tout le flux de validation admin
+ * (ProducerProfileCrudController::validateProducer()/rejectProducer()) ; $location (point géographique)
+ * alimente le matching par proximité (matching.find_matching_producers). Point de départ de presque toutes
+ * les relations métier du schéma producer (produits, zones, horaires, abonnement, avis...).
  */
 
 namespace App\Entity\Producer;
@@ -35,6 +34,10 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: ProducerProfileRepository::class)]
 #[ORM\Table(name: 'producer_profiles', schema: 'producer')]
+// * Filtrée par DashboardController::index() (compte des producteurs en attente de validation) et par
+// * ProducerProfileCrudController (file d'attente de validation) -- pas une FK, donc jamais indexée
+// * automatiquement par Doctrine.
+#[ORM\Index(name: 'idx_producer_profiles_verification_status', columns: ['verification_status'])]
 class ProducerProfile
 {
     #[ORM\Id]

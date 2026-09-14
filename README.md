@@ -70,3 +70,4 @@ et emails non envoyés (visibles dans le profiler Symfony, `/_profiler`, une foi
 
 - Cahiers des charges (fonctionnel et DevOps) : hors dépôt, demander l'accès à l'équipe projet.
 - [Runbook sauvegardes PostgreSQL](docs/runbooks/backup.md) : fonctionnement, restauration en cas d'incident, secrets requis.
+- [Runbook déploiement et rollback](docs/runbooks/deploiement.md) : procédure de release, retour en arrière, smoke tests manuels, écarts connus avec le cahier DevOps.

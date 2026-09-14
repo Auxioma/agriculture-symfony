@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Traduction d'un Label dans une langue donnée -- même principe que CategoryTranslation/ProductTranslation
+ * (clé composite label+locale, trouvemoi-agri-make-entity-guide.md). Contrairement aux deux autres, aucun
+ * formulaire d'édition n'existe encore dans le back-office pour celle-ci (pas de LabelCrudController) :
+ * table présente dans le schéma mais sans écran pour la remplir.
  */
 
 namespace App\Entity\Catalog;

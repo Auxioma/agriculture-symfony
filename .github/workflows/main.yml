@@ -5,41 +5,55 @@ on:
     workflows: ["Unit Tests"]
     types: [completed]
     branches: [master]
+  # * Permet de redéclencher un déploiement à la main depuis l'onglet Actions (ex. après un
+  # * incident, pour redéployer le même master une fois le correctif mergé) -- absent avant, la
+  # * seule façon de relancer un déploiement était de pousser un nouveau commit.
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # * Évite qu'une connexion SSH bloquée (réseau, prompt inattendu) fasse tourner le job jusqu'à
+    # * la limite par défaut du runner (plusieurs heures).
+    timeout-minutes: 10
+    # * Rattache ce job à un environnement GitHub nommé "production" : sans configuration
+    # * supplémentaire c'est un no-op, mais ça permet d'ajouter des règles de protection
+    # * (validation manuelle avant déploiement) depuis Réglages > Environments du dépôt, sans
+    # * retoucher ce fichier.
+    environment: production
 
     env:
       SSHPASS: ${{ secrets.APP_PASS }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-
       - name: Install sshpass
         run: |
           sudo apt-get update
           sudo apt-get install -y sshpass
 
-      - name: Deploy to preprod
+      # ! Remplace -o StrictHostKeyChecking=no (qui désactive toute vérification et expose à une
+      # ! attaque MITM sur la connexion) : on récupère la clé d'hôte réelle du serveur au début de
+      # ! CE run et on ne fait confiance qu'à elle pour la suite. Moins fort qu'une clé d'hôte
+      # ! épinglée une fois pour toutes en secret, mais très supérieur à une désactivation totale
+      - name: Enregistrer la clé d'hôte SSH du serveur
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no -p 5022 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
+          mkdir -p ~/.ssh
+          ssh-keyscan -p 5022 ${{ secrets.APP_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy
+        run: |
+          sshpass -e ssh -p 5022 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
             set -e
 
             cd ~/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
             git pull origin master
             composer install --no-interaction --prefer-dist --optimize-autoloader
-            composer dump-env dev
-            bin/console cache:clear --no-interaction
-            bin/console cache:warmup --no-interaction
-            bin/console assets:install public --no-interaction
-            bin/console importmap:install --no-interaction
-            composer dump-env dev
-            bin/console cache:clear --no-interaction --env=dev
-            bin/console cache:warmup --no-interaction --env=dev
-            bin/console asset-map:compile
+            composer dump-env prod
+            bin/console doctrine:migrations:migrate --no-interaction --env=prod
+            bin/console cache:clear --no-interaction --env=prod
+            bin/console cache:warmup --no-interaction --env=prod
+            bin/console assets:install public --no-interaction --env=prod
+            bin/console importmap:install --no-interaction --env=prod
+            bin/console asset-map:compile --env=prod
           EOF

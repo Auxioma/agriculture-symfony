@@ -13,11 +13,33 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 
+/**
+ * Contrôleur API pour la gestion des médias des producteurs.
+ *
+ * Gère le téléversement, la validation et le stockage des fichiers médias (ex: photos de profil/bannière)
+ * associés au profil d'un producteur sur un service de stockage objet (Flysystem/S3).
+ */
 final class ProducerMediaController extends AbstractController
 {
+    // * Types MIME d'images autorisés pour le téléversement 
     private const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+    // * Taille maximale autorisée pour un fichier (5 Mo en octets)
     private const MAX_SIZE_BYTES = 5 * 1024 * 1024;
 
+    /**
+     * Téléverse une photo pour le profil du producteur connecté.
+     * Effectue les validations de sécurité essentielles avant l'envoi vers le stockage :
+     *
+     * Le fichier est ensuite stocké sur le système de fichiers objet via Flysystem (`producer_media.storage`)
+     * et l'entité `ProducerMedia` est enregistrée en base de données.
+     *
+     * @param Request                $request Paramètres HTTP (champ `photo` dans `files` et `altText` optionnel dans `request`).
+     * @param User                   $user    Utilisateur authentifié effectuant la requête.
+     * @param FilesystemOperator     $storage Service Flysystem injecté pour la gestion du stockage d'objets.
+     *
+     * @return JsonResponse Identifiant et URL publique de l'image créée (201 Created), ou un message d'erreur (403 / 422).
+     */
     #[Route('/api/producer/photos', methods: ['POST'])]
     public function uploadPhoto(
         Request $request,

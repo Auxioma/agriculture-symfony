@@ -1,0 +1,30 @@
+name: Healthcheck
+
+# Vérifie /api/health puis signale le résultat à Healthchecks.io. En cas d'échec, appelle
+# explicitement le endpoint /fail (alerte quasi immédiate) plutôt que de simplement ne pas pinguer
+# et attendre que Healthchecks.io remarque le silence après Period+Grace -- plus proche du "> 2
+# minutes" du cahier des charges DevOps, malgré le fait que le cron GitHub Actions lui-même n'est
+# pas garanti à la minute près (voir docs/runbooks/deploiement.md).
+#
+# Secret requis : HEALTHCHECKS_SECRET (l'URL de ping visible sur la page du check, Healthchecks.io).
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Vérifier /api/health puis signaler à Healthchecks.io
+        run: |
+          set -e
+          if curl -sf --max-time 10 https://admin-agriculture.trouvemoi.com/api/health; then
+            curl -sf --max-time 10 "${{ secrets.HEALTHCHECKS_SECRET }}/success" || true
+          else
+            curl -sf --max-time 10 "${{ secrets.HEALTHCHECKS_SECRET }}/fail" || true
+            exit 1
+          fi

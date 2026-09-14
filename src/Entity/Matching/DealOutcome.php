@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Issue déclarée d'une mise en relation (ClientRequest + ProducerProfile) -- cahier fonctionnel : savoir
+ * si une demande a effectivement abouti à une vente. $declaredBy identifie qui a renseigné l'issue
+ * (client ou producteur). Aucun contrôleur n'écrit encore dans cette table -- la table est présente dans
+ * le schéma, prête pour un futur écran de déclaration d'issue, mais pas encore branchée.
  */
 
 namespace App\Entity\Matching;

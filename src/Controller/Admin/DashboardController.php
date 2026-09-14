@@ -5,6 +5,7 @@ namespace App\Controller\Admin;
 use App\Controller\Admin\CategoryCrudController;
 use App\Controller\Admin\ClientRequestCrudController;
 use App\Controller\Admin\ConversationCrudController;
+use App\Controller\Admin\LegalPageCrudController;
 use App\Controller\Admin\MessageCrudController;
 use App\Controller\Admin\ProducerProfileCrudController;
 use App\Controller\Admin\PaymentCrudController;
@@ -18,7 +19,6 @@ use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Dashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\MenuItem;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractDashboardController;
-use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\Response;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
 use Doctrine\ORM\EntityManagerInterface;
@@ -103,6 +103,7 @@ class DashboardController extends AbstractDashboardController
             MenuItem::linkTo(PaymentCrudController::class, 'Paiements', 'fa fa-money-check'),
         ]);
         yield MenuItem::linkTo(TicketCrudController::class, 'Support', 'fa fa-headset');
+        yield MenuItem::linkTo(LegalPageCrudController::class, 'Pages légales', 'fa fa-scale-balanced');
         yield MenuItem::linkToRoute('Reporting', 'fa fa-chart-line', 'admin_reporting');
     }
 

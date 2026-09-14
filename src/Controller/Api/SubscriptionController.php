@@ -18,8 +18,14 @@ use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 
+/**
+ * Gestion de la facturation et des abonnements producteurs.
+ */
 final class SubscriptionController extends AbstractController
 {
+    /**
+     * Liste des offres d'abonnement actives et leurs tarifs.
+     */
     #[Route('/api/subscription/plans', methods: ['GET'])]
     public function listPlans(EntityManagerInterface $em): JsonResponse
     {
@@ -46,6 +52,9 @@ final class SubscriptionController extends AbstractController
         ));
     }
 
+    /**
+     * État de l'abonnement en cours du producteur.
+     */
     #[Route('/api/subscription/current', methods: ['GET'])]
     public function getCurrentSubscription(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
@@ -74,6 +83,9 @@ final class SubscriptionController extends AbstractController
         ]);
     }
 
+    /**
+     * Historique des factures du producteur.
+     */
     #[Route('/api/subscription/invoices', methods: ['GET'])]
     public function listInvoices(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
@@ -106,6 +118,9 @@ final class SubscriptionController extends AbstractController
         ));
     }
 
+    /**
+     * Demande d'annulation d'abonnement en fin de période.
+     */
     #[Route('/api/subscription/cancel', methods: ['POST'])]
     public function cancelSubscription(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
@@ -122,17 +137,16 @@ final class SubscriptionController extends AbstractController
             return $this->json(['error' => 'Aucun abonnement actif à annuler.'], 404);
         }
 
-        // ! Résiliation "douce" uniquement : on marque l'intention, l'abonnement reste actif jusqu'à la fin
-        // ! de la période déjà payée. Le passage réel à "cancelled" (et l'appel au prestataire de paiement)
-        // ! sera déclenché par un webhook une fois l'intégration paiement décidée -- checkout/change-plan
-        // ! sont hors scope de ce round pour la même raison.
+        // Marque l'intention d'annulation ; le statut final sera mis à jour via webhook
         $subscription->setCancelAtPeriodEnd(true);
         $em->flush();
 
         return $this->json(null, 200);
     }
 
-
+    /**
+     * Initie une session de paiement Stripe/Checkout pour un nouvel abonnement.
+     */
     #[Route('/api/subscription/checkout', methods: ['POST'])]
     public function checkout(
         #[MapRequestPayload] CheckoutRequest $request,
@@ -166,6 +180,9 @@ final class SubscriptionController extends AbstractController
         return $this->json(['checkoutUrl' => $checkoutUrl], 201);
     }
 
+    /**
+     * Demande le passage à une autre formule d'abonnement.
+     */
     #[Route('/api/subscription/change-plan', methods: ['POST'])]
     public function changePlan(
         #[MapRequestPayload] ChangePlanRequest $request,
@@ -193,9 +210,7 @@ final class SubscriptionController extends AbstractController
 
         $paymentGateway->updateSubscriptionPrice($subscription->getProviderSubscriptionId(), $newPlanPrice->getProviderPriceId());
 
-        // ! On ne touche pas $subscription->planPrice ici : la source de vérité reste le webhook
-        // ! customer.subscription.updated, qui confirmera le changement effectif (proration, échec de
-        // ! paiement...) avant de le refléter en local.
+        // La MAJ de l'entité locale est déléguée au webhook Stripe (customer.subscription.updated)
         return $this->json(null, 202);
     }
 }

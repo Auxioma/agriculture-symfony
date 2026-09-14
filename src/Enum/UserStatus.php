@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Statut de compte de User::$status. Active par défaut à l'inscription. Suspended est posé par
+ * MessageCrudController::blockSender() (modération d'un message signalé) ou directement via le formulaire
+ * d'édition d'UserCrudController. Deleted est posé par la fonction SQL identity.anonymize_user(), utilisée
+ * aussi bien par l'auto-suppression RGPD (AuthController) que par UserCrudController::anonymizeUser() côté
+ * admin. Pending existe dans le schéma mais n'est posé par aucune route actuelle.
  */
 
 namespace App\Enum;

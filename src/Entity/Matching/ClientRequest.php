@@ -1,13 +1,14 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Demande d'un client (coeur du tunnel de mise en relation), créée/modifiée par ClientRequestController
+ * (createRequest()/updateRequest(), via applyRequestData()). $product XOR $customProduct au minimum requis
+ * (contrainte DB chk_client_requests_product_or_custom, $category seul ne suffit pas). $location/$radiusKm
+ * pilotent le matching géographique via la fonction SQL matching.populate_request_matches(), appelée par
+ * ClientRequestController après création/modification pour peupler $matches (RequestMatch). $status
+ * (RequestStatus) porte le cycle de vie complet -- voir l'énumération pour le détail des transitions.
+ * duplicate() (utilisée par ClientRequestController) recopie tous les champs de saisie mais repart d'un
+ * statut Sent et d'un nouvel id, pour permettre à un client de relancer une demande similaire.
  */
 
 namespace App\Entity\Matching;
@@ -32,6 +33,13 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: ClientRequestRepository::class)]
 #[ORM\Table(name: 'client_requests', schema: 'matching')]
+// * $status n'est pas une FK (donc pas indexée automatiquement par Doctrine) et est filtrée à chaque
+// * chargement de DashboardController::index() (compte des demandes actives par statut) ainsi que par les
+// * filtres de ClientRequestCrudController -- sans index, Postgres doit scanner toute la table à chaque fois.
+#[ORM\Index(name: 'idx_client_requests_status', columns: ['status'])]
+// * Lu par SendExpiryRemindersCommand pour retrouver les demandes proches de leur expiration -- même
+// * logique que ci-dessus, colonne filtrée en dehors de toute clé étrangère.
+#[ORM\Index(name: 'idx_client_requests_expires_at', columns: ['expires_at'])]
 class ClientRequest
 {
     #[ORM\Id]

@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Trace de chaque événement webhook Stripe reçu par StripeWebhookController -- $providerEventId (unique)
+ * sert de clé d'idempotence pour ignorer un événement déjà traité si Stripe le renvoie deux fois ;
+ * $status/$processedAt suivent le traitement, $payload garde le corps brut reçu pour rejouer/déboguer
+ * un événement en cas de souci.
  */
 
 namespace App\Entity\Billing;

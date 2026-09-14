@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Fil de discussion entre un client et un producteur au sujet d'une ClientRequest précise. $status
+ * (ConversationStatus, défaut Open) est mis à jour par ConversationController::reportConversation()
+ * (-> Reported) et gérable en back-office via ConversationCrudController (AuditLogger y trace les actions
+ * admin sensibles). $messages/$participants alimentés par ConversationController::sendMessage()/
+ * uploadAttachment().
  */
 
 namespace App\Entity\Messaging;
@@ -26,6 +24,10 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: ConversationRepository::class)]
 #[ORM\Table(name: 'conversations', schema: 'messaging')]
+// * Filtrée par DashboardController::index() (compte des conversations signalées) et par
+// * ConversationCrudController (liste des conversations à modérer) -- pas une FK, donc jamais indexée
+// * automatiquement par Doctrine.
+#[ORM\Index(name: 'idx_conversations_status', columns: ['status'])]
 class Conversation
 {
     #[ORM\Id]

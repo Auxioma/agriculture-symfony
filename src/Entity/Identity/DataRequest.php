@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Trace RGPD d'une demande d'export ou de suppression de données par un utilisateur (cahier fonctionnel :
+ * "export des données, suppression ou anonymisation du compte"). $status est une chaîne libre (pas
+ * d'enum) -- aucune route actuelle ne crée réellement de DataRequest : AuthController expose déjà
+ * GET /api/me/export et DELETE /api/me directement, sans passer par cette table de suivi.
  */
 
 namespace App\Entity\Identity;

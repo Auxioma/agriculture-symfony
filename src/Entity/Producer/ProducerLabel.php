@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Association producteur <-> label (ex. "Bio", "AOP"), avec preuve à l'appui. Clé composite
+ * (producer, label) -- l'une des 10 entités à clé composite intentionnelle du projet, voir
+ * trouvemoi-agri-make-entity-guide.md. $document pointe vers le VerificationDocument justificatif
+ * (facultatif tant que non fourni) ; $verifiedAt/$expiresAt portent la validation admin et sa durée de
+ * validité (un label type "Bio" se renouvelle, d'où l'expiration).
  */
 
 namespace App\Entity\Producer;

@@ -4,10 +4,6 @@ namespace App\Dto\Auth;
 
 use Symfony\Component\Validator\Constraints as Assert;
 
-/**
- * Payload attendu par POST /api/auth/reset-password 
- */
-
 final readonly class ResetPasswordRequest
 {
     public function __construct(
@@ -17,7 +13,7 @@ final readonly class ResetPasswordRequest
         public string $token,
 
         #[Assert\NotBlank]
-        #[Assert\Length(min: 8)]
+        #[Assert\Length(min: 12)]
         public string $newPassword,
     ) {
     }

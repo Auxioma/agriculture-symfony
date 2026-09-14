@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Correspondance calculée entre une ClientRequest et un ProducerProfile -- jamais créée en PHP, toujours
+ * peuplée par la fonction SQL matching.populate_request_matches() appelée depuis ClientRequestController
+ * (create/update), qui est idempotente (ON CONFLICT (request_id, producer_id) DO UPDATE, voir la contrainte
+ * unique uniq_request_producer). $score/$distanceKm/$reasons expliquent le classement, $status (MatchStatus,
+ * défaut Proposed) et $unlockedAt suivent le cycle de vie côté producteur (voir l'énumération pour le détail).
  */
 
 namespace App\Entity\Matching;

@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Photo/média de la fiche producteur (galerie de la ferme, cahier fonctionnel). $type distingue les usages
+ * (ex. photo de couverture, galerie), $position ordonne l'affichage, $isPublic permet d'avoir des médias
+ * uploadés mais non encore publiés sur la fiche publique. $fileUrl pointe vers le stockage S3/MinIO (voir
+ * la note "Stockage fichiers" du projet), pas un chemin local.
  */
 
 namespace App\Entity\Producer;

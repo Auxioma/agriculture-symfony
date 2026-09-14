@@ -1,13 +1,9 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Modèle de message par type/canal/langue ($code, $channel, $locale), avec $version pour l'historique des
+ * révisions. NotificationService::notify() ne lit pas encore cette table -- le contenu des emails y est
+ * actuellement construit en dur dans le code plutôt que via un template piloté depuis cette entité.
  */
 
 namespace App\Entity\Notification;

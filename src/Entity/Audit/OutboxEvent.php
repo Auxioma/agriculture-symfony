@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Table pour le pattern "transactional outbox" (écrire l'événement dans la même transaction métier, puis
+ * le publier de façon fiable en asynchrone -- $status/$availableAt/$processedAt pilotent ce cycle).
+ * Aucun code applicatif du projet n'écrit dans cette table ni ne la consomme actuellement : la table
+ * existe dans le schéma, prête pour un futur usage, mais n'est pas encore branchée.
  */
 
 namespace App\Entity\Audit;

@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Photo agrégée de la plateforme pour une journée donnée (une ligne par jour, $metricDate en clé
+ * primaire -- clé naturelle, pas d'id séparé), destinée à terme au tableau de bord admin et au module
+ * Reporting (qui calculent aujourd'hui leurs statistiques à la volée via des requêtes SQL directes,
+ * sans passer par cette table). Aucun code applicatif ne lit ni n'écrit encore dans cette table.
  */
 
 namespace App\Entity\Analytics;

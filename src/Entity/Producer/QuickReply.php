@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Modèle de réponse rapide propre à un producteur, pour ses échanges avec les clients (messagerie).
+ * Toujours rattaché à un producteur précis ($producer non-nullable) -- ce n'est donc pas l'entité à
+ * utiliser pour des modèles de réponse partagés côté support/admin, qui relèvent du module Support.
+ * $position ordonne l'affichage dans l'interface de messagerie du producteur, $isActive permet de
+ * désactiver un modèle sans le supprimer.
  */
 
 namespace App\Entity\Producer;

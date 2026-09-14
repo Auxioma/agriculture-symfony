@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Abonnement d'un producteur à un PlanPrice, créé par StripeWebhookController lors de la réception d'un
+ * événement Stripe de souscription ($providerSubscriptionId). $status (SubscriptionStatus) reflète l'état
+ * côté Stripe. Le trigger PostgreSQL trg_subscriptions_audit journalise aussi les changements de cette
+ * table dans audit.audit_logs (voir la note sur AuditLog). Gérable en lecture dans le back-office via
+ * SubscriptionCrudController.
  */
 
 namespace App\Entity\Billing;
@@ -24,6 +22,9 @@ use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: SubscriptionRepository::class)]
 #[ORM\Table(name: 'subscriptions', schema: 'billing')]
+// * Filtrée par DashboardController::reporting() pour le taux de churn (abonnements annulés / total) --
+// * pas une FK, donc jamais indexée automatiquement par Doctrine.
+#[ORM\Index(name: 'idx_subscriptions_status', columns: ['status'])]
 #[ORM\HasLifecycleCallbacks]
 class Subscription
 {

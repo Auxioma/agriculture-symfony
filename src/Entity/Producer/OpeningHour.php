@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Créneau d'ouverture d'un producteur pour un jour de la semaine ($weekday en smallint, 0=lundi selon la
+ * convention ISO-8601 utilisée dans le reste du projet). Une ligne par créneau : un producteur ouvert
+ * matin et après-midi le même jour a donc deux lignes avec le même $weekday. $isClosed permet de marquer
+ * explicitement un jour fermé plutôt que de simplement omettre la ligne.
  */
 
 namespace App\Entity\Producer;

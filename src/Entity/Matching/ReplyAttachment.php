@@ -1,13 +1,9 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Pièce jointe d'une ProducerReply (ex. photo/fiche technique du produit proposé), stockée sur S3/MinIO
+ * comme les autres médias du projet ($fileUrl). $reply est nullable pour permettre l'upload avant
+ * rattachement final dans certains flux de formulaire, comme ProducerProductMedia.
  */
 
 namespace App\Entity\Matching;

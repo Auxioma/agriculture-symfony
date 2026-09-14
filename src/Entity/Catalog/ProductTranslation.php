@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Traduction d'un Product dans une langue donnée -- même principe que CategoryTranslation (clé composite
+ * product+locale, verrouillée par trouvemoi-agri-make-entity-guide.md). $keywords sert au référencement
+ * (cahier fonctionnel : "SEO avancé"), stocké en simple_array donc éditée dans ProductTranslationType via
+ * un CallbackTransformer chaîne-virgules <-> tableau.
  */
 
 namespace App\Entity\Catalog;

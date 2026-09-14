@@ -1,13 +1,12 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Traduction d'une Category dans une langue donnée (cahier fonctionnel, internationalisation : fr, en, es,
+ * it, de). Clé primaire composite (category, locale) -- décision délibérée documentée dans
+ * trouvemoi-agri-make-entity-guide.md, verrouillée par EntityPersistenceTest. C'est précisément cette clé
+ * composite qui empêche d'utiliser un CollectionField EasyAdmin standard : l'édition passe par un
+ * formulaire Symfony fait main (CategoryCrudController::editTranslations()). GET /api/categories ne lit
+ * pas encore cette table -- elle renvoie toujours Category::$name (français).
  */
 
 namespace App\Entity\Catalog;

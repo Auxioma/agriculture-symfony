@@ -1,13 +1,11 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Résultat de l'envoi d'une Notification sur un canal précis, créé par NotificationService::notify() --
+ * une ligne $channel="in_app" toujours $status="sent" (l'enregistrement en base suffit), une ligne
+ * $channel="email" à $status="sent" ou "failed" (avec $failedAt) selon que MailerInterface a levé une
+ * TransportExceptionInterface ou non. NotificationService avale toujours cette exception : un échec
+ * d'email n'interrompt jamais le flux appelant, il est seulement tracé ici.
  */
 
 namespace App\Entity\Notification;

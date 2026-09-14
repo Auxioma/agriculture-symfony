@@ -1,13 +1,9 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Jeton de réinitialisation de mot de passe. $tokenHash stocke un SHA-256 du jeton en clair envoyé par
+ * email (AuthController::forgotPassword()) -- le jeton en clair lui-même n'est jamais persisté.
+ * ResetPasswordRequest revérifie tokenHash, expiresAt (1h) et usedAt à chaque tentative.
  */
 
 namespace App\Entity\Identity;

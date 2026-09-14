@@ -1,3 +1,15 @@
+  # SERVICES DE STOCKAGE ET BASE DE DONNÉES EN DÉVELOPPEMENT LOCAL
+  #
+  # 1. MinIO (Stockage d'objets compatible S3) :
+  #    - Port 9000 : API S3 principale pour l'envoi et la lecture de fichiers.
+  #    - Port 9001 : Interface web de gestion (http://localhost:9001).
+  #    - Volume 'minio_data' : Persistance des fichiers téléversés.
+  #
+  # 2. PostgreSQL (Base de données relationnelle via Doctrine) :
+  #    - Basé sur l'image légère postgres:16-alpine.
+  #    - Inclut un healthcheck automatique pour s'assurer que la base répond.
+  #    - Volume 'database_data' : Persistance des données PostgreSQL.
+
 services:
   minio:
     image: minio/minio

@@ -4,6 +4,12 @@ namespace App\Dto\Producer;
 
 use Symfony\Component\Validator\Constraints as Assert;
 
+/**
+ * Payload attendu par PUT /api/producer/profile
+ *
+ * * farmName reste #[Assert\NotBlank] même en mise à jour (pas de variante "partielle") : la colonne est
+ * * NOT NULL en base, un producteur ne peut donc jamais l'effacer via ce endpoint.
+ */
 final readonly class UpdateProducerProfileRequest
 {
     public function __construct(

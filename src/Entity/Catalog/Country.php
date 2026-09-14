@@ -1,13 +1,10 @@
 <?php
 
 /**
- * Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
- *
- * Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
- * Tous droits réservés.
- *
- * Ce code source est la propriété exclusive de Auxioma Web Agency et.
- * Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
+ * Pays de référence (cahier fonctionnel, internationalisation). Exemple de "clé naturelle" du projet
+ * (trouvemoi-agri-make-entity-guide.md) : $code (ISO 3166-1 alpha-2, ex. "FR") sert directement de clé
+ * primaire, pas d'UUID séparé -- toutes les FK vers ce pays (ProducerProfile, ClientRequest) référencent
+ * ce code plutôt qu'un id technique.
  */
 
 namespace App\Entity\Catalog;

@@ -1,4 +1,12 @@
 
+  # INFRASTRUCTURE DE DÉVELOPPEMENT LOCAL (Symfony Stack)
+  #
+  # Cette configuration gère les services auxiliaires nécessaires au projet :
+  # 1. Base de données PostgreSQL (Doctrine) : accessible sur le port 5432.
+  # 2. Mailpit (Mailer) : serveur SMTP de test capturant les e-mails sortants.
+  #    - Port 1025 : Relais SMTP pour Symfony.
+  #    - Port 8025 : Interface web de consultation des mails (http://localhost:8025).
+
 services:
 ###> doctrine/doctrine-bundle ###
   database:
