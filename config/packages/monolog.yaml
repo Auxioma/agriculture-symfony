@@ -53,3 +53,18 @@ when@prod:
                 channels: [deprecation]
                 path: php://stderr
                 formatter: monolog.formatter.json
+            # * Alerte "API 5xx" du cahier des charges DevOps -- approximation MVP (pas de vrai calcul de
+            # * taux d'erreur sur 5 minutes, qui demanderait un outil de métriques hors périmètre MVP) :
+            # * un email par exception non rattrapée (niveau "critical", pas "error", qui couvre aussi des
+            # * erreurs utilisateur normales comme une 422 de validation -- ça enverrait un mail à chaque
+            # * mauvaise saisie client sinon).
+            alert_mail:
+                type: fingers_crossed
+                action_level: critical
+                handler: mailer_nested
+                excluded_http_codes: [404, 405]
+            mailer_nested:
+                type: symfony_mailer
+                from_email: '%env(MAILER_FROM_ADDRESS)%'
+                to_email: ['louisboutetcamille@gmail.com']
+                subject: 'Erreur critique — TrouveMoi Agri'
