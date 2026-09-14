@@ -1,6 +1,192 @@
 parameters:
 	ignoreErrors:
 		-
+			message: '#^Class App\\Controller\\Admin\\CategoryCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/CategoryCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\CategoryCrudController\:\:editTranslations\(\) has parameter \$context with generic class EasyCorp\\Bundle\\EasyAdminBundle\\Context\\AdminContext but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/CategoryCrudController.php
+
+		-
+			message: '#^Class App\\Controller\\Admin\\ClientRequestCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/ClientRequestCrudController.php
+
+		-
+			message: '#^Class App\\Controller\\Admin\\ConversationCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/ConversationCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\ConversationCrudController\:\:closeConversation\(\) has parameter \$context with generic class EasyCorp\\Bundle\\EasyAdminBundle\\Context\\AdminContext but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/ConversationCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\ConversationCrudController\:\:reopenConversation\(\) has parameter \$context with generic class EasyCorp\\Bundle\\EasyAdminBundle\\Context\\AdminContext but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/ConversationCrudController.php
+
+		-
+			message: '#^Class App\\Controller\\Admin\\InvoiceCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/InvoiceCrudController.php
+
+		-
+			message: '#^Class App\\Controller\\Admin\\LegalPageCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/LegalPageCrudController.php
+
+		-
+			message: '#^Class App\\Controller\\Admin\\MessageCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/MessageCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\MessageCrudController\:\:blockSender\(\) has parameter \$context with generic class EasyCorp\\Bundle\\EasyAdminBundle\\Context\\AdminContext but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/MessageCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\MessageCrudController\:\:hideMessage\(\) has parameter \$context with generic class EasyCorp\\Bundle\\EasyAdminBundle\\Context\\AdminContext but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/MessageCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\MessageCrudController\:\:recordModerationAction\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Controller/Admin/MessageCrudController.php
+
+		-
+			message: '#^Class App\\Controller\\Admin\\PaymentCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/PaymentCrudController.php
+
+		-
+			message: '#^Class App\\Controller\\Admin\\PlanPriceCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/PlanPriceCrudController.php
+
+		-
+			message: '#^Class App\\Controller\\Admin\\ProducerProfileCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/ProducerProfileCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\ProducerProfileCrudController\:\:rejectProducer\(\) has parameter \$context with generic class EasyCorp\\Bundle\\EasyAdminBundle\\Context\\AdminContext but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/ProducerProfileCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\ProducerProfileCrudController\:\:requestMoreInfo\(\) has parameter \$context with generic class EasyCorp\\Bundle\\EasyAdminBundle\\Context\\AdminContext but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/ProducerProfileCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\ProducerProfileCrudController\:\:validateProducer\(\) has parameter \$context with generic class EasyCorp\\Bundle\\EasyAdminBundle\\Context\\AdminContext but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/ProducerProfileCrudController.php
+
+		-
+			message: '#^Class App\\Controller\\Admin\\ProductCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/ProductCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\ProductCrudController\:\:editTranslations\(\) has parameter \$context with generic class EasyCorp\\Bundle\\EasyAdminBundle\\Context\\AdminContext but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/ProductCrudController.php
+
+		-
+			message: '#^Class App\\Controller\\Admin\\SubscriptionCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/SubscriptionCrudController.php
+
+		-
+			message: '#^Class App\\Controller\\Admin\\SubscriptionPlanCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/SubscriptionPlanCrudController.php
+
+		-
+			message: '#^Class App\\Controller\\Admin\\TicketCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/TicketCrudController.php
+
+		-
+			message: '#^Class App\\Controller\\Admin\\UnitCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/UnitCrudController.php
+
+		-
+			message: '#^Class App\\Controller\\Admin\\UserCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/UserCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\UserCrudController\:\:anonymizeUser\(\) has parameter \$context with generic class EasyCorp\\Bundle\\EasyAdminBundle\\Context\\AdminContext but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/UserCrudController.php
+
+		-
+			message: '#^Left side of && is always true\.$#'
+			identifier: booleanAnd.leftAlwaysTrue
+			count: 1
+			path: src/Controller/Api/HealthController.php
+
+		-
+			message: '#^Method App\\Controller\\Api\\ProducerRequestController\:\:findMatchedRequest\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Controller/Api/ProducerRequestController.php
+
+		-
+			message: '#^Access to an undefined property Stripe\\StripeObject\:\:\$amount_paid\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Controller/Api/StripeWebhookController.php
+
+		-
+			message: '#^Access to an undefined property Stripe\\StripeObject\:\:\$cancel_at_period_end\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Controller/Api/StripeWebhookController.php
+
+		-
+			message: '#^Access to an undefined property Stripe\\StripeObject\:\:\$hosted_invoice_url\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Controller/Api/StripeWebhookController.php
+
+		-
 			message: '#^Method App\\Entity\\Audit\\AuditLog\:\:getNewData\(\) return type has no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
@@ -499,82 +685,304 @@ parameters:
 			path: src/Entity/Trust/ModerationAction.php
 
 		-
+			message: '#^Class App\\Form\\Admin\\CategoryTranslationType extends generic class Symfony\\Component\\Form\\AbstractType but does not specify its types\: TData$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Form/Admin/CategoryTranslationType.php
+
+		-
+			message: '#^Class App\\Form\\Admin\\ProductTranslationType extends generic class Symfony\\Component\\Form\\AbstractType but does not specify its types\: TData$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Form/Admin/ProductTranslationType.php
+
+		-
 			message: '#^Method App\\Kernel\:\:getAllowedEnvs\(\) is unused\.$#'
 			identifier: method.unused
 			count: 1
 			path: src/Kernel.php
 
 		-
-			message: '#^Method App\\Tests\\Functional\\BlockedUserTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			message: '#^Method App\\Service\\Audit\\AuditLogger\:\:log\(\) has parameter \$newData with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
-			path: tests/Functional/BlockedUserTest.php
+			path: src/Service/Audit/AuditLogger.php
 
 		-
-			message: '#^Method App\\Tests\\Functional\\ConstraintsTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			message: '#^Method App\\Service\\Audit\\AuditLogger\:\:log\(\) has parameter \$oldData with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
-			path: tests/Functional/ConstraintsTest.php
+			path: src/Service/Audit/AuditLogger.php
 
 		-
-			message: '#^Method App\\Tests\\Functional\\EntityPersistenceTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			message: '#^Method App\\Service\\Notification\\NotificationService\:\:notify\(\) has parameter \$data with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
-			path: tests/Functional/EntityPersistenceTest.php
+			path: src/Service/Notification/NotificationService.php
 
 		-
-			message: '#^Method App\\Tests\\Functional\\MatchingSqlFunctionsTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			message: '#^Method App\\Service\\Payment\\FakePaymentGateway\:\:createCheckoutSession\(\) has parameter \$metadata with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
-			path: tests/Functional/MatchingSqlFunctionsTest.php
+			path: src/Service/Payment/FakePaymentGateway.php
 
 		-
-			message: '#^Method App\\Tests\\Functional\\PostGisMappingTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			message: '#^Method App\\Service\\Payment\\PaymentGatewayInterface\:\:createCheckoutSession\(\) has parameter \$metadata with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
-			path: tests/Functional/PostGisMappingTest.php
+			path: src/Service/Payment/PaymentGatewayInterface.php
 
 		-
-			message: '#^Method App\\Tests\\Functional\\ProducerHasFeatureTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			message: '#^Method App\\Service\\Payment\\StripeGateway\:\:createCheckoutSession\(\) has parameter \$metadata with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
-			path: tests/Functional/ProducerHasFeatureTest.php
+			path: src/Service/Payment/StripeGateway.php
 
 		-
-			message: '#^Method App\\Tests\\Functional\\ReferentialIntegrityTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			message: '#^Method App\\Tests\\Functional\\Command\\SendExpiryRemindersCommandTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
-			path: tests/Functional/ReferentialIntegrityTest.php
+			path: tests/Functional/Command/SendExpiryRemindersCommandTest.php
 
 		-
-			message: '#^Method App\\Tests\\Functional\\RelationBehaviorTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\BillingCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
-			path: tests/Functional/RelationBehaviorTest.php
+			path: tests/Functional/Controller/Admin/BillingCrudControllerTest.php
 
 		-
-			message: '#^Method App\\Tests\\Functional\\TriggersTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\CatalogCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
-			path: tests/Functional/TriggersTest.php
+			path: tests/Functional/Controller/Admin/CatalogCrudControllerTest.php
 
 		-
-			message: '#^Method App\\Tests\\Functional\\UserSecurityTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\ClientRequestCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
-			path: tests/Functional/UserSecurityTest.php
+			path: tests/Functional/Controller/Admin/ClientRequestCrudControllerTest.php
 
 		-
-			message: '#^Method Symfony\\Component\\Security\\Core\\User\\PasswordAuthenticatedUserInterface@anonymous/tests/Functional/UserSecurityTest\.php\:67\:\:getPassword\(\) never returns null so it can be removed from the return type\.$#'
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\DashboardControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/DashboardControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\LegalPageCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/LegalPageCrudControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\MessageModerationCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/MessageModerationCrudControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\ProducerProfileCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/ProducerProfileCrudControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\ReportingControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/ReportingControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\SecurityControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/SecurityControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\TicketCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/TicketCrudControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\UserCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/UserCrudControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Auth\\AuthControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Auth/AuthControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Billing\\StripeWebhookControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Billing/StripeWebhookControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Billing\\SubscriptionControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Billing/SubscriptionControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Billing\\SubscriptionControllerTest\:\:registerProducerAndLogin\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Billing/SubscriptionControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Catalog\\CatalogControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Catalog/CatalogControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Matching\\ClientRequestControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Matching/ClientRequestControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Matching\\ProducerRequestControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Matching/ProducerRequestControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Matching\\ProducerRequestControllerTest\:\:setUpMatchedRequestAndProducer\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Matching/ProducerRequestControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Messaging\\ConversationControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Messaging/ConversationControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Notification\\NotificationControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Notification/NotificationControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Producer\\ProducerControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Producer/ProducerControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Producer\\ProducerMediaControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Producer/ProducerMediaControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Producer\\ProducerMediaControllerTest\:\:registerProducerAndLogin\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Producer/ProducerMediaControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Producer\\ProducerProductControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Producer/ProducerProductControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Producer\\ProducerProductControllerTest\:\:registerProducerAndLogin\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Producer/ProducerProductControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Producer\\ProducerProfileControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Producer/ProducerProfileControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Database\\BlockedUserTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Database/BlockedUserTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Database\\ConstraintsTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Database/ConstraintsTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Database\\EntityPersistenceTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Database/EntityPersistenceTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Database\\MatchingSqlFunctionsTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Database/MatchingSqlFunctionsTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Database\\PostGisMappingTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Database/PostGisMappingTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Database\\ProducerHasFeatureTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Database/ProducerHasFeatureTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Database\\ReferentialIntegrityTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Database/ReferentialIntegrityTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Database\\RelationBehaviorTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Database/RelationBehaviorTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Database\\TriggersTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Database/TriggersTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Database\\UserSecurityTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Database/UserSecurityTest.php
+
+		-
+			message: '#^Method Symfony\\Component\\Security\\Core\\User\\PasswordAuthenticatedUserInterface@anonymous/tests/Functional/Database/UserSecurityTest\.php\:67\:\:getPassword\(\) never returns null so it can be removed from the return type\.$#'
 			identifier: return.unusedType
 			count: 1
-			path: tests/Functional/UserSecurityTest.php
+			path: tests/Functional/Database/UserSecurityTest.php
 
 		-
 			message: '#^PHPDoc tag @var for variable \$provider contains generic interface Symfony\\Component\\Security\\Core\\User\\UserProviderInterface but does not specify its types\: TUser$#'
 			identifier: missingType.generics
 			count: 2
-			path: tests/Functional/UserSecurityTest.php
+			path: tests/Functional/Database/UserSecurityTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Service\\NotificationServiceTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Service/NotificationServiceTest.php
 
 		-
 			message: '#^Call to function method_exists\(\) with ''Symfony\\\\Component\\\\Dotenv\\\\Dotenv'' and ''bootEnv'' will always evaluate to true\.$#'

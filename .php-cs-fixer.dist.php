@@ -1,14 +1,14 @@
 <?php
 
-$fileHeaderComment = <<<'COMMENT'
-Copyright(c)2026 TrouveMoi (https://trouvemoi.com)
-
-Ce fichier fait partie d’un projet développé par Auxioma Web Agency pour l’entreprise.
-Tous droits réservés.
-
-Ce code source est la propriété exclusive de Auxioma Web Agency et.
-Toute reproduction, modification, distribution ou utilisation sans autorisation préalable est interdite.
-COMMENT;
+/**
+ * La règle "header_comment" qui réinsérait automatiquement l'en-tête de copyright générique dans
+ * chaque fichier a été retirée : elle entrait directement en conflit avec le remplacement de cet
+ * en-tête par des notes explicatives sur les 158 fichiers de src/ (demande explicite du client).
+ * Tant que cette règle restait active, tout lancement de `php-cs-fixer fix` (sans --dry-run) la
+ * réinsérait silencieusement et effaçait ces notes -- vérifié en le reproduisant localement.
+ * Sauvegarde complète de la configuration d'origine (avec la règle) dans
+ * .php-cs-fixer.dist.php.copyright-backup, si le client souhaite un jour la remettre en place.
+ */
 
 $finder = PhpCsFixer\Finder::create()
     ->in(__DIR__)
@@ -24,11 +24,6 @@ return (new PhpCsFixer\Config())
     ->setRules([
         '@Symfony' => true,
         '@Symfony:risky' => true,
-        'header_comment' => [
-            'header' => $fileHeaderComment,
-            'separate' => 'both',
-            'comment_type' => 'PHPDoc',
-        ],
         'linebreak_after_opening_tag' => true,
         'mb_str_functions' => true,
         'no_php4_constructor' => true,
