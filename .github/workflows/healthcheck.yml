@@ -6,7 +6,7 @@ name: Healthcheck
 # minutes" du cahier des charges DevOps, malgré le fait que le cron GitHub Actions lui-même n'est
 # pas garanti à la minute près (voir docs/runbooks/deploiement.md).
 #
-# Secret requis : HEALTHCHECKS_PING_URL (l'URL de ping visible sur la page du check, Healthchecks.io).
+# Secret requis : HEALTHCHECKS_SECRET (l'URL de ping visible sur la page du check, Healthchecks.io).
 
 on:
   schedule:
@@ -23,8 +23,8 @@ jobs:
         run: |
           set -e
           if curl -sf --max-time 10 https://admin-agriculture.trouvemoi.com/api/health; then
-            curl -sf --max-time 10 "${{ secrets.HEALTHCHECKS_PING_URL }}/success" || true
+            curl -sf --max-time 10 "${{ secrets.HEALTHCHECKS_SECRET }}/success" || true
           else
-            curl -sf --max-time 10 "${{ secrets.HEALTHCHECKS_PING_URL }}/fail" || true
+            curl -sf --max-time 10 "${{ secrets.HEALTHCHECKS_SECRET }}/fail" || true
             exit 1
           fi

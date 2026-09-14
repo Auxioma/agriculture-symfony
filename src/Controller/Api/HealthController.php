@@ -6,11 +6,15 @@
  * scheduler applicatif sur ce projet (ni worker Messenger actif, ni accès garanti aux secrets/cron
  * GitHub Actions pour tout le monde), donc tout ce qui peut être vérifié "à la demande" au moment du ping
  * externe (Healthchecks.io) l'est ici plutôt que via un job dédié :
- * 
+ *
  * - "Site indisponible" / "DB connexions" -- la base répond, et son taux d'utilisation des connexions.
  * - "Disque DB" -- espace disque libre. Approximation : ce projet n'a qu'un seul serveur (PostgreSQL et
  *   l'appli dessus), donc le disque de l'appli EST le disque de la base -- pas vrai sur une base managée
- *   séparée, à revoir si l'hébergement change.
+ *   séparée, à revoir si l'hébergement change. Vérifié uniquement en prod (voir plus bas).
+ * - "Webhooks paiement" -- échecs Stripe récents (WebhookEvent::$status = 'failed').
+ * Route publique (voir security.yaml, access_control ^/api/health) : un outil de supervision externe
+ * doit pouvoir l'appeler sans authentification. Renvoie 503 dès qu'un des points est en défaut, pour que
+ * n'importe quel client HTTP strict (ex. curl -f dans .github/workflows/healthcheck.yml) le détecte.
  */
 
 namespace App\Controller\Api;
