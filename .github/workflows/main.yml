@@ -70,6 +70,13 @@ jobs:
           sshpass -e ssh -p 22 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
             set -e
 
+            # ! $APP_USER est root ou équivalent (cohérent avec le home système générique constaté
+            # ! plus haut) -- Composer désactive alors ses plugins par sécurité (symfony/flex inclus),
+            # ! ce qui casse le script "symfony-cmd" du post-install-cmd de symfony/apache-pack
+            # ! ("symfony-cmd: not found"). Composer recommande lui-même cette variable dans son
+            # ! propre message d'avertissement.
+            export COMPOSER_ALLOW_SUPERUSER=1
+
             cd /var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
 
             # ! Le dossier appartient à un autre utilisateur Unix que celui de la connexion SSH
