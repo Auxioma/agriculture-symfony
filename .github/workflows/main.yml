@@ -59,6 +59,11 @@ jobs:
             set -e
 
             cd /var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
+            echo "--- ls -la ---"
+            ls -la
+            echo "--- recherche d'un .git existant (profondeur 3) ---"
+            find . -maxdepth 3 -iname ".git" -o -iname "composer.json" 2>/dev/null
+
             git pull origin master
             composer install --no-interaction --prefer-dist --optimize-autoloader
             composer dump-env prod
