@@ -48,22 +48,17 @@ jobs:
           ssh-keyscan -p 22 ${{ secrets.APP_HOST }} >> ~/.ssh/known_hosts 2>&1 || true
           test -s ~/.ssh/known_hosts
 
-      # ! Diagnostic ($HOME, pwd, contenu) affiché AVANT le "set -e"/cd : ce chemin n'avait jamais
-      # ! réellement été exécuté (les runs précédents où il apparaît ont tous été skippés avant
-      # ! d'atteindre cette étape), donc on ne peut pas encore garantir qu'il est correct. Si le
-      # ! "cd" échoue quand même, ces infos resteront visibles dans le log pour corriger le vrai
-      # ! chemin au lieu de deviner à l'aveugle.
+      # ! Chemin absolu, sans "~/" : le compte SSH utilisé ($APP_USER) est un compte système/admin
+      # ! générique (home rempli de fichiers Plesk/MariaDB/npm, aucun fichier de l'application) --
+      # ! PAS un utilisateur "webspace" jailé dont le home serait déjà la racine du site. Confirmé
+      # ! par un diagnostic (whoami/$HOME/ls) le 2026-09-15 : le home ne contient aucune trace de
+      # ! l'application, donc "~/var/www/vhosts/..." pointait vers un chemin qui n'a jamais existé.
       - name: Deploy
         run: |
           sshpass -e ssh -p 22 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
-            echo "whoami: $(whoami)"
-            echo "HOME: $HOME"
-            echo "pwd: $(pwd)"
-            ls -la "$HOME"
-
             set -e
 
-            cd ~/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
+            cd /var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
             git pull origin master
             composer install --no-interaction --prefer-dist --optimize-autoloader
             composer dump-env prod
