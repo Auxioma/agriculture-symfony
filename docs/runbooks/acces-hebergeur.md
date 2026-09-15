@@ -6,16 +6,36 @@ et confirmer que la production est correctement configurée.
 
 ## Contexte rapide
 
-Le déploiement automatique (CI/CD) échouait depuis un moment à cause d'un mauvais port SSH
-configuré côté GitHub (`5022` au lieu de `22`) — **déjà corrigé de notre côté**, aucune action
-requise ici. Conséquence de cet échec prolongé : le serveur tourne encore sur une ancienne version
-du code, en mode debug (une page d'erreur technique complète s'affiche publiquement sur
-`https://admin-agriculture.trouvemoi.com/api/health`). Les points ci-dessous doivent être vérifiés
-une fois qu'un déploiement à jour aura pu passer.
+Le déploiement automatique (CI/CD) était bloqué depuis un moment par plusieurs problèmes
+d'infrastructure (mauvais port SSH, chemin de déploiement incorrect, dépôt Git jamais initialisé
+sur le serveur) — **tous corrigés de notre côté**, aucune action requise ici. Le pipeline va
+maintenant jusqu'aux migrations de base de données, où il bute sur un point qui, lui, nécessite une
+action côté serveur (point 1 ci-dessous).
 
 ---
 
-## 1. Vérifier `.env.local` sur le serveur (priorité haute)
+## 1. Installer l'extension PostgreSQL PostGIS (bloquant, priorité haute)
+
+Les migrations de la base échouent avec :
+```
+SQLSTATE[0A000]: Feature not supported: 7 ERROR: extension "postgis" is not available
+DETAIL: Could not open extension control file "/usr/share/postgresql/16/extension/postgis.control"
+```
+
+PostGIS n'est pas installé sur le serveur PostgreSQL (version 16, Ubuntu 24.04). C'est
+indispensable au matching géographique (recherche de producteurs par distance), une fonctionnalité
+centrale de la plateforme. Merci d'installer, sur le serveur qui héberge PostgreSQL :
+
+```bash
+sudo apt-get update
+sudo apt-get install -y postgresql-16-postgis-3
+```
+
+(Si ce paquet exact n'est pas trouvé, `apt-cache search postgis` listera le nom correspondant à ce
+serveur.) Aucune autre action nécessaire ensuite de notre côté : le prochain déploiement reprendra
+les migrations automatiquement.
+
+## 2. Vérifier `.env.local` sur le serveur (priorité haute)
 
 Fichier : `/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com/.env.local`
 
@@ -34,7 +54,7 @@ une valeur de test/développement) :
 | `CORS_ALLOWED_ORIGINS` | Doit lister le vrai domaine du site, pas une adresse locale |
 | `DEFAULT_URI` | Doit être l'URL réelle de l'API, pas une adresse locale |
 
-## 2. Confirmer la présence des clés JWT (priorité haute)
+## 3. Confirmer la présence des clés JWT (priorité haute)
 
 Les fichiers suivants doivent exister physiquement sur le serveur, dans le dossier de
 l'application :
@@ -44,23 +64,24 @@ l'application :
 S'ils sont absents, l'authentification de l'API restera impossible même une fois `.env.local`
 corrigé.
 
-## 3. Emplacement des logs applicatifs
+## 4. Emplacement des logs applicatifs
 
 Une fois l'environnement de production correctement actif, où consulte-t-on les logs applicatifs
 de la plateforme (Symfony/PHP-FPM) ? Utile pour documenter la procédure de diagnostic en cas
 d'incident.
 
-## 4. Confirmation de l'environnement
+## 5. Confirmation de l'environnement
 
 Confirmer qu'il n'existe qu'un seul environnement serveur (`admin-agriculture.trouvemoi.com`),
 sans environnement de test/staging séparé — pour mise à jour de notre documentation interne.
 
-## 5. Accès SSH par clé (à prévoir, pas urgent)
+## 6. Accès SSH par clé (à prévoir, pas urgent)
 
-Le déploiement se connecte aujourd'hui par mot de passe. Dès que possible, nous souhaiterions
-passer à une authentification par clé SSH : nous fournirons une clé publique à installer sur le
-compte de déploiement, en remplacement du mot de passe actuel.
+Le déploiement se connecte aujourd'hui par mot de passe, avec un compte disposant apparemment de
+droits élevés (root ou équivalent — confirmé par plusieurs indices techniques côté déploiement).
+Dès que possible, nous souhaiterions passer à une authentification par clé SSH : nous fournirons
+une clé publique à installer sur le compte de déploiement, en remplacement du mot de passe actuel.
 
 ---
 
-*Document généré le 2026-09-14. Contact technique : équipe de développement TrouveMoi Agri.*
+*Document mis à jour le 2026-09-15. Contact technique : équipe de développement TrouveMoi Agri.*
