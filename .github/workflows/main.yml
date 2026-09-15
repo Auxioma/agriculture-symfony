@@ -67,6 +67,13 @@ jobs:
 
             cd /var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
 
+            # ! Le dossier appartient à un autre utilisateur Unix que celui de la connexion SSH
+            # ! ($APP_USER) -- protection standard de Git (CVE-2022-24765) qui refuse sinon toute
+            # ! opération ici ("detected dubious ownership"). safe.directory déclare ce dossier
+            # ! précis comme fiable ; --global l'écrit dans le ~/.gitconfig de $APP_USER (persiste
+            # ! entre les runs, mais idempotent -- se répéter sans effet de bord si déjà présent).
+            git config --global --add safe.directory /var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
+
             if [ ! -d .git ]; then
               echo "Aucun dépôt Git ici -- initialisation unique."
               git init
