@@ -913,6 +913,12 @@ parameters:
 			path: tests/Functional/Controller/Producer/ProducerControllerTest.php
 
 		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Producer\\ProducerDeliveryZoneControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Producer/ProducerDeliveryZoneControllerTest.php
+
+		-
 			message: '#^Method App\\Tests\\Functional\\Controller\\Producer\\ProducerMediaControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
@@ -923,6 +929,12 @@ parameters:
 			identifier: missingType.iterableValue
 			count: 1
 			path: tests/Functional/Controller/Producer/ProducerMediaControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Producer\\ProducerOpeningHourControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Producer/ProducerOpeningHourControllerTest.php
 
 		-
 			message: '#^Method App\\Tests\\Functional\\Controller\\Producer\\ProducerProductControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
@@ -941,6 +953,18 @@ parameters:
 			identifier: missingType.iterableValue
 			count: 1
 			path: tests/Functional/Controller/Producer/ProducerProfileControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Producer\\ProducerStatisticsControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Producer/ProducerStatisticsControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Producer\\ProducerTeamControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Producer/ProducerTeamControllerTest.php
 
 		-
 			message: '#^Method App\\Tests\\Functional\\Controller\\Trust\\ReviewControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'

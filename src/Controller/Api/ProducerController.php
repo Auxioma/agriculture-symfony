@@ -2,6 +2,8 @@
 
 namespace App\Controller\Api;
 
+use App\Entity\Producer\DeliveryZone;
+use App\Entity\Producer\OpeningHour;
 use App\Entity\Producer\ProducerProfile;
 use App\Entity\Trust\Review;
 use App\Enum\ReviewStatus;
@@ -108,6 +110,19 @@ final class ProducerController extends AbstractController
             return $this->json(['error' => 'Producteur introuvable.'], 404);
         }
 
+        // * Incrémente le compteur du jour dans analytics.producer_daily_metrics (module "Statistiques"
+        // * du dashboard producteur, voir ProducerStatisticsController) -- upsert atomique plutôt qu'un
+        // * find()+persist() Doctrine, pour éviter une condition de course si deux visites arrivent en
+        // * même temps (deux requêtes concurrentes verraient sinon la même valeur de départ et une
+        // * incrémentation se perdrait).
+        $em->getConnection()->executeStatement(
+            'INSERT INTO analytics.producer_daily_metrics (producer_id, metric_date, profile_views)
+             VALUES (:producerId, CURRENT_DATE, 1)
+             ON CONFLICT (producer_id, metric_date)
+             DO UPDATE SET profile_views = COALESCE(analytics.producer_daily_metrics.profile_views, 0) + 1',
+            ['producerId' => $producer->getId()->toRfc4122()]
+        );
+
         // ! Pas de coordonnées GPS précises exposées ici : ProducerProfile::$addressVisibility est prévu pour
         // ! contrôler la précision affichée publiquement (ville seule vs adresse complète), mais cette logique
         // ! n'est pas encore implémentée. Se limiter à city/countryCode évite d'exposer une position exacte
@@ -121,6 +136,23 @@ final class ProducerController extends AbstractController
             'city' => $producer->getCity(),
             'countryCode' => $producer->getCountry()?->getCode(),
             'verificationStatus' => $producer->getVerificationStatus()->value,
+            // * Cahier fonctionnel, fiche producteur publique : "Modes de retrait, livraison, horaires,
+            // * zones couvertes". Le tracé du polygone lui-même n'est pas renvoyé (pas de conversion
+            // * GeoJSON ici) -- seul le rayon simple, suffisant pour l'affichage "Livraison possible
+            // * dans un rayon de Xkm" du cahier ; une carte du polygone resterait à faire séparément.
+            'deliveryZones' => array_map(
+                static fn (DeliveryZone $z) => ['radiusKm' => $z->getRadiusKm(), 'rules' => $z->getRules()],
+                $producer->getDeliveryZones()->toArray()
+            ),
+            'openingHours' => array_map(
+                static fn (OpeningHour $h) => [
+                    'weekday' => $h->getWeekday(),
+                    'opensAt' => $h->getOpensAt()?->format('H:i'),
+                    'closesAt' => $h->getClosesAt()?->format('H:i'),
+                    'isClosed' => $h->isClosed(),
+                ],
+                $producer->getOpeningHours()->toArray()
+            ),
         ]);
     }
 
