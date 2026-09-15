@@ -48,9 +48,19 @@ jobs:
           ssh-keyscan -p 22 ${{ secrets.APP_HOST }} >> ~/.ssh/known_hosts 2>&1 || true
           test -s ~/.ssh/known_hosts
 
+      # ! Diagnostic ($HOME, pwd, contenu) affiché AVANT le "set -e"/cd : ce chemin n'avait jamais
+      # ! réellement été exécuté (les runs précédents où il apparaît ont tous été skippés avant
+      # ! d'atteindre cette étape), donc on ne peut pas encore garantir qu'il est correct. Si le
+      # ! "cd" échoue quand même, ces infos resteront visibles dans le log pour corriger le vrai
+      # ! chemin au lieu de deviner à l'aveugle.
       - name: Deploy
         run: |
           sshpass -e ssh -p 22 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
+            echo "whoami: $(whoami)"
+            echo "HOME: $HOME"
+            echo "pwd: $(pwd)"
+            ls -la "$HOME"
+
             set -e
 
             cd ~/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
