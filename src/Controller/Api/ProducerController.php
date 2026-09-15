@@ -3,6 +3,8 @@
 namespace App\Controller\Api;
 
 use App\Entity\Producer\ProducerProfile;
+use App\Entity\Trust\Review;
+use App\Enum\ReviewStatus;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -119,6 +121,39 @@ final class ProducerController extends AbstractController
             'city' => $producer->getCity(),
             'countryCode' => $producer->getCountry()?->getCode(),
             'verificationStatus' => $producer->getVerificationStatus()->value,
+        ]);
+    }
+
+    #[Route('/api/producers/{id}/reviews', methods: ['GET'])]
+    public function listProducerReviews(string $id, EntityManagerInterface $em): JsonResponse
+    {
+        $producer = $em->find(ProducerProfile::class, $id);
+        if ($producer === null || !$producer->isActive()) {
+            return $this->json(['error' => 'Producteur introuvable.'], 404);
+        }
+
+        // * Seuls les avis Published sont exposés publiquement -- voir ReviewStatus et
+        // * ReviewCrudController (modération back-office).
+        $reviews = $em->getRepository(Review::class)->findBy(
+            ['producer' => $producer, 'status' => ReviewStatus::Published],
+            ['createdAt' => 'DESC']
+        );
+
+        $ratings = array_filter(array_map(static fn (Review $r) => $r->getRating(), $reviews), static fn ($r) => $r !== null);
+
+        return $this->json([
+            'averageRating' => $ratings !== [] ? round(array_sum($ratings) / count($ratings), 1) : null,
+            'count' => count($reviews),
+            'reviews' => array_map(
+                static fn (Review $r) => [
+                    'id' => $r->getId()->toRfc4122(),
+                    'rating' => $r->getRating(),
+                    'comment' => $r->getComment(),
+                    'producerResponse' => $r->getProducerResponse(),
+                    'createdAt' => $r->getCreatedAt()->format(DATE_ATOM),
+                ],
+                $reviews
+            ),
         ]);
     }
 }

@@ -18,9 +18,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y sshpass
 
+      # ! Même correctif que .github/workflows/main.yml et reminders.yml : ssh-keyscan peut renvoyer un
+      # ! code de sortie non nul même en récupérant une clé valide -- "|| true" + "test -s" évite qu'un
+      # ! échec partiel casse tout le job, tout en remplaçant StrictHostKeyChecking=no (qui désactivait
+      # ! toute vérification d'hôte).
+      - name: Enregistrer la clé d'hôte SSH du serveur
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p 22 ${{ secrets.APP_HOST }} >> ~/.ssh/known_hosts 2>&1 || true
+          test -s ~/.ssh/known_hosts
+
       - name: Exécuter la sauvegarde PostgreSQL
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no -p 5022 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
+          sshpass -e ssh -p 22 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
             set -e
             cd ~/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
             bash scripts/db/backup.sh

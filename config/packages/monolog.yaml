@@ -66,5 +66,5 @@ when@prod:
             mailer_nested:
                 type: symfony_mailer
                 from_email: '%env(MAILER_FROM_ADDRESS)%'
-                to_email: ['louisboutettest@gmail.com']
+                to_email: ['%env(MAILER_TO_ADDRESS)%']
                 subject: 'Erreur critique — TrouveMoi Agri'

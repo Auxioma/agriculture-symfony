@@ -121,6 +121,24 @@ parameters:
 			path: src/Controller/Admin/ProductCrudController.php
 
 		-
+			message: '#^Class App\\Controller\\Admin\\ReviewCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/ReviewCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\ReviewCrudController\:\:publishReview\(\) has parameter \$context with generic class EasyCorp\\Bundle\\EasyAdminBundle\\Context\\AdminContext but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/ReviewCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\ReviewCrudController\:\:rejectReview\(\) has parameter \$context with generic class EasyCorp\\Bundle\\EasyAdminBundle\\Context\\AdminContext but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/ReviewCrudController.php
+
+		-
 			message: '#^Class App\\Controller\\Admin\\SubscriptionCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
 			identifier: missingType.generics
 			count: 1
@@ -793,6 +811,12 @@ parameters:
 			path: tests/Functional/Controller/Admin/ReportingControllerTest.php
 
 		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\ReviewCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/ReviewCrudControllerTest.php
+
+		-
 			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\SecurityControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
@@ -905,6 +929,12 @@ parameters:
 			identifier: missingType.iterableValue
 			count: 1
 			path: tests/Functional/Controller/Producer/ProducerProfileControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Trust\\ReviewControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Trust/ReviewControllerTest.php
 
 		-
 			message: '#^Method App\\Tests\\Functional\\Database\\BlockedUserTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'

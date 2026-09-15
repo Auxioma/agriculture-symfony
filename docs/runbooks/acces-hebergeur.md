@@ -1,0 +1,66 @@
+# Besoins côté hébergement — TrouveMoi Agri
+
+Document à transmettre au responsable de l'hébergement (serveur `admin-agriculture.trouvemoi.com`,
+Plesk). Il liste ce dont l'équipe technique a besoin, par priorité, pour finaliser le déploiement
+et confirmer que la production est correctement configurée.
+
+## Contexte rapide
+
+Le déploiement automatique (CI/CD) échouait depuis un moment à cause d'un mauvais port SSH
+configuré côté GitHub (`5022` au lieu de `22`) — **déjà corrigé de notre côté**, aucune action
+requise ici. Conséquence de cet échec prolongé : le serveur tourne encore sur une ancienne version
+du code, en mode debug (une page d'erreur technique complète s'affiche publiquement sur
+`https://admin-agriculture.trouvemoi.com/api/health`). Les points ci-dessous doivent être vérifiés
+une fois qu'un déploiement à jour aura pu passer.
+
+---
+
+## 1. Vérifier `.env.local` sur le serveur (priorité haute)
+
+Fichier : `~/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com/.env.local`
+
+Merci de confirmer que chacune de ces variables a une vraie valeur de production (pas vide, pas
+une valeur de test/développement) :
+
+| Variable | Rôle |
+|---|---|
+| `APP_ENV` | Doit valoir `prod` |
+| `APP_SECRET` | Doit être une valeur aléatoire non vide |
+| `DATABASE_URL` | Connexion PostgreSQL réelle (utilisateur, mot de passe, hôte, nom de base) |
+| `JWT_PASSPHRASE` | Actuellement manquante ou vide — l'authentification de toute l'API en dépend, elle est cassée sans ça |
+| `MAILER_DSN` | DSN SMTP réel (la valeur par défaut ne permet aucun envoi d'email réel) |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Clés Stripe de production |
+| `STORAGE_ENDPOINT` / `STORAGE_REGION` / `STORAGE_BUCKET` / `STORAGE_BUCKET_ATTACHMENTS` / `STORAGE_KEY` / `STORAGE_SECRET` / `STORAGE_PUBLIC_URL` | Accès au bucket de stockage réel (photos producteur, pièces jointes, sauvegardes) |
+| `CORS_ALLOWED_ORIGINS` | Doit lister le vrai domaine du site, pas une adresse locale |
+| `DEFAULT_URI` | Doit être l'URL réelle de l'API, pas une adresse locale |
+
+## 2. Confirmer la présence des clés JWT (priorité haute)
+
+Les fichiers suivants doivent exister physiquement sur le serveur, dans le dossier de
+l'application :
+- `config/jwt/private.pem`
+- `config/jwt/public.pem`
+
+S'ils sont absents, l'authentification de l'API restera impossible même une fois `.env.local`
+corrigé.
+
+## 3. Emplacement des logs applicatifs
+
+Une fois l'environnement de production correctement actif, où consulte-t-on les logs applicatifs
+de la plateforme (Symfony/PHP-FPM) ? Utile pour documenter la procédure de diagnostic en cas
+d'incident.
+
+## 4. Confirmation de l'environnement
+
+Confirmer qu'il n'existe qu'un seul environnement serveur (`admin-agriculture.trouvemoi.com`),
+sans environnement de test/staging séparé — pour mise à jour de notre documentation interne.
+
+## 5. Accès SSH par clé (à prévoir, pas urgent)
+
+Le déploiement se connecte aujourd'hui par mot de passe. Dès que possible, nous souhaiterions
+passer à une authentification par clé SSH : nous fournirons une clé publique à installer sur le
+compte de déploiement, en remplacement du mot de passe actuel.
+
+---
+
+*Document généré le 2026-09-14. Contact technique : équipe de développement TrouveMoi Agri.*

@@ -1,11 +1,13 @@
 <?php
 
 /**
- * Avis client sur un producteur suite à une ClientRequest précise. La contrainte unique
- * uniq_client_request_producer (client+request+producer) limite un client à un seul avis par demande et
- * par producteur. $producerResponse permet au producteur de répondre publiquement à l'avis. Aucun
- * contrôleur n'existe encore pour cette entité -- la table est présente dans le schéma mais pas encore
- * exploitée par l'application.
+ * Avis client sur un producteur suite à une ClientRequest précise, posé par
+ * ReviewController::createReview() (exige une Conversation existante entre ce client, ce producteur
+ * et cette demande -- pas d'avis sans échange réel). La contrainte unique uniq_client_request_producer
+ * (client+request+producer) limite un client à un seul avis par demande et par producteur. $status
+ * (ReviewStatus) part toujours de Pending ; ReviewCrudController (back-office) le fait passer à
+ * Published ou Rejected. $producerResponse permet au producteur de répondre publiquement à l'avis, une
+ * fois publié (ReviewController::respondToReview()).
  */
 
 namespace App\Entity\Trust;
@@ -13,6 +15,7 @@ namespace App\Entity\Trust;
 use App\Entity\Identity\User;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Producer\ProducerProfile;
+use App\Enum\ReviewStatus;
 use App\Repository\Trust\ReviewRepository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
@@ -49,8 +52,8 @@ class Review
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $comment = null;
 
-    #[ORM\Column(length: 255)]
-    private string $status;
+    #[ORM\Column(enumType: ReviewStatus::class)]
+    private ReviewStatus $status;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $producerResponse = null;
@@ -62,6 +65,7 @@ class Review
     {
         $this->id = Uuid::v4();
         $this->createdAt = new \DateTimeImmutable();
+        $this->status = ReviewStatus::Pending;
     }
 
     public function getId(): Uuid
@@ -129,12 +133,12 @@ class Review
         return $this;
     }
 
-    public function getStatus(): string
+    public function getStatus(): ReviewStatus
     {
         return $this->status;
     }
 
-    public function setStatus(string $status): static
+    public function setStatus(ReviewStatus $status): static
     {
         $this->status = $status;
 

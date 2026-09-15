@@ -45,12 +45,12 @@ jobs:
       - name: Enregistrer la clé d'hôte SSH du serveur
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -p 5022 ${{ secrets.APP_HOST }} >> ~/.ssh/known_hosts 2>&1 || true
+          ssh-keyscan -p 22 ${{ secrets.APP_HOST }} >> ~/.ssh/known_hosts 2>&1 || true
           test -s ~/.ssh/known_hosts
 
       - name: Deploy
         run: |
-          sshpass -e ssh -p 5022 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
+          sshpass -e ssh -p 22 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
             set -e
 
             cd ~/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
