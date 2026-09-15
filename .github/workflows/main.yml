@@ -93,10 +93,13 @@ jobs:
             git pull origin master
             composer install --no-interaction --prefer-dist --optimize-autoloader
             composer dump-env prod
-            bin/console doctrine:migrations:migrate --no-interaction --env=prod
-            bin/console cache:clear --no-interaction --env=prod
-            bin/console cache:warmup --no-interaction --env=prod
-            bin/console assets:install public --no-interaction --env=prod
-            bin/console importmap:install --no-interaction --env=prod
-            bin/console asset-map:compile --env=prod
+            # ! "php bin/console" plutôt que "bin/console" : le bit exécutable de bin/console n'est
+            # ! pas garanti après un "checkout -f" (dépend du mode suivi par Git pour ce fichier) --
+            # ! passer par l'interpréteur PHP explicitement rend ça indépendant de ce détail.
+            php bin/console doctrine:migrations:migrate --no-interaction --env=prod
+            php bin/console cache:clear --no-interaction --env=prod
+            php bin/console cache:warmup --no-interaction --env=prod
+            php bin/console assets:install public --no-interaction --env=prod
+            php bin/console importmap:install --no-interaction --env=prod
+            php bin/console asset-map:compile --env=prod
           EOF
