@@ -53,16 +53,27 @@ jobs:
       # ! PAS un utilisateur "webspace" jailé dont le home serait déjà la racine du site. Confirmé
       # ! par un diagnostic (whoami/$HOME/ls) le 2026-09-15 : le home ne contient aucune trace de
       # ! l'application, donc "~/var/www/vhosts/..." pointait vers un chemin qui n'a jamais existé.
+      # ! Bootstrap Git conditionnel : le dossier de prod contenait déjà l'application (composer.json,
+      # ! src/, vendor/, .env.local...) mais sans dépôt Git initialisé -- déployé à l'origine par un
+      # ! autre moyen (upload manuel), jamais par ce pipeline (confirmé le 2026-09-15, "git pull"
+      # ! échouait avec "not a git repository"). Le bloc "if [ ! -d .git ]" ne s'exécute qu'une seule
+      # ! fois : une fois .git créé, tous les runs suivants sautent directement au "git pull" normal.
+      # ! "checkout -f -B master origin/master" aligne les fichiers SUIVIS par Git sur origin/master ;
+      # ! .env.local/var/vendor restent intacts (gitignorés, jamais touchés par un checkout Git).
       - name: Deploy
         run: |
           sshpass -e ssh -p 22 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
             set -e
 
             cd /var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
-            echo "--- ls -la ---"
-            ls -la
-            echo "--- recherche d'un .git existant (profondeur 3) ---"
-            find . -maxdepth 3 -iname ".git" -o -iname "composer.json" 2>/dev/null
+
+            if [ ! -d .git ]; then
+              echo "Aucun dépôt Git ici -- initialisation unique."
+              git init
+              git remote add origin https://github.com/Auxioma/agriculture-symfony.git
+              git fetch origin master
+              git checkout -f -B master origin/master
+            fi
 
             git pull origin master
             composer install --no-interaction --prefer-dist --optimize-autoloader
