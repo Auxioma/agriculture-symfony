@@ -32,6 +32,6 @@ jobs:
         run: |
           sshpass -e ssh -p 22 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
             set -e
-            cd ~/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
+            cd /var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
             bash scripts/db/backup.sh
           EOF

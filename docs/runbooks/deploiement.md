@@ -121,7 +121,7 @@ niveau Git :
    pipeline ne permet pas de cibler un SHA arbitraire autre que `master`, voir "Écarts") :
    ```bash
    ssh -p 22 <user>@<host>
-   cd ~/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
+   cd /var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
    git fetch origin
    git checkout <sha-du-dernier-déploiement-sain>   # laisse le dépôt en HEAD détachée
    composer install --no-interaction --prefer-dist --optimize-autoloader

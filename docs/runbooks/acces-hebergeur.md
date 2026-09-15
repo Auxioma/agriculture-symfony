@@ -17,7 +17,7 @@ une fois qu'un déploiement à jour aura pu passer.
 
 ## 1. Vérifier `.env.local` sur le serveur (priorité haute)
 
-Fichier : `~/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com/.env.local`
+Fichier : `/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com/.env.local`
 
 Merci de confirmer que chacune de ces variables a une vraie valeur de production (pas vide, pas
 une valeur de test/développement) :
