@@ -35,5 +35,5 @@ jobs:
           sshpass -e ssh -p 22 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
             set -e
             cd /var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
-            bin/console app:send-expiry-reminders --env=prod --no-interaction
+            php bin/console app:send-expiry-reminders --env=prod --no-interaction
           EOF
