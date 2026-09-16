@@ -4,6 +4,7 @@ namespace App\Controller\Api;
 
 use App\Entity\Producer\DeliveryZone;
 use App\Entity\Producer\OpeningHour;
+use App\Entity\Producer\ProducerLabel;
 use App\Entity\Producer\ProducerProfile;
 use App\Entity\Trust\Review;
 use App\Enum\ReviewStatus;
@@ -153,6 +154,23 @@ final class ProducerController extends AbstractController
                 ],
                 $producer->getOpeningHours()->toArray()
             ),
+            // * Cahier fonctionnel, fiche producteur publique : "Badges : vérifié, bio, local, HVE,
+            // * AOP/AOC ou labels locaux". Seuls les labels réellement vérifiés (verifiedAt posé par
+            // * VerificationDocumentCrudController) et pas expirés sont affichés -- un label
+            // * simplement revendiqué mais pas encore validé ne doit pas apparaître comme un badge.
+            'labels' => array_values(array_filter(array_map(
+                static function (ProducerLabel $l) {
+                    if ($l->getVerifiedAt() === null) {
+                        return null;
+                    }
+                    if ($l->getExpiresAt() !== null && $l->getExpiresAt() < new \DateTimeImmutable()) {
+                        return null;
+                    }
+
+                    return ['code' => $l->getLabel()->getCode(), 'name' => $l->getLabel()->getName()];
+                },
+                $producer->getLabels()->toArray()
+            ))),
         ]);
     }
 

@@ -15,6 +15,7 @@ use App\Entity\Billing\Subscription;
 use App\Entity\Billing\SubscriptionPlan;
 use App\Entity\Catalog\Category;
 use App\Entity\Catalog\Country;
+use App\Entity\Catalog\Label;
 use App\Entity\Catalog\Product;
 use App\Entity\Identity\User;
 use App\Entity\Matching\ClientRequest;
@@ -56,6 +57,16 @@ trait EntityFactoryTrait
         $this->em->persist($product);
 
         return $product;
+    }
+
+    protected function makeLabel(string $code = 'bio', string $name = 'Bio'): Label
+    {
+        $label = new Label();
+        $label->setCode($code);
+        $label->setName($name);
+        $this->em->persist($label);
+
+        return $label;
     }
 
     protected function makeUser(string $emailPrefix = 'user'): User

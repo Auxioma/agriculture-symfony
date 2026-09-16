@@ -84,4 +84,53 @@ une clé publique à installer sur le compte de déploiement, en remplacement du
 
 ---
 
-*Document mis à jour le 2026-09-15. Contact technique : équipe de développement TrouveMoi Agri.*
+## Message prêt à transmettre au responsable de l'hébergement
+
+> Bonjour,
+>
+> Voici où nous en sommes sur le déploiement de TrouveMoi Agri, et ce dont nous avons besoin de
+> votre côté pour finaliser la mise en production.
+>
+> **Déjà réglé par l'équipe technique** (aucune action de votre part) : le pipeline de déploiement
+> automatique était bloqué par plusieurs problèmes (mauvais port SSH, mauvais chemin sur le
+> serveur, dépôt Git jamais initialisé, droits Composer). Tout est corrigé — le déploiement va
+> maintenant jusqu'aux migrations de la base de données.
+>
+> **Ce qu'il nous reste à vérifier/configurer avec vous :**
+>
+> 1. **[Bloquant] Installer l'extension PostgreSQL PostGIS** sur le serveur de base de données :
+>    ```bash
+>    sudo apt-get update
+>    sudo apt-get install -y postgresql-16-postgis-3
+>    ```
+>    (PostgreSQL 16 sous Ubuntu 24.04 ; si ce nom de paquet exact n'existe pas chez vous,
+>    `apt-cache search postgis` donnera le bon nom). Sans PostGIS, les migrations de la base
+>    échouent et le déploiement ne peut pas se terminer. Une fois installé, nous relançons le
+>    déploiement de notre côté, rien d'autre à faire.
+>
+> 2. **Vérifier le fichier `.env.local`** sur le serveur
+>    (`/var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com/.env.local`) et confirmer que
+>    ces variables ont bien une vraie valeur de production (pas vide, pas une valeur de test) :
+>    `APP_ENV` (doit être `prod`), `APP_SECRET`, `DATABASE_URL`, `JWT_PASSPHRASE`, `MAILER_DSN`,
+>    `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STORAGE_ENDPOINT`, `STORAGE_REGION`,
+>    `STORAGE_BUCKET`, `STORAGE_BUCKET_ATTACHMENTS`, `STORAGE_KEY`, `STORAGE_SECRET`,
+>    `CORS_ALLOWED_ORIGINS`, `DEFAULT_URI`.
+>
+> 3. **Confirmer que les clés JWT existent** sur le serveur :
+>    `config/jwt/private.pem` et `config/jwt/public.pem`, dans le dossier de l'application.
+>
+> 4. **Nous indiquer où consulter les logs applicatifs** (Symfony/PHP-FPM) une fois le
+>    déploiement en production actif.
+>
+> 5. **Confirmer qu'il n'existe qu'un seul environnement serveur**
+>    (`admin-agriculture.trouvemoi.com`), sans staging/préprod séparée, pour notre documentation.
+>
+> 6. **Accès SSH par clé** (pas urgent, à prévoir) : le déploiement se connecte aujourd'hui par
+>    mot de passe. Dès que possible, nous vous fournirons une clé publique à installer sur le
+>    compte de déploiement, pour remplacer l'authentification par mot de passe.
+>
+> N'hésitez pas à nous solliciter si un point n'est pas clair. Merci d'avance !
+
+---
+
+*Document mis à jour le 2026-09-16. Contact technique : équipe de développement TrouveMoi Agri.*

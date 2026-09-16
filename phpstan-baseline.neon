@@ -175,6 +175,24 @@ parameters:
 			path: src/Controller/Admin/UserCrudController.php
 
 		-
+			message: '#^Class App\\Controller\\Admin\\VerificationDocumentCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/VerificationDocumentCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\VerificationDocumentCrudController\:\:approveDocument\(\) has parameter \$context with generic class EasyCorp\\Bundle\\EasyAdminBundle\\Context\\AdminContext but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/VerificationDocumentCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\VerificationDocumentCrudController\:\:rejectDocument\(\) has parameter \$context with generic class EasyCorp\\Bundle\\EasyAdminBundle\\Context\\AdminContext but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/VerificationDocumentCrudController.php
+
+		-
 			message: '#^Left side of && is always true\.$#'
 			identifier: booleanAnd.leftAlwaysTrue
 			count: 1
@@ -835,6 +853,12 @@ parameters:
 			path: tests/Functional/Controller/Admin/UserCrudControllerTest.php
 
 		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\VerificationDocumentCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/VerificationDocumentCrudControllerTest.php
+
+		-
 			message: '#^Method App\\Tests\\Functional\\Controller\\Auth\\AuthControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
@@ -965,6 +989,12 @@ parameters:
 			identifier: missingType.iterableValue
 			count: 1
 			path: tests/Functional/Controller/Producer/ProducerTeamControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Producer\\ProducerVerificationControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Producer/ProducerVerificationControllerTest.php
 
 		-
 			message: '#^Method App\\Tests\\Functional\\Controller\\Trust\\ReviewControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
