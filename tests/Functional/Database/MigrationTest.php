@@ -67,10 +67,11 @@ final class MigrationTest extends TestCase
             "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema')"
         );
 
-        // ? 78 = 73 entités + messenger_messages (74, notre migration) + doctrine_migration_versions (1, suivi
-        // ? interne de l'outil Migrations) + spatial_ref_sys, geography_columns, geometry_columns (3, créés
-        // ? automatiquement par CREATE EXTENSION postgis).
-        self::assertSame(78, $tableCount, 'les 73 entités + messenger_messages + les objets système créés par les migrations/extensions doivent tous exister après la migration');
+        // ? 79 = 73 entités du MPD d'origine + messenger_messages (74, migration Version20260901130245)
+        // ? + support.reply_templates (75, migration Version20260916130916, modèles de réponse support)
+        // ? + doctrine_migration_versions (1, suivi interne de l'outil Migrations) + spatial_ref_sys,
+        // ? geography_columns, geometry_columns (3, créés automatiquement par CREATE EXTENSION postgis).
+        self::assertSame(79, $tableCount, 'les 74 entités + messenger_messages + les objets système créés par les migrations/extensions doivent tous exister après la migration');
         $connection->close();
     }
 

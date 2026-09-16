@@ -14,6 +14,7 @@ use App\Controller\Admin\ProductCrudController;
 use App\Controller\Admin\ReviewCrudController;
 use App\Controller\Admin\SubscriptionCrudController;
 use App\Controller\Admin\SubscriptionPlanCrudController;
+use App\Controller\Admin\SupportReplyTemplateCrudController;
 use App\Controller\Admin\UnitCrudController;
 use App\Controller\Admin\UserCrudController;
 use App\Controller\Admin\VerificationDocumentCrudController;
@@ -107,6 +108,7 @@ class DashboardController extends AbstractDashboardController
             MenuItem::linkTo(PaymentCrudController::class, 'Paiements', 'fa fa-money-check'),
         ]);
         yield MenuItem::linkTo(TicketCrudController::class, 'Support', 'fa fa-headset');
+        yield MenuItem::linkTo(SupportReplyTemplateCrudController::class, 'Modèles de réponse', 'fa fa-comment-dots');
         yield MenuItem::linkTo(LegalPageCrudController::class, 'Pages légales', 'fa fa-scale-balanced');
         yield MenuItem::linkToRoute('Reporting', 'fa fa-chart-line', 'admin_reporting');
     }

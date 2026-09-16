@@ -15,9 +15,8 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
  * Module "Support" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf :
  * "Tickets, priorités, assignation, modèles de réponse, pièces jointes").
  *
- * "Modèles de réponse" absent de ce round : aucune entité ne les modélise côté admin -- QuickReply existe
- * déjà mais appartient à un producteur précis pour sa messagerie client (cahier fonctionnel), pas un modèle générique de
- * support. Nécessiterait une nouvelle entité, hors périmètre d'un round back-office seul.
+ * "Modèles de réponse" : voir SupportReplyTemplateCrudController (module séparé) -- distinct de
+ * QuickReply, qui appartient à un producteur précis pour sa messagerie client.
  *
  * Ticket.status/priority sont de simples chaînes (pas d'enum en base) : les choix ci-dessous sont posés au
  * niveau du formulaire seulement, aucune migration nécessaire.

@@ -151,6 +151,12 @@ parameters:
 			path: src/Controller/Admin/SubscriptionPlanCrudController.php
 
 		-
+			message: '#^Class App\\Controller\\Admin\\SupportReplyTemplateCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/SupportReplyTemplateCrudController.php
+
+		-
 			message: '#^Class App\\Controller\\Admin\\TicketCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
 			identifier: missingType.generics
 			count: 1
@@ -839,6 +845,12 @@ parameters:
 			identifier: missingType.iterableValue
 			count: 1
 			path: tests/Functional/Controller/Admin/SecurityControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\SupportReplyTemplateCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/SupportReplyTemplateCrudControllerTest.php
 
 		-
 			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\TicketCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
