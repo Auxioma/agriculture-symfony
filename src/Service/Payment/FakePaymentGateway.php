@@ -4,7 +4,7 @@ namespace App\Service\Payment;
 
 final class FakePaymentGateway implements PaymentGatewayInterface
 {
-    public function createCheckoutSession(string $priceId, string $customerEmail, array $metadata, string $successUrl, string $cancelUrl): string
+    public function createCheckoutSession(string $priceId, string $customerEmail, array $metadata, string $successUrl, string $cancelUrl, ?string $couponId = null): string
     {
         return 'https://checkout.stripe.test/fake-session';
     }

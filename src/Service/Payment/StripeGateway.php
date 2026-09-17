@@ -10,9 +10,9 @@ final readonly class StripeGateway implements PaymentGatewayInterface
     {
     }
 
-    public function createCheckoutSession(string $priceId, string $customerEmail, array $metadata, string $successUrl, string $cancelUrl): string
+    public function createCheckoutSession(string $priceId, string $customerEmail, array $metadata, string $successUrl, string $cancelUrl, ?string $couponId = null): string
     {
-        $session = $this->stripe->checkout->sessions->create([
+        $params = [
             'mode' => 'subscription',
             'customer_email' => $customerEmail,
             'line_items' => [['price' => $priceId, 'quantity' => 1]],
@@ -21,9 +21,16 @@ final readonly class StripeGateway implements PaymentGatewayInterface
             // ! subscription_data.metadata (pas metadata au niveau racine) : c'est ce qui permet de
             // ! retrouver producer_id directement sur l'objet Subscription Stripe créé juste après --
             // ! sans ça, seul l'événement checkout.session.completed le porterait, et il ne contient pas
-            // ! l'abonnement complet (prix, période...).
+            // ! l'abonnement complet (prix, période...). coupon_id (quand fourni) permet de la même façon à
+            // ! StripeWebhookController::handleSubscriptionCreated() de retrouver le Coupon local à créditer.
             'subscription_data' => ['metadata' => $metadata],
-        ]);
+        ];
+
+        if ($couponId !== null) {
+            $params['discounts'] = [['coupon' => $couponId]];
+        }
+
+        $session = $this->stripe->checkout->sessions->create($params);
 
         return $session->url;
     }

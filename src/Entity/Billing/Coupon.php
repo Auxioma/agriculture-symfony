@@ -3,9 +3,12 @@
 /**
  * Code de réduction (cahier fonctionnel : coupons promotionnels sur les abonnements producteur).
  * $maxRedemptions plafonne le nombre d'utilisations, chaque utilisation individuelle étant tracée dans
- * CouponRedemption. Aucun écran back-office ni flux applicatif ne crée/applique encore de coupon : la
- * table existe dans le schéma, prête pour un futur usage sur le tunnel de souscription (ChangePlanRequest/
- * CheckoutRequest), mais n'est pas encore branchée.
+ * CouponRedemption. $providerCouponId référence un Coupon Stripe créé au préalable dans le Dashboard --
+ * même principe que PlanPrice::$providerPriceId, géré via CouponCrudController (back-office). $discountPercent
+ * reste purement informatif côté Symfony (afficher "-10%" sans rappeler Stripe) : c'est le Coupon Stripe
+ * référencé par $providerCouponId qui applique réellement la réduction lors du checkout.
+ * Branché uniquement sur POST /api/subscription/checkout (souscription initiale) -- volontairement pas sur
+ * change-plan, qui modifierait un abonnement déjà facturé sans notion claire de "première utilisation".
  */
 
 namespace App\Entity\Billing;
@@ -43,6 +46,9 @@ class Coupon
 
     #[ORM\Column(type: 'json', nullable: true)]
     private ?array $metadata = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $providerCouponId = null;
 
     /**
      * @var Collection<int, CouponRedemption>
@@ -129,6 +135,18 @@ class Coupon
     public function setMetadata(?array $metadata): static
     {
         $this->metadata = $metadata;
+
+        return $this;
+    }
+
+    public function getProviderCouponId(): ?string
+    {
+        return $this->providerCouponId;
+    }
+
+    public function setProviderCouponId(?string $providerCouponId): static
+    {
+        $this->providerCouponId = $providerCouponId;
 
         return $this;
     }

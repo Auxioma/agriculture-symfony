@@ -2,8 +2,10 @@
 
 /**
  * Une utilisation effective d'un Coupon, par un producteur, sur un abonnement précis (les trois relations
- * sont non-nullables). Comme Coupon, aucun code applicatif n'écrit encore de ligne ici -- le tunnel de
- * souscription (StripeWebhookController, SubscriptionController) ne gère pas encore les coupons.
+ * sont non-nullables). Créée par StripeWebhookController::handleSubscriptionCreated() -- uniquement quand
+ * l'abonnement Stripe créé porte un metadata "coupon_id" (posé par SubscriptionController::checkout() au
+ * moment de la session de paiement) : une ligne n'existe donc que pour un coupon réellement utilisé sur un
+ * paiement effectif, jamais pour une session de checkout abandonnée avant paiement.
  */
 
 namespace App\Entity\Billing;

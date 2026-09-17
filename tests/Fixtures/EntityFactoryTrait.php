@@ -10,6 +10,7 @@
 
 namespace App\Tests\Fixtures;
 
+use App\Entity\Billing\Coupon;
 use App\Entity\Billing\PlanPrice;
 use App\Entity\Billing\Subscription;
 use App\Entity\Billing\SubscriptionPlan;
@@ -155,6 +156,17 @@ trait EntityFactoryTrait
         $this->em->persist($subscription);
 
         return $subscription;
+    }
+
+    protected function makeCoupon(string $code, ?string $providerCouponId = 'coupon_test', ?int $maxRedemptions = null): Coupon
+    {
+        $coupon = new Coupon();
+        $coupon->setCode($code);
+        $coupon->setProviderCouponId($providerCouponId);
+        $coupon->setMaxRedemptions($maxRedemptions);
+        $this->em->persist($coupon);
+
+        return $coupon;
     }
 
     protected function makeClientRequest(

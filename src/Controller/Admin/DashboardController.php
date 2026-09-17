@@ -5,6 +5,7 @@ namespace App\Controller\Admin;
 use App\Controller\Admin\CategoryCrudController;
 use App\Controller\Admin\ClientRequestCrudController;
 use App\Controller\Admin\ConversationCrudController;
+use App\Controller\Admin\CouponCrudController;
 use App\Controller\Admin\LegalPageCrudController;
 use App\Controller\Admin\MessageCrudController;
 use App\Controller\Admin\ProducerProfileCrudController;
@@ -103,6 +104,7 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::subMenu('Abonnements', 'fa fa-credit-card')->setSubItems([
             MenuItem::linkTo(SubscriptionPlanCrudController::class, 'Plans', 'fa fa-list'),
             MenuItem::linkTo(PlanPriceCrudController::class, 'Prix', 'fa fa-euro-sign'),
+            MenuItem::linkTo(CouponCrudController::class, 'Coupons', 'fa fa-tag'),
             MenuItem::linkTo(SubscriptionCrudController::class, 'Abonnements actifs', 'fa fa-repeat'),
             MenuItem::linkTo(InvoiceCrudController::class, 'Factures', 'fa fa-file-invoice'),
             MenuItem::linkTo(PaymentCrudController::class, 'Paiements', 'fa fa-money-check'),
