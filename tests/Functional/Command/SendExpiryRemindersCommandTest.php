@@ -102,6 +102,28 @@ final class SendExpiryRemindersCommandTest extends ApiTestCase
         self::assertSame(0, $count);
     }
 
+    // * Régression pour le bug corrigé le 2026-09-17 (setParameter() sans type explicite sur une colonne
+    // * DATETIMETZ_IMMUTABLE, voir le docblock de la classe) : sans le fix, la borne haute réelle de la
+    // * fenêtre était décalée de plusieurs heures plus tôt que "+2 days", excluant à tort une demande
+    // * expirant dans la dernière heure de la fenêtre.
+    public function testRemindsRequestExpiringNearTheUpperEdgeOfTheWindow(): void
+    {
+        $category = $this->makeCategory();
+        $product = $this->makeProduct($category);
+        $client = $this->makeUser('client');
+        $request = $this->makeClientRequest($client, $product);
+        $request->setExpiresAt(new \DateTimeImmutable('+2 days -1 hour'));
+        $this->em->flush();
+
+        $this->executeReminderCommand();
+
+        $count = (int) $this->em->getConnection()->fetchOne(
+            "SELECT count(*) FROM notification.notifications WHERE type = 'request_expiring_soon' AND user_id = :id",
+            ['id' => $client->getId()->toRfc4122()]
+        );
+        self::assertSame(1, $count);
+    }
+
     public function testRunningTwiceDoesNotDuplicateTheReminder(): void
     {
         $category = $this->makeCategory();

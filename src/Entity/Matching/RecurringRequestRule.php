@@ -2,14 +2,15 @@
 
 /**
  * Règle de récurrence pour republier automatiquement une ClientRequest ($frequency, $nextRunAt) -- cahier
- * fonctionnel : "demande récurrente" (ex. un client qui a besoin du même produit chaque semaine). Aucun
- * contrôleur ni commande ne lit/écrit encore cette table : la table existe dans le schéma, prête pour une
- * future commande planifiée (sur le même principe que SendExpiryRemindersCommand), mais pas encore
- * implémentée.
+ * fonctionnel : "demande récurrente" (ex. un client qui a besoin du même produit chaque semaine). Gérée par
+ * RecurringRequestRuleController (création/consultation/modification/suppression côté client) et exécutée
+ * par RunRecurringRequestsCommand (republication planifiée, sur le même principe que
+ * SendExpiryRemindersCommand).
  */
 
 namespace App\Entity\Matching;
 
+use App\Enum\RecurrenceFrequency;
 use App\Repository\Matching\RecurringRequestRuleRepository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
@@ -28,8 +29,8 @@ class RecurringRequestRule
     #[ORM\JoinColumn(nullable: false)]
     private ClientRequest $request;
 
-    #[ORM\Column(length: 120, nullable: true)]
-    private ?string $frequency = null;
+    #[ORM\Column(length: 120, nullable: true, enumType: RecurrenceFrequency::class)]
+    private ?RecurrenceFrequency $frequency = null;
 
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
     private ?\DateTimeImmutable $nextRunAt = null;
@@ -62,12 +63,12 @@ class RecurringRequestRule
         return $this;
     }
 
-    public function getFrequency(): ?string
+    public function getFrequency(): ?RecurrenceFrequency
     {
         return $this->frequency;
     }
 
-    public function setFrequency(?string $frequency): static
+    public function setFrequency(?RecurrenceFrequency $frequency): static
     {
         $this->frequency = $frequency;
 
