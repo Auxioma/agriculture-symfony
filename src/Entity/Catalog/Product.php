@@ -4,7 +4,9 @@
  * Produit du catalogue (toujours rattaché à une Category, jamais orphelin). $seasonStartMonth/EndMonth
  * portent le calendrier de saisonnalité du cahier fonctionnel ("Calendrier de saisonnalité"). Comme
  * Category, $name ne porte que le français par défaut -- ProductTranslation gère les autres langues, éditée
- * via ProductCrudController::editTranslations() mais pas encore lue par l'API publique.
+ * via ProductCrudController::editTranslations() et lue par l'API publique
+ * (CatalogController::listProducts()/getProduct(), ?locale=), avec repli sur $name de base à défaut de
+ * traduction pour la locale demandée.
  */
 
 namespace App\Entity\Catalog;

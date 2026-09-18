@@ -29,6 +29,15 @@ flysystem:
             # ! ça. Pas de public_url non plus : ce sont des documents légaux (Kbis, certificats...),
             # ! jamais publics, accès uniquement via temporaryUrl().
 
+        ticket_attachments.storage:
+            adapter: 'aws'
+            options:
+                client: 'Aws\S3\S3Client'
+                bucket: '%env(STORAGE_BUCKET_ATTACHMENTS)%'
+                prefix: 'ticket-attachments'
+            # ! Même raisonnement que verification_documents.storage : même bucket, préfixe dédié, pas de
+            # ! public_url (pièces jointes d'un ticket support, accès uniquement via temporaryUrl()).
+
 when@test:
     flysystem:
         storages:
@@ -54,6 +63,12 @@ when@test:
                     directory: '%kernel.project_dir%/var/storage/test-verification-documents'
                 temporary_url_generator: 'App\Service\Storage\FakeTemporaryUrlGenerator'
 
+            ticket_attachments.storage:
+                adapter: 'local'
+                options:
+                    directory: '%kernel.project_dir%/var/storage/test-ticket-attachments'
+                temporary_url_generator: 'App\Service\Storage\FakeTemporaryUrlGenerator'
+
 when@dev:
     flysystem:
         storages:
@@ -73,4 +88,10 @@ when@dev:
                 adapter: 'local'
                 options:
                     directory: '%kernel.project_dir%/var/storage/dev-verification-documents'
+                temporary_url_generator: 'App\Service\Storage\FakeTemporaryUrlGenerator'
+
+            ticket_attachments.storage:
+                adapter: 'local'
+                options:
+                    directory: '%kernel.project_dir%/var/storage/dev-ticket-attachments'
                 temporary_url_generator: 'App\Service\Storage\FakeTemporaryUrlGenerator'

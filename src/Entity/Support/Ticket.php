@@ -1,10 +1,10 @@
 <?php
 
 /**
- * Ticket de support (cahier fonctionnel : module Support). Géré aujourd'hui uniquement côté back-office
- * via TicketCrudController -- aucune route API publique ne permet encore à un client/producteur de créer
- * un ticket lui-même ; $idUser identifie simplement à qui appartient le ticket. $assignedTo distingue
- * l'agent support en charge du propriétaire du ticket ($idUser).
+ * Ticket de support (cahier fonctionnel : module Support). Créé et suivi par son propriétaire ($idUser) via
+ * TicketController (API) ; status/priority/assignedTo restent des leviers internes à l'équipe support, posés
+ * uniquement via TicketCrudController (back-office) -- jamais par l'utilisateur lui-même. $assignedTo
+ * distingue l'agent support en charge du propriétaire du ticket ($idUser).
  */
 
 namespace App\Entity\Support;

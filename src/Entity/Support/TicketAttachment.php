@@ -1,8 +1,10 @@
 <?php
 
 /**
- * Pièce jointe d'un TicketMessage, gérée comme le reste du module Support via TicketCrudController (pas
- * de flux d'upload dédié encore).
+ * Pièce jointe d'un TicketMessage. Uploadée par l'utilisateur via
+ * TicketController::uploadAttachment() (POST /api/support/tickets/{id}/attachments), stockage privé
+ * dédié (ticket_attachments.storage, voir config/packages/flysystem.yaml) -- même principe que
+ * MessageAttachment : $fileUrl est une clé objet, jamais une URL persistée (accès via temporaryUrl()).
  */
 
 namespace App\Entity\Support;

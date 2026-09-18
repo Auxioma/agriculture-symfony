@@ -5,8 +5,9 @@
  * it, de). Clé primaire composite (category, locale) -- décision délibérée documentée dans
  * trouvemoi-agri-make-entity-guide.md, verrouillée par EntityPersistenceTest. C'est précisément cette clé
  * composite qui empêche d'utiliser un CollectionField EasyAdmin standard : l'édition passe par un
- * formulaire Symfony fait main (CategoryCrudController::editTranslations()). GET /api/categories ne lit
- * pas encore cette table -- elle renvoie toujours Category::$name (français).
+ * formulaire Symfony fait main (CategoryCrudController::editTranslations()). Lue par GET /api/categories
+ * (CatalogController::listCategories(), ?locale=) -- repli sur Category::$name (français) tant qu'aucune
+ * traduction n'existe pour la locale demandée.
  */
 
 namespace App\Entity\Catalog;

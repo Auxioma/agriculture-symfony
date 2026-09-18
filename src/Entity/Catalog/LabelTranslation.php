@@ -2,9 +2,11 @@
 
 /**
  * Traduction d'un Label dans une langue donnée -- même principe que CategoryTranslation/ProductTranslation
- * (clé composite label+locale, trouvemoi-agri-make-entity-guide.md). Contrairement aux deux autres, aucun
- * formulaire d'édition n'existe encore dans le back-office pour celle-ci (pas de LabelCrudController) :
- * table présente dans le schéma mais sans écran pour la remplir.
+ * (clé composite label+locale, trouvemoi-agri-make-entity-guide.md), lue par GET /api/labels
+ * (CatalogController::listLabels(), ?locale=). Contrairement aux deux autres, aucun formulaire d'édition
+ * n'existe encore dans le back-office pour celle-ci (pas de LabelCrudController) : table présente dans le
+ * schéma et déjà lisible par l'API, mais sans écran pour la remplir -- seule une insertion manuelle en base
+ * peuple cette table pour l'instant.
  */
 
 namespace App\Entity\Catalog;
