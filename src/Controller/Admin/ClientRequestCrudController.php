@@ -3,6 +3,7 @@
 namespace App\Controller\Admin;
 
 use App\Entity\Matching\ClientRequest;
+use App\Enum\RequestStatus;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
@@ -18,6 +19,8 @@ use EasyCorp\Bundle\EasyAdminBundle\Filter\EntityFilter;
 
 class ClientRequestCrudController extends AbstractCrudController
 {
+    use StatusBadgeFieldTrait;
+
     public static function getEntityFqcn(): string
     {
         return ClientRequest::class;
@@ -28,6 +31,7 @@ class ClientRequestCrudController extends AbstractCrudController
         return $crud
             ->setEntityLabelInSingular('Demande')
             ->setEntityLabelInPlural('Demandes')
+            ->setPageTitle(Crud::PAGE_INDEX, 'Demandes clients')
             ->setDefaultSort(['createdAt' => 'DESC']);
     }
 
@@ -36,20 +40,43 @@ class ClientRequestCrudController extends AbstractCrudController
     // * (annulation) et signalement sont juste des valeurs de l'enum RequestStatus, un ChoiceField suffit.
     public function configureFields(string $pageName): iterable
     {
-        yield IdField::new('id')->hideOnForm();
+        yield IdField::new('id')->hideOnForm()->hideOnIndex();
         yield AssociationField::new('client')
+            ->setLabel('Client')
             ->formatValue(fn ($value, $entity) => $entity?->getClient()?->getEmail())
             ->hideOnForm();
-        yield AssociationField::new('category')->hideOnForm();
-        yield AssociationField::new('product')->hideOnForm();
-        yield TextField::new('customProduct')->hideOnForm();
-        yield ChoiceField::new('needType')->hideOnForm();
-        yield ChoiceField::new('status');
-        yield AssociationField::new('country')->hideOnForm();
-        yield TextField::new('city')->hideOnForm();
-        yield TextareaField::new('message')->hideOnIndex();
-        yield DateTimeField::new('createdAt')->hideOnForm();
-        yield DateTimeField::new('expiresAt')->hideOnForm();
+        yield AssociationField::new('category')->setLabel('Catégorie')->hideOnForm();
+        yield AssociationField::new('product')->setLabel('Produit')->hideOnForm();
+        yield TextField::new('customProduct')->setLabel('Produit libre')->hideOnForm()->hideOnIndex();
+        yield ChoiceField::new('needType')->setLabel('Type de besoin')->hideOnForm()->hideOnIndex();
+        yield $this->statusBadgeField('status', 'Statut', $pageName, [
+            RequestStatus::Draft->value => 'Brouillon',
+            RequestStatus::Sent->value => 'Envoyée',
+            RequestStatus::WaitingReplies->value => 'En attente de réponses',
+            RequestStatus::RepliesReceived->value => 'Réponses reçues',
+            RequestStatus::ConversationOpen->value => 'Conversation ouverte',
+            RequestStatus::DealFound->value => 'Accord trouvé',
+            RequestStatus::Expired->value => 'Expirée',
+            RequestStatus::Archived->value => 'Archivée',
+            RequestStatus::Cancelled->value => 'Annulée',
+            RequestStatus::Reported->value => 'Signalée',
+        ], [
+            RequestStatus::Draft->value => 'secondary',
+            RequestStatus::Sent->value => 'info',
+            RequestStatus::WaitingReplies->value => 'warning',
+            RequestStatus::RepliesReceived->value => 'success',
+            RequestStatus::ConversationOpen->value => 'success',
+            RequestStatus::DealFound->value => 'success',
+            RequestStatus::Expired->value => 'secondary',
+            RequestStatus::Archived->value => 'secondary',
+            RequestStatus::Cancelled->value => 'secondary',
+            RequestStatus::Reported->value => 'danger',
+        ]);
+        yield AssociationField::new('country')->setLabel('Pays')->hideOnForm()->hideOnIndex();
+        yield TextField::new('city')->setLabel('Ville')->hideOnForm();
+        yield TextareaField::new('message')->setLabel('Message')->hideOnIndex();
+        yield DateTimeField::new('createdAt')->setLabel('Date')->setFormat('d MMM y')->hideOnForm();
+        yield DateTimeField::new('expiresAt')->setLabel('Expire le')->hideOnForm()->hideOnIndex();
     }
 
     public function configureFilters(Filters $filters): Filters

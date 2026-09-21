@@ -48,6 +48,7 @@ class ConversationCrudController extends AbstractCrudController
         return $crud
             ->setEntityLabelInSingular('Conversation signalée')
             ->setEntityLabelInPlural('Conversations signalées')
+            ->setPageTitle(Crud::PAGE_INDEX, 'Conversations')
             ->setDefaultSort(['lastMessageAt' => 'DESC']);
     }
 

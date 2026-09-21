@@ -22,6 +22,8 @@ use App\Service\Audit\AuditLogger;
 
 class UserCrudController extends AbstractCrudController
 {
+    use StatusBadgeFieldTrait;
+
     public function __construct(private readonly AuditLogger $auditLogger)
     {
     }
@@ -42,10 +44,11 @@ class UserCrudController extends AbstractCrudController
     // * passwordHash n'est volontairement pas listé ici : jamais affiché ni modifiable depuis le back-office.
     public function configureFields(string $pageName): iterable
     {
-        yield IdField::new('id')->hideOnForm();
-        yield EmailField::new('email');
-        yield TextField::new('firstName');
-        yield TextField::new('lastName');
+        // * Libellés, colonnes et badges de statut : maquette Figma "Admin · Utilisateurs" (NOM, EMAIL, RÔLE, INSCRIPTION, STATUT).
+        yield IdField::new('id')->hideOnForm()->hideOnIndex();
+        yield TextField::new('firstName')->setLabel('Prénom');
+        yield TextField::new('lastName')->setLabel('Nom');
+        yield EmailField::new('email')->setLabel('Email');
         // * ChoiceField (liste fermée) et non ArrayField (texte libre) : un ArrayField aurait permis à
         // * n'importe quel ROLE_ADMIN de se taper ROLE_SUPER_ADMIN sur sa propre fiche (aucune role_hierarchy
         // * n'existe dans security.yaml pour s'en prémunir autrement).
@@ -59,12 +62,23 @@ class UserCrudController extends AbstractCrudController
                 'Super administrateur' => User::ROLE_SUPER_ADMIN,
             ])
             ->allowMultipleChoices()
-            ->renderExpanded();
+            ->renderExpanded()
+            ->setLabel('Rôle');
         // * ChoiceField (pas TextField) : getStatus()/setStatus() sont typés UserStatus (enum), un TextField
         // * soumettrait une chaîne brute et setStatus(string) ferait planter la sauvegarde (TypeError).
-        yield ChoiceField::new('status');
-        yield DateTimeField::new('createdAt')->hideOnForm();
-        yield DateTimeField::new('lastLoginAt')->hideOnForm();
+        yield $this->statusBadgeField('status', 'Statut', $pageName, [
+            UserStatus::Active->value => 'Actif',
+            UserStatus::Pending->value => 'En attente',
+            UserStatus::Suspended->value => 'Suspendu',
+            UserStatus::Deleted->value => 'Supprimé',
+        ], [
+            UserStatus::Active->value => 'success',
+            UserStatus::Pending->value => 'warning',
+            UserStatus::Suspended->value => 'warning',
+            UserStatus::Deleted->value => 'secondary',
+        ]);
+        yield DateTimeField::new('createdAt')->hideOnForm()->setLabel('Inscription')->setFormat('d MMMM y');
+        yield DateTimeField::new('lastLoginAt')->hideOnForm()->hideOnIndex()->setLabel('Dernière connexion');
     }
 
     public function configureActions(Actions $actions): Actions

@@ -23,6 +23,7 @@ use App\Service\Audit\AuditLogger;
 
 class ProducerProfileCrudController extends AbstractCrudController
 {
+    use StatusBadgeFieldTrait;
 
     public function __construct(private readonly AuditLogger $auditLogger)
     {
@@ -38,6 +39,7 @@ class ProducerProfileCrudController extends AbstractCrudController
         return $crud
             ->setEntityLabelInSingular('Producteur')
             ->setEntityLabelInPlural('Producteurs')
+            ->setPageTitle(Crud::PAGE_INDEX, 'Validation des producteurs')
             ->setDefaultSort(['farmName' => 'ASC']);
     }
 
@@ -46,17 +48,30 @@ class ProducerProfileCrudController extends AbstractCrudController
     // * toujours la notification associée, un simple dropdown éditable permettrait de le contourner.
     public function configureFields(string $pageName): iterable
     {
-        yield IdField::new('id')->hideOnForm();
-        yield TextField::new('farmName');
+        yield IdField::new('id')->hideOnForm()->hideOnIndex();
+        yield TextField::new('farmName')->setLabel('Exploitation');
         yield AssociationField::new('owner')
+            ->setLabel('Contact')
             ->formatValue(fn ($value, $entity) => $entity?->getOwner()?->getEmail())
             ->hideOnForm();
-        yield AssociationField::new('country')->hideOnForm();
-        yield TextField::new('city')->hideOnForm();
-        yield ChoiceField::new('verificationStatus')->hideOnForm();
-        yield BooleanField::new('isActive')->hideOnForm();
-        yield AssociationField::new('labels')->onlyOnDetail();
-        yield AssociationField::new('verificationDocuments')->onlyOnDetail();
+        yield AssociationField::new('country')->setLabel('Pays')->hideOnForm();
+        yield TextField::new('city')->setLabel('Localisation')->hideOnForm();
+        yield $this->statusBadgeField('verificationStatus', 'Statut', $pageName, [
+            VerificationStatus::Draft->value => 'Brouillon',
+            VerificationStatus::Pending->value => 'En attente',
+            VerificationStatus::Verified->value => 'Validé',
+            VerificationStatus::Rejected->value => 'Refusé',
+            VerificationStatus::Suspended->value => 'Suspendu',
+        ], [
+            VerificationStatus::Draft->value => 'secondary',
+            VerificationStatus::Pending->value => 'warning',
+            VerificationStatus::Verified->value => 'success',
+            VerificationStatus::Rejected->value => 'danger',
+            VerificationStatus::Suspended->value => 'warning',
+        ])->hideOnForm();
+        yield BooleanField::new('isActive')->setLabel('Actif')->hideOnForm();
+        yield AssociationField::new('labels')->setLabel('Labels')->onlyOnDetail();
+        yield AssociationField::new('verificationDocuments')->setLabel('Documents')->onlyOnDetail();
     }
 
     public function configureActions(Actions $actions): Actions

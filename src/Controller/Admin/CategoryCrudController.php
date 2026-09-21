@@ -47,6 +47,7 @@ class CategoryCrudController extends AbstractCrudController
         return $crud
             ->setEntityLabelInSingular('Catégorie')
             ->setEntityLabelInPlural('Catégories')
+            ->setPageTitle(Crud::PAGE_INDEX, 'Catégories et produits')
             ->setDefaultSort(['position' => 'ASC']);
     }
 

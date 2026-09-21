@@ -33,6 +33,8 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 class ReviewCrudController extends AbstractCrudController
 {
+    use StatusBadgeFieldTrait;
+
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly AuditLogger $auditLogger,
@@ -49,19 +51,29 @@ class ReviewCrudController extends AbstractCrudController
         return $crud
             ->setEntityLabelInSingular('Avis client')
             ->setEntityLabelInPlural('Avis clients')
+            ->setPageTitle(Crud::PAGE_INDEX, 'Avis')
             ->setDefaultSort(['createdAt' => 'DESC']);
     }
 
     public function configureFields(string $pageName): iterable
     {
-        yield IdField::new('id')->hideOnForm();
-        yield AssociationField::new('client')->formatValue(fn ($v, $e) => $e?->getClient()?->getEmail())->hideOnForm();
-        yield AssociationField::new('producer')->formatValue(fn ($v, $e) => $e?->getProducer()?->getFarmName())->hideOnForm();
-        yield IntegerField::new('rating')->hideOnForm();
-        yield TextareaField::new('comment')->hideOnIndex()->hideOnForm();
-        yield ChoiceField::new('status')->hideOnForm();
-        yield TextareaField::new('producerResponse')->hideOnIndex()->hideOnForm();
-        yield DateTimeField::new('createdAt')->hideOnForm();
+        // * Colonnes de la maquette "Admin · Avis" : NOTE, COMMENTAIRE, statut de modération.
+        yield IdField::new('id')->hideOnForm()->hideOnIndex();
+        yield AssociationField::new('client')->setLabel('Client')->formatValue(fn ($v, $e) => $e?->getClient()?->getEmail())->hideOnForm();
+        yield AssociationField::new('producer')->setLabel('Producteur')->formatValue(fn ($v, $e) => $e?->getProducer()?->getFarmName())->hideOnForm();
+        yield IntegerField::new('rating')->setLabel('Note')->formatValue(fn ($v) => null === $v ? '—' : $v.' / 5')->hideOnForm();
+        yield TextareaField::new('comment')->setLabel('Commentaire')->hideOnIndex()->hideOnForm();
+        yield $this->statusBadgeField('status', 'Statut', $pageName, [
+            ReviewStatus::Pending->value => 'En attente',
+            ReviewStatus::Published->value => 'Publié',
+            ReviewStatus::Rejected->value => 'Rejeté',
+        ], [
+            ReviewStatus::Pending->value => 'warning',
+            ReviewStatus::Published->value => 'success',
+            ReviewStatus::Rejected->value => 'danger',
+        ])->hideOnForm();
+        yield TextareaField::new('producerResponse')->setLabel('Réponse du producteur')->hideOnIndex()->hideOnForm();
+        yield DateTimeField::new('createdAt')->setLabel('Date')->setFormat('d MMM y')->hideOnForm();
     }
 
     public function configureFilters(Filters $filters): Filters

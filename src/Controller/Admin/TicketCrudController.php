@@ -24,6 +24,8 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 
 class TicketCrudController extends AbstractCrudController
 {
+    use StatusBadgeFieldTrait;
+
     private const STATUSES = ['Ouvert' => 'open', 'En cours' => 'in_progress', 'Résolu' => 'resolved', 'Fermé' => 'closed'];
     // * Niveaux de gravité repris du cahier DevOps ("Support et astreinte").
     private const PRIORITIES = ['Basse' => 'basse', 'Moyenne' => 'moyenne', 'Haute' => 'haute', 'Critique' => 'critique'];
@@ -38,6 +40,7 @@ class TicketCrudController extends AbstractCrudController
         return $crud
             ->setEntityLabelInSingular('Ticket')
             ->setEntityLabelInPlural('Tickets')
+            ->setPageTitle(Crud::PAGE_INDEX, 'Support')
             ->setDefaultSort(['createdAt' => 'DESC']);
     }
 
@@ -47,21 +50,28 @@ class TicketCrudController extends AbstractCrudController
     // * seule sa prise en charge (assignedTo) reste éditable. choice_label : User n'a pas de __toString().
     public function configureFields(string $pageName): iterable
     {
-        yield IdField::new('id')->hideOnForm();
+        yield IdField::new('id')->hideOnForm()->hideOnIndex();
         yield AssociationField::new('idUser')
             ->setLabel('Utilisateur')
             ->formatValue(fn ($v, $e) => $e?->getIdUser()?->getEmail())
             ->setFormTypeOption('choice_label', 'email')
             ->hideWhenUpdating();
         yield TextField::new('subject')->setLabel('Sujet');
-        yield ChoiceField::new('status')->setLabel('Statut')->setChoices(self::STATUSES);
-        yield ChoiceField::new('priority')->setLabel('Priorité')->setChoices(self::PRIORITIES);
+        // * Ticket::$status/$priority sont de simples chaînes (pas d'enum) : $enumBacked = false, les choix restent donc
+        // * explicites sur les formulaires aussi (voir StatusBadgeFieldTrait).
+        yield $this->statusBadgeField('priority', 'Priorité', $pageName, array_flip(self::PRIORITIES), [
+            'basse' => 'secondary', 'moyenne' => 'secondary', 'haute' => 'warning', 'critique' => 'danger',
+        ], false);
+        yield $this->statusBadgeField('status', 'Statut', $pageName, array_flip(self::STATUSES), [
+            'open' => 'warning', 'in_progress' => 'warning', 'resolved' => 'success', 'closed' => 'secondary',
+        ], false);
         yield AssociationField::new('assignedTo')
             ->setLabel('Assigné à')
             ->formatValue(fn ($v, $e) => $e?->getAssignedTo()?->getEmail())
-            ->setFormTypeOption('choice_label', 'email');
-        yield DateTimeField::new('createdAt')->hideOnForm();
-        yield DateTimeField::new('closedAt')->hideOnForm();
+            ->setFormTypeOption('choice_label', 'email')
+            ->hideOnIndex();
+        yield DateTimeField::new('createdAt')->setLabel('Ouvert le')->setFormat('d MMM y')->hideOnForm();
+        yield DateTimeField::new('closedAt')->setLabel('Fermé le')->hideOnForm()->hideOnIndex();
         yield AssociationField::new('messages')->onlyOnDetail();
     }
 }

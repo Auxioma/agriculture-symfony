@@ -57,6 +57,7 @@ class MessageCrudController extends AbstractCrudController
         return $crud
             ->setEntityLabelInSingular('Message signalé')
             ->setEntityLabelInPlural('Messages signalés')
+            ->setPageTitle(Crud::PAGE_INDEX, 'Signalements')
             ->setDefaultSort(['createdAt' => 'DESC']);
     }
 

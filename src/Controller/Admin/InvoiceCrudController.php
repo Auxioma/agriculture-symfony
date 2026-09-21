@@ -17,6 +17,8 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
  */
 class InvoiceCrudController extends AbstractCrudController
 {
+    use StatusBadgeFieldTrait;
+
     public static function getEntityFqcn(): string
     {
         return Invoice::class;
@@ -27,20 +29,32 @@ class InvoiceCrudController extends AbstractCrudController
         return $crud
             ->setEntityLabelInSingular('Facture')
             ->setEntityLabelInPlural('Factures')
+            ->setPageTitle(Crud::PAGE_INDEX, 'Paiements et factures')
             ->setDefaultSort(['createdAt' => 'DESC']);
     }
 
     public function configureFields(string $pageName): iterable
     {
-        yield IdField::new('id')->hideOnForm();
+        // * Colonnes de la maquette "Admin · Paiements et factures" : PRODUCTEUR, MONTANT, STATUT, DATE.
+        yield IdField::new('id')->hideOnForm()->hideOnIndex();
         yield AssociationField::new('subscription')
+            ->setLabel('Producteur')
             ->formatValue(fn ($v, $e) => $e?->getSubscription()?->getProducer()->getFarmName())
             ->hideOnForm();
-        yield TextField::new('amount')->hideOnForm();
-        yield TextField::new('status')->hideOnForm();
+        yield TextField::new('amount')->setLabel('Montant')->formatValue(fn ($v) => null === $v ? '—' : str_replace('.', ',', (string) $v).' €')->hideOnForm();
+        // * Invoice::$status est une simple chaîne ('paid', 'open', ...) : $enumBacked = false.
+        yield $this->statusBadgeField('status', 'Statut', $pageName, [
+            'paid' => 'Payée',
+            'open' => 'En attente',
+            'failed' => 'Échec',
+        ], [
+            'paid' => 'success',
+            'open' => 'warning',
+            'failed' => 'danger',
+        ], false)->hideOnForm();
         yield TextField::new('invoiceUrl')->setLabel('Lien facture')->hideOnIndex()->hideOnForm();
-        yield DateTimeField::new('paidAt')->hideOnForm();
-        yield DateTimeField::new('createdAt')->hideOnForm();
+        yield DateTimeField::new('paidAt')->setLabel('Payée le')->setFormat('d MMM y')->hideOnForm();
+        yield DateTimeField::new('createdAt')->setLabel('Créée le')->setFormat('d MMM y')->hideOnForm()->hideOnIndex();
     }
 
     public function configureActions(Actions $actions): Actions

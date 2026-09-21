@@ -27,7 +27,8 @@ class CouponCrudController extends AbstractCrudController
     {
         return $crud
             ->setEntityLabelInSingular('Coupon')
-            ->setEntityLabelInPlural('Coupons');
+            ->setEntityLabelInPlural('Coupons')
+            ->setPageTitle(Crud::PAGE_INDEX, 'Codes promo');
     }
 
     public function configureFields(string $pageName): iterable
