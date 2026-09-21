@@ -1,88 +1,66 @@
+{# Maquette Figma "Admin · Tableau de bord" (desktop 236:4202, mobile 237:6261). Styles : assets/styles/admin.css. #}
 {% extends '@EasyAdmin/layout.html.twig' %}
+
+{% macro stat(value, label) %}
+    <div class="tm-stat">
+        <div class="tm-stat-value">{{ value }}</div>
+        <div class="tm-stat-label">{{ label }}</div>
+    </div>
+{% endmacro %}
+
+{% import _self as ui %}
 
 {% block content_title %}Tableau de bord{% endblock %}
 
+{% block content_subtitle %}
+    <p class="tm-subtitle">Vue d'ensemble de l'activité de la plateforme</p>
+{% endblock %}
+
 {% block main %}
-    <div class="row">
-        <div class="col-md-3 mb-4">
-            <a href="{{ ea_url().setController('App\\Controller\\Admin\\UserCrudController').generateUrl() }}" class="text-decoration-none text-body">
-                <div class="card text-center h-100">
-                    <div class="card-header">Utilisateurs</div>
-                    <div class="card-body">
-                        <h2 class="mb-0">{{ users.total }}</h2>
-                        <small class="text-muted">{{ users.active }} actifs</small>
-                    </div>
-                </div>
-            </a>
-        </div>
-        <div class="col-md-3 mb-4">
-            <a href="{{ ea_url().setController('App\\Controller\\Admin\\ProducerProfileCrudController').generateUrl() }}" class="text-decoration-none text-body">
-                <div class="card text-center h-100">
-                    <div class="card-header">Producteurs</div>
-                    <div class="card-body">
-                        <h2 class="mb-0">{{ producers.total }}</h2>
-                        <small class="text-muted">{{ producers.pending }} en attente de validation</small>
-                    </div>
-                </div>
-            </a>
-        </div>
-        <div class="col-md-3 mb-4">
-            <a href="{{ ea_url().setController('App\\Controller\\Admin\\ClientRequestCrudController').generateUrl() }}" class="text-decoration-none text-body">
-                <div class="card text-center h-100">
-                    <div class="card-header">Demandes</div>
-                    <div class="card-body">
-                        <h2 class="mb-0">{{ requests.total }}</h2>
-                        <small class="text-muted">{{ requests.active }} en cours</small>
-                    </div>
-                </div>
-            </a>
-        </div>
-        <div class="col-md-3 mb-4">
-            <a href="{{ ea_url().setController('App\\Controller\\Admin\\ConversationCrudController').generateUrl() }}" class="text-decoration-none text-body">
-                <div class="card text-center h-100">
-                    <div class="card-header">Conversations</div>
-                    <div class="card-body">
-                        <h2 class="mb-0">{{ conversations.total }}</h2>
-                        <small class="text-muted">{{ conversations.reported }} signalées</small>
-                    </div>
-                </div>
-            </a>
-        </div>
+    {# Whole euros without decimals ("12 480 €") like the mockup, cents only when there are some. #}
+    {% set revenue = stats.revenueThisMonth == stats.revenueThisMonth|round
+        ? stats.revenueThisMonth|number_format(0, ',', ' ')
+        : stats.revenueThisMonth|number_format(2, ',', ' ') %}
+
+    <div class="tm-stats">
+        {{ ui.stat(stats.activeUsers|number_format(0, ',', ' '), 'Utilisateurs actifs') }}
+        {{ ui.stat(stats.subscribedProducers|number_format(0, ',', ' '), 'Producteurs abonnés') }}
+        {{ ui.stat(stats.producersToValidate|number_format(0, ',', ' '), 'Producteurs à valider') }}
+        {{ ui.stat(stats.requestsThisWeek|number_format(0, ',', ' '), 'Demandes cette semaine') }}
+        {{ ui.stat(stats.openReports|number_format(0, ',', ' '), 'Signalements ouverts') }}
+        {{ ui.stat(revenue ~ ' €', 'Revenus abonnements (mois)') }}
     </div>
 
-    <div class="row">
-        <div class="col-md-4 mb-4">
-            <a href="{{ path('admin_reporting') }}" class="text-decoration-none text-body">
-                <div class="card text-center h-100">
-                    <div class="card-header">Revenus (ce mois-ci)</div>
-                    <div class="card-body">
-                        <h2 class="mb-0">{{ revenueThisMonth|number_format(2, ',', ' ') }}</h2>
-                        <small class="text-muted">Voir le détail dans Reporting</small>
-                    </div>
-                </div>
-            </a>
-        </div>
-        <div class="col-md-4 mb-4">
-            <a href="{{ ea_url().setController('App\\Controller\\Admin\\ConversationCrudController').generateUrl() }}" class="text-decoration-none text-body">
-                <div class="card text-center h-100">
-                    <div class="card-header">Signalements ouverts</div>
-                    <div class="card-body">
-                        <h2 class="mb-0">{{ openReports }}</h2>
-                        <small class="text-muted">Non encore traités</small>
-                    </div>
-                </div>
-            </a>
-        </div>
-        <div class="col-md-4 mb-4">
-            <a href="{{ ea_url().setController('App\\Controller\\Admin\\TicketCrudController').generateUrl() }}" class="text-decoration-none text-body">
-                <div class="card text-center h-100">
-                    <div class="card-header">Tickets support ouverts</div>
-                    <div class="card-body">
-                        <h2 class="mb-0">{{ openTickets }}</h2>
-                        <small class="text-muted">Hors résolus/fermés</small>
-                    </div>
-                </div>
-            </a>
-        </div>
+    <h2 class="tm-section-title">Activité récente</h2>
+
+    <div class="tm-panel">
+        <table class="tm-table tm-activity">
+            <thead>
+                <tr>
+                    <th>Évènement</th>
+                    <th>Utilisateur</th>
+                    <th>Date</th>
+                    <th>Type</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in recentActivity %}
+                    <tr>
+                        <td class="tm-cell-main">{{ item.event }}</td>
+                        <td class="tm-cell-text">{{ item.actor }}</td>
+                        <td class="tm-cell-muted">{{ item.when }}</td>
+                        <td class="tm-cell-badge"><span class="tm-badge tm-badge-{{ item.kind }}">{{ item.kindLabel }}</span></td>
+                    </tr>
+                {% else %}
+                    <tr class="tm-empty"><td colspan="4">Aucune activité pour le moment.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="tm-actions">
+        <a class="tm-btn tm-btn-primary" href="{{ ea_url().setController('App\\Controller\\Admin\\ProducerProfileCrudController').generateUrl() }}">Voir les validations en attente</a>
+        <a class="tm-btn tm-btn-outline" href="{{ ea_url().setController('App\\Controller\\Admin\\MessageCrudController').generateUrl() }}">Voir les signalements</a>
+        <a class="tm-btn tm-btn-gold" href="{{ path('admin_reporting') }}">Voir les statistiques</a>
     </div>
 {% endblock %}

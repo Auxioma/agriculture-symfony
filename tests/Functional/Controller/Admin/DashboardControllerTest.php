@@ -60,7 +60,8 @@ final class DashboardControllerTest extends ApiTestCase
         $text = (string) $crawler->filter('body')->text();
         // * Au moins l'admin connecté + les deux propriétaires producteurs créés ci-dessus.
         self::assertStringContainsString('Tableau de bord', $text);
-        self::assertStringContainsString('en attente de validation', $text);
+        self::assertStringContainsString('Producteurs à valider', $text);
+        self::assertStringContainsString('Activité récente', $text);
         self::assertStringContainsString('49,99', $text);
     }
 
