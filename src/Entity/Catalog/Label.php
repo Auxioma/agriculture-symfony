@@ -4,7 +4,8 @@
  * Label ou pratique agricole certifiable (cahier fonctionnel : "Bio, HVE, AOP/AOC, agriculture raisonnée...").
  * $countryScope restreint un label à certains pays (ex. AOP n'a de sens qu'en zone UE). Rattaché à un
  * producteur via ProducerLabel et à une demande cliente via RequestLabel (souhait explicite d'un label
- * précis). GET /api/labels l'expose publiquement mais sans back-office de gestion dédié.
+ * précis). GET /api/labels expose publiquement les labels actifs ; LabelCrudController les gère dans le
+ * back-office. $isActive retire un label de la liste publique sans supprimer les rattachements existants.
  */
 
 namespace App\Entity\Catalog;
@@ -42,6 +43,9 @@ class Label
     #[ORM\Column(nullable: true)]
     private ?bool $requiresDocument = null;
 
+    #[ORM\Column(options: ['default' => true])]
+    private bool $isActive = true;
+
     /**
      * @var Collection<int, LabelTranslation>
      */
@@ -51,13 +55,13 @@ class Label
     /**
      * @var Collection<int, ProducerLabel>
      */
-    #[ORM\OneToMany(targetEntity: ProducerLabel::class, mappedBy: 'label', orphanRemoval: true)]
+    #[ORM\OneToMany(targetEntity: ProducerLabel::class, mappedBy: 'label', orphanRemoval: true, fetch: 'EXTRA_LAZY')]
     private Collection $producerLabels;
 
     /**
      * @var Collection<int, RequestLabel>
      */
-    #[ORM\OneToMany(targetEntity: RequestLabel::class, mappedBy: 'label', orphanRemoval: true)]
+    #[ORM\OneToMany(targetEntity: RequestLabel::class, mappedBy: 'label', orphanRemoval: true, fetch: 'EXTRA_LAZY')]
     private Collection $requestLabels;
 
     public function __construct()
@@ -133,6 +137,18 @@ class Label
         return $this;
     }
 
+    public function isActive(): bool
+    {
+        return $this->isActive;
+    }
+
+    public function setIsActive(bool $isActive): static
+    {
+        $this->isActive = $isActive;
+
+        return $this;
+    }
+
     /**
      * @return Collection<int, LabelTranslation>
      */
@@ -164,6 +180,15 @@ class Label
     public function getProducerLabels(): Collection
     {
         return $this->producerLabels;
+    }
+
+    /**
+     * Nombre de producteurs qui portent ce label ; EXTRA_LAZY sur $producerLabels : un simple COUNT, sans
+     * charger les rattachements.
+     */
+    public function getProducerCount(): int
+    {
+        return $this->producerLabels->count();
     }
 
     public function addProducerLabel(ProducerLabel $producerLabel): static

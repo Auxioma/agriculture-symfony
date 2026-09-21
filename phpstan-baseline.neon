@@ -49,6 +49,18 @@ parameters:
 			path: src/Controller/Admin/InvoiceCrudController.php
 
 		-
+			message: '#^Class App\\Controller\\Admin\\LabelCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/LabelCrudController.php
+
+		-
+			message: '#^Method App\\Controller\\Admin\\LabelCrudController\:\:editTranslations\(\) has parameter \$context with generic class EasyCorp\\Bundle\\EasyAdminBundle\\Context\\AdminContext but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/LabelCrudController.php
+
+		-
 			message: '#^Class App\\Controller\\Admin\\LegalPageCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
 			identifier: missingType.generics
 			count: 1
@@ -113,6 +125,12 @@ parameters:
 			identifier: missingType.generics
 			count: 1
 			path: src/Controller/Admin/ProducerProfileCrudController.php
+
+		-
+			message: '#^Class App\\Controller\\Admin\\ProducerReplyCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/ProducerReplyCrudController.php
 
 		-
 			message: '#^Class App\\Controller\\Admin\\ProductCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
@@ -739,6 +757,18 @@ parameters:
 			path: src/Form/Admin/CategoryTranslationType.php
 
 		-
+			message: '#^Class App\\Form\\Admin\\LabelTranslationType extends generic class Symfony\\Component\\Form\\AbstractType but does not specify its types\: TData$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Form/Admin/LabelTranslationType.php
+
+		-
+			message: '#^Class App\\Form\\Admin\\PlatformSettingsType extends generic class Symfony\\Component\\Form\\AbstractType but does not specify its types\: TData$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Form/Admin/PlatformSettingsType.php
+
+		-
 			message: '#^Class App\\Form\\Admin\\ProductTranslationType extends generic class Symfony\\Component\\Form\\AbstractType but does not specify its types\: TData$#'
 			identifier: missingType.generics
 			count: 1
@@ -829,6 +859,12 @@ parameters:
 			path: tests/Functional/Controller/Admin/DashboardControllerTest.php
 
 		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\LabelCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/LabelCrudControllerTest.php
+
+		-
 			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\LegalPageCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
@@ -841,10 +877,22 @@ parameters:
 			path: tests/Functional/Controller/Admin/MessageModerationCrudControllerTest.php
 
 		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\PlatformSettingsControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/PlatformSettingsControllerTest.php
+
+		-
 			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\ProducerProfileCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
 			path: tests/Functional/Controller/Admin/ProducerProfileCrudControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\ProducerReplyCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/ProducerReplyCrudControllerTest.php
 
 		-
 			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\ReportingControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'

@@ -8,6 +8,7 @@ use App\Entity\Catalog\Label;
 use App\Entity\Catalog\LabelTranslation;
 use App\Entity\Catalog\Product;
 use App\Entity\Catalog\ProductTranslation;
+use App\Service\Platform\PlatformSettings;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -19,16 +20,20 @@ use Symfony\Component\Routing\Attribute\Route;
  * ProductTranslation/LabelTranslation existent et sont éditables en back-office depuis longtemps
  * (CategoryCrudController::editTranslations(), etc.) mais n'étaient encore jamais lues ici -- chaque route
  * ne renvoyait que $name/$description de base (français, voir les docblocks de Category/Product/Label).
- * ?locale= (défaut 'fr', même convention que LegalController) sélectionne la traduction ; à défaut de
+ * ?locale= (défaut : langue par défaut des paramètres de la plateforme, 'fr' tant que rien n'est enregistré ; même convention que LegalController) sélectionne la traduction ; à défaut de
  * traduction pour la locale demandée, on retombe sur les champs de base de l'entité plutôt qu'un 404 --
  * mieux vaut un contenu en français par défaut qu'une fiche vide pour une langue pas encore traduite.
  */
 final class CatalogController extends AbstractController
 {
+    public function __construct(private readonly PlatformSettings $settings)
+    {
+    }
+
     #[Route('/api/categories', methods: ['GET'])]
     public function listCategories(Request $request, EntityManagerInterface $em): JsonResponse
     {
-        $locale = $request->query->get('locale', 'fr');
+        $locale = $request->query->get('locale', $this->settings->defaultLocale());
 
         // * Seules les catégories actives sont visibles publiquement, une catégorie désactivée
         // * est un brouillon/masquage volontaire côté back-office, pas censée apparaître ici
@@ -63,7 +68,7 @@ final class CatalogController extends AbstractController
     #[Route('/api/products', methods: ['GET'])]
     public function listProducts(Request $request, EntityManagerInterface $em): JsonResponse
     {
-        $locale = $request->query->get('locale', 'fr');
+        $locale = $request->query->get('locale', $this->settings->defaultLocale());
 
         $products = $em->getRepository(Product::class)->findBy(['isActive' => true], ['name' => 'ASC']);
         $translations = $this->indexTranslationsByParentId(
@@ -85,7 +90,7 @@ final class CatalogController extends AbstractController
             return $this->json(['error' => 'Produit introuvable.'], 404);
         }
 
-        $locale = $request->query->get('locale', 'fr');
+        $locale = $request->query->get('locale', $this->settings->defaultLocale());
         $translation = $em->getRepository(ProductTranslation::class)->findOneBy(['product' => $product, 'locale' => $locale]);
 
         return $this->json([...$this->serializeProduct($product, $translation), 'isActive' => $product->isActive()]);
@@ -109,9 +114,9 @@ final class CatalogController extends AbstractController
     #[Route('/api/labels', methods: ['GET'])]
     public function listLabels(Request $request, EntityManagerInterface $em): JsonResponse
     {
-        $locale = $request->query->get('locale', 'fr');
+        $locale = $request->query->get('locale', $this->settings->defaultLocale());
 
-        $labels = $em->getRepository(Label::class)->findBy([], ['name' => 'ASC']);
+        $labels = $em->getRepository(Label::class)->findBy(['isActive' => true], ['name' => 'ASC']);
         $translations = $this->indexTranslationsByParentId(
             $labels === [] ? [] : $em->getRepository(LabelTranslation::class)->findBy(['label' => $labels, 'locale' => $locale]),
             static fn (LabelTranslation $t) => $t->getLabel()->getId()->toRfc4122()

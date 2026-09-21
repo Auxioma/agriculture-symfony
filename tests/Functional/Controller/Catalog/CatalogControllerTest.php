@@ -172,9 +172,21 @@ final class CatalogControllerTest extends ApiTestCase
         self::assertContains('Bio', $names);
     }
 
-    // * LabelTranslation n'a encore aucun écran d'édition back-office (voir son docblock), mais la table
-    // * est déjà lisible par l'API dès qu'une ligne y existe -- peuplée ici directement, comme le serait une
-    // * insertion manuelle en base en attendant un futur LabelCrudController.
+    public function testListLabelsHidesInactiveLabels(): void
+    {
+        $label = new Label();
+        $label->setCode('retired');
+        $label->setName('Ancien label');
+        $label->setIsActive(false);
+        $this->em->persist($label);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/labels');
+
+        self::assertResponseIsSuccessful();
+        self::assertNotContains('retired', array_column(json_decode($this->client->getResponse()->getContent(), true), 'code'));
+    }
+
     public function testListLabelsReturnsTranslatedFieldsForRequestedLocale(): void
     {
         $label = new Label();

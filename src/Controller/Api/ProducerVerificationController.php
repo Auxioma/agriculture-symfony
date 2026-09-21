@@ -121,7 +121,7 @@ final class ProducerVerificationController extends AbstractController
         }
 
         $label = $em->find(Label::class, $request->labelId);
-        if ($label === null) {
+        if ($label === null || !$label->isActive()) {
             return $this->json(['error' => 'Label introuvable.'], 404);
         }
 

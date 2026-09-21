@@ -19,6 +19,10 @@ use App\Controller\Admin\SupportReplyTemplateCrudController;
 use App\Controller\Admin\UnitCrudController;
 use App\Controller\Admin\UserCrudController;
 use App\Controller\Admin\VerificationDocumentCrudController;
+use App\Entity\Catalog\Currency;
+use App\Form\Admin\PlatformSettingsType;
+use App\Service\Audit\AuditLogger;
+use App\Service\Platform\PlatformSettings;
 use Doctrine\DBAL\Connection;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Assets;
@@ -26,6 +30,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Dashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\MenuItem;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Theme;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractDashboardController;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
 use Doctrine\ORM\EntityManagerInterface;
@@ -161,15 +166,18 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkTo(UserCrudController::class, 'Utilisateurs', 'far fa-user');
         yield MenuItem::linkTo(ProducerProfileCrudController::class, 'Producteurs', 'fas fa-leaf');
         yield MenuItem::linkTo(ClientRequestCrudController::class, 'Demandes', 'fas fa-bars-staggered');
+        yield MenuItem::linkTo(ProducerReplyCrudController::class, 'Réponses & devis', 'fas fa-file-invoice');
         yield MenuItem::linkTo(ConversationCrudController::class, 'Conversations', 'far fa-comment');
         yield MenuItem::linkTo(MessageCrudController::class, 'Signalements', 'far fa-flag');
         yield MenuItem::linkTo(ReviewCrudController::class, 'Avis', 'far fa-star');
         yield MenuItem::linkTo(CategoryCrudController::class, 'Catégories', 'fas fa-table-cells-large');
+        yield MenuItem::linkTo(LabelCrudController::class, 'Labels', 'fas fa-certificate');
         yield MenuItem::linkTo(SubscriptionCrudController::class, 'Abonnements', 'far fa-credit-card');
         yield MenuItem::linkTo(InvoiceCrudController::class, 'Paiements & factures', 'fas fa-receipt');
         yield MenuItem::linkTo(TicketCrudController::class, 'Support', 'far fa-circle-question');
         yield MenuItem::linkTo(LegalPageCrudController::class, 'Pages légales', 'far fa-file');
         yield MenuItem::linkToRoute('Statistiques', 'fas fa-chart-simple', 'admin_reporting');
+        yield MenuItem::linkToRoute('Paramètres', 'fas fa-sliders', 'admin_settings');
 
         yield MenuItem::section('Autres');
         yield MenuItem::linkTo(VerificationDocumentCrudController::class, 'Documents justificatifs', 'fas fa-file-shield');
@@ -261,5 +269,42 @@ class DashboardController extends AbstractDashboardController
             'revenueByMonth' => $revenueByMonth,
             'popularCategories' => $popularCategories,
         ]);
+    }
+
+    /**
+     * Écran "Paramètres de la plateforme" (maquette Figma "Admin · Paramètres" : général et sécurité). Lecture et
+     * écriture passent par PlatformSettings ; chaque enregistrement est journalisé (paramètres = action admin
+     * sensible) avec les valeurs avant/après.
+     */
+    #[AdminRoute(path: '/settings', name: 'settings')]
+    public function settings(Request $request, PlatformSettings $settings, AuditLogger $auditLogger): Response
+    {
+        $current = $settings->all();
+
+        $currencies = [];
+        foreach ($this->em->getRepository(Currency::class)->findBy(['isActive' => true], ['code' => 'ASC']) as $currency) {
+            $currencies[$currency->getCode()] = null !== $currency->getSymbol()
+                ? sprintf('%s (%s)', $currency->getCode(), $currency->getSymbol())
+                : $currency->getCode();
+        }
+        // * La devise enregistrée reste sélectionnable même si elle a été désactivée depuis.
+        $currencies += [$current[PlatformSettings::DEFAULT_CURRENCY] => $current[PlatformSettings::DEFAULT_CURRENCY]];
+
+        $current[PlatformSettings::SESSION_MINUTES] = (int) $current[PlatformSettings::SESSION_MINUTES];
+        $form = $this->createForm(PlatformSettingsType::class, $current, ['currencies' => $currencies]);
+        $form->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            $submitted = $form->getData();
+            $before = $settings->all();
+            $settings->save($submitted);
+            $auditLogger->log('platform_settings_updated', 'content', 'platform_settings', 'global', $before, array_map('strval', $submitted));
+            $this->em->flush();
+            $this->addFlash('success', 'Paramètres enregistrés.');
+
+            return $this->redirectToRoute('admin_settings');
+        }
+
+        return $this->render('admin/settings.html.twig', ['form' => $form]);
     }
 }

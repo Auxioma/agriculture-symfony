@@ -1,0 +1,50 @@
+{# Maquette Figma "Admin · Paramètres" (desktop 236:6285, mobile 237:6824). Styles : assets/styles/admin.css. #}
+{% extends '@EasyAdmin/layout.html.twig' %}
+
+{% block content_title %}Paramètres de la plateforme{% endblock %}
+
+{% block content_subtitle %}
+    <p class="tm-subtitle">Configuration générale, sécurité et facturation</p>
+{% endblock %}
+
+{% macro row(field) %}
+    <div class="tm-field">
+        {{ form_label(field) }}
+        {{ form_widget(field) }}
+        {{ form_errors(field) }}
+    </div>
+{% endmacro %}
+
+{% block main %}
+    {% import _self as ui %}
+
+    {{ form_start(form) }}
+        <section class="tm-panel-block tm-settings-block">
+            <h2 class="tm-section-title">Général</h2>
+            <div class="tm-grid-2 tm-settings-grid">
+                {{ ui.row(form.platform_name) }}
+                {{ ui.row(form.support_email) }}
+                {{ ui.row(form.default_locale) }}
+                {{ ui.row(form.default_currency) }}
+            </div>
+        </section>
+
+        <section class="tm-panel-block tm-settings-block">
+            <h2 class="tm-section-title">Sécurité</h2>
+            <div class="tm-grid-2 tm-settings-grid">
+                {{ ui.row(form.session_minutes) }}
+                <div class="tm-field">
+                    <span class="tm-label">Authentification à deux facteurs obligatoire</span>
+                    <div class="tm-switch-row">
+                        <span class="tm-switch" aria-hidden="true"></span>
+                        <span class="tm-hint">Indisponible : l'authentification à deux facteurs n'est pas encore en place sur la plateforme.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="tm-actions tm-actions-start">
+            <button type="submit" class="tm-btn tm-btn-primary">Enregistrer les modifications</button>
+        </div>
+    {{ form_end(form) }}
+{% endblock %}

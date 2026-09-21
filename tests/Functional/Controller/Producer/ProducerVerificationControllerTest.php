@@ -97,6 +97,22 @@ final class ProducerVerificationControllerTest extends ApiTestCase
         self::assertResponseStatusCodeSame(404);
     }
 
+    // * Un label désactivé depuis le back-office n'est plus proposé (GET /api/labels) : il ne peut plus non plus
+    // * être revendiqué par un producteur qui connaîtrait encore son identifiant.
+    public function testClaimLabelRejectsInactiveLabel(): void
+    {
+        [$token] = $this->loginAsProducer();
+        $label = $this->makeLabel();
+        $label->setIsActive(false);
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/producer/labels', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['labelId' => $label->getId()->toRfc4122()]));
+        self::assertResponseStatusCodeSame(404);
+    }
+
     public function testClaimLabelRejectsDuplicate(): void
     {
         [$token] = $this->loginAsProducer();
