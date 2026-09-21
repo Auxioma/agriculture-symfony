@@ -1,0 +1,62 @@
+{# Surcharge du layout EasyAdmin (le préfixe "@!" désigne le template d'origine du bundle) pour reproduire la
+   maquette Figma "Trouve Moi Agri" (sections Desktop/Mobile Admin) sur toutes les pages du back-office :
+   - en-tête de page = titre 32px + sous-titre grisé, comme sur chaque écran de la maquette ;
+   - champ de recherche déplacé de la barre supérieure vers l'en-tête de page (sous le titre) ;
+   - titre de page dans l'en-tête mobile (à côté du bouton menu), au lieu du logo. #}
+{% extends '@!EasyAdmin/layout.html.twig' %}
+
+{# Sous-titres de la maquette, par écran de liste. Un écran absent de cette table n'affiche simplement pas de
+   sous-titre (les pages d'édition/création n'en ont pas dans la maquette non plus). #}
+{% set tm_subtitles = {
+    'UserCrudController': "Gérez les comptes clients, producteurs et équipe support",
+    'ProducerProfileCrudController': "Vérifiez les documents et validez les nouvelles exploitations",
+    'ClientRequestCrudController': "Suivi de toutes les demandes envoyées sur la plateforme",
+    'ConversationCrudController': "Modération des échanges entre clients et producteurs",
+    'MessageCrudController': "Traitez les signalements de profils, demandes et messages",
+    'ReviewCrudController': "Modérez les avis clients avant publication",
+    'CategoryCrudController': "Organisez le catalogue de produits agricoles",
+    'SubscriptionCrudController': "Suivi des abonnements et de la facturation",
+    'InvoiceCrudController': "Historique des transactions d'abonnement",
+    'TicketCrudController': "Tickets d'assistance client et producteur",
+    'LegalPageCrudController': "Gérez le contenu juridique affiché sur la plateforme",
+    'CouponCrudController': "Créez et suivez les codes de réduction pour l'abonnement producteur",
+} %}
+
+{% block search_wrapper %}{% endblock %}
+
+{% block responsive_header_logo %}
+    <span class="tm-mobile-title">{{ block('content_title')|striptags|trim }}</span>
+{% endblock %}
+
+{% block content_header %}
+    <div class="content-header-title">
+        <h1 class="title">
+            {% block content_title %}{% endblock %}
+
+            {% block content_help %}
+                {% if has_help_message %}
+                    <a tabindex="0" class="content-header-help" data-bs-toggle="popover" data-bs-custom-class="ea-content-help-popover" data-bs-animation="true" data-bs-html="true" data-bs-placement="bottom" data-bs-trigger="focus" data-bs-content="{{ ea.crud.helpMessage|trans|e('html') }}">
+                        <twig:ea:Icon name="internal:circle-info" />
+                    </a>
+                {% endif %}
+            {% endblock %}
+        </h1>
+
+        {% block content_subtitle %}
+            {% set tm_crud_class = ea.request.attributes.get('crudControllerFqcn') is not null ? ea.request.attributes.get('crudControllerFqcn')|split('\\')|last : null %}
+            {% if ea.crud is not null and ea.crud.currentPage == 'index' and tm_crud_class in tm_subtitles|keys %}
+                <p class="tm-subtitle">{{ tm_subtitles[tm_crud_class] }}</p>
+            {% endif %}
+        {% endblock %}
+    </div>
+
+    {% block page_actions_wrapper %}
+        <div class="page-actions">{% block page_actions %}{% endblock %}</div>
+    {% endblock %}
+
+    {% if ea.crud is not null and ea.crud.currentPage == 'index' and ea.crud.isSearchEnabled %}
+        <div class="tm-header-tools">
+            <div class="content-search">{{ block('search') }}</div>
+        </div>
+    {% endif %}
+{% endblock content_header %}

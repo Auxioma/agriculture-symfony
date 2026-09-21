@@ -1,0 +1,984 @@
+/*
+ * Thème du back-office TrouveMoi Agri : EasyAdmin personnalisé + templates Twig sur mesure.
+ *
+ * Choix imposé par le cahier des charges fonctionnel (19.4) : "Utiliser Bootstrap ou EasyAdmin personnalisé pour le
+ * back-office Symfony", Tailwind étant réservé au front Angular. Pas de framework CSS supplémentaire ici : on surcharge
+ * les variables et composants d'EasyAdmin, sans étape de build (AssetMapper sert ce fichier tel quel).
+ *
+ * Source visuelle : maquette Figma "Trouve Moi Agri" (sections Desktop/Mobile Admin et page "Design system"), validée
+ * par le client. Valeurs relevées telles quelles : couleurs, Inter, rayons 8/12/14/25px, barre latérale 240px, marge de
+ * contenu 60px, tuiles de stats 142px.
+ *
+ * Ce fichier est volontairement HORS des cascade layers d'EasyAdmin (@layer ea.*) : une règle non layered l'emporte
+ * toujours sur une règle layered, on surcharge donc les tokens et composants du bundle sans jamais utiliser !important.
+ */
+
+/* ----------------------------------------------------------------------------------------------------------------
+ * 1. Tokens
+ * ------------------------------------------------------------------------------------------------------------- */
+:root {
+    --tm-green: #42750c;
+    --tm-green-dark: #386409;
+    --tm-green-soft: #eaf3e6;
+    --tm-green-soft-hover: #dcebd5;
+    --tm-gold: #d8a848;
+    --tm-gold-dark: #cf9b38;
+    --tm-earth: #7a4e2d;
+    --tm-ink: #000000;
+    --tm-grey-700: #495057;
+    --tm-grey-500: #adb5bd;
+    --tm-grey-400: #ced4da;
+    --tm-grey-200: #e9ecef;
+    --tm-bg: #fafafa;
+    --tm-white: #ffffff;
+    --tm-warning: #cc8c1a;
+    --tm-warning-soft: #faedd9;
+    --tm-danger: #dc3545;
+    --tm-danger-soft: #fbe9eb;
+    --tm-font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+    --tm-sidebar-width: 240px;
+    --tm-gutter: 60px;
+    --tm-radius-card: 12px;
+    --tm-radius-field: 12.5px;
+    --tm-radius-btn: 8px;
+    --tm-radius-badge: 14px;
+
+    /* Variables EasyAdmin réaffectées aux valeurs de la maquette */
+    --font-family-sans-serif: var(--tm-font);
+    --font-family-base: var(--tm-font);
+    --color-primary: var(--tm-green);
+    --body-bg: var(--tm-bg);
+    --content-bg: var(--tm-bg);
+    --body-max-width: none;
+    --sidebar-max-width: var(--tm-sidebar-width);
+    --sidebar-bg: var(--tm-white);
+    --sidebar-border-color: var(--tm-grey-200);
+    --sidebar-menu-color: var(--tm-grey-700);
+    --sidebar-menu-icon-color: #262626;
+    --sidebar-menu-active-item-bg: var(--tm-green-soft);
+    --sidebar-menu-active-item-color: var(--tm-green);
+    --sidebar-menu-hover-color: var(--tm-green);
+    --sidebar-item-hover-bg: var(--tm-green-soft);
+    --sidebar-menu-header-color: var(--tm-grey-500);
+    --content-top-border-color: transparent;
+    --content-section-border-color: var(--tm-grey-200);
+    --text-primary-color: var(--tm-ink);
+    --text-secondary-color: var(--tm-grey-700);
+    --table-thead-color: var(--tm-grey-500);
+    --table-cell-color: var(--tm-grey-700);
+    --table-cell-border-color: var(--tm-grey-200);
+    --table-hover-cell-bg: #f6faf3;
+}
+
+html,
+body.ea {
+    background: var(--tm-bg);
+    color: var(--tm-grey-700);
+    font-family: var(--tm-font);
+}
+
+/* ----------------------------------------------------------------------------------------------------------------
+ * 2. Logo (public/img/logo.png, exporté de la maquette ; à défaut, repli texte)
+ * ------------------------------------------------------------------------------------------------------------- */
+.tm-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--tm-ink);
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.tm-logo-img {
+    display: block;
+    width: 56px;
+    height: 56px;
+    object-fit: contain;
+}
+
+/* Sur desktop le logo image suffit (comme la maquette) ; le texte ne sert que de repli. */
+.tm-logo:not(.no-logo) .tm-logo-text {
+    display: none;
+}
+
+.tm-logo.no-logo .tm-logo-text {
+    color: var(--tm-green);
+    font-size: 20px;
+}
+
+/* ----------------------------------------------------------------------------------------------------------------
+ * 3. Barre latérale
+ * ------------------------------------------------------------------------------------------------------------- */
+.ea-sidebar {
+    padding: 0;
+    background: var(--tm-white);
+    border-right: 1px solid var(--tm-grey-200);
+}
+
+.ea-sidebar-header {
+    padding: 24px 24px 16px;
+}
+
+.ea-sidebar-logo .logo {
+    display: inline-flex;
+    align-items: center;
+}
+
+.ea-sidebar-content {
+    padding: 8px 24px 24px;
+}
+
+.ea-sidebar-group-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ea-sidebar-item {
+    padding: 0;
+}
+
+.ea-sidebar-item-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 0 4px 0 12px;
+    border-radius: 8px;
+    color: var(--tm-grey-700);
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.ea-sidebar-item-icon {
+    display: inline-flex;
+    width: 20px;
+    margin: 0;
+    justify-content: center;
+    color: #262626;
+    font-size: 15px;
+}
+
+.ea-sidebar-item-link:hover,
+.ea-sidebar-item.is-active .ea-sidebar-item-link {
+    background: var(--tm-green-soft);
+    color: var(--tm-green);
+}
+
+.ea-sidebar-item.is-active .ea-sidebar-item-icon,
+.ea-sidebar-item-link:hover .ea-sidebar-item-icon {
+    color: var(--tm-green);
+}
+
+.ea-sidebar-menu-header,
+.ea-sidebar .menu-header {
+    margin-top: 16px;
+    color: var(--tm-grey-500);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+/* ----------------------------------------------------------------------------------------------------------------
+ * 4. Zone de contenu et en-tête de page
+ * ------------------------------------------------------------------------------------------------------------- */
+.wrapper {
+    grid-template-columns: var(--tm-sidebar-width) minmax(0, 1fr);
+}
+
+.main-content,
+.content-wrapper,
+.content {
+    min-width: 0;
+}
+
+.content-top {
+    justify-content: flex-end;
+    padding: 12px 24px 0;
+    border: 0;
+    background: transparent;
+}
+
+.content-wrapper {
+    padding: 24px var(--tm-gutter) var(--tm-gutter);
+    background: var(--tm-bg);
+}
+
+.content-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px 16px;
+    margin-bottom: 24px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.content-header .title,
+.content-header-title .title {
+    margin: 0;
+    color: var(--tm-ink);
+    font-family: var(--tm-font);
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.tm-subtitle {
+    margin: 4px 0 0;
+    color: var(--tm-grey-700);
+    font-size: 16px;
+    font-weight: 400;
+}
+
+.tm-back {
+    display: inline-block;
+    margin-bottom: 16px;
+    color: var(--tm-green);
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.tm-back:hover {
+    text-decoration: underline;
+}
+
+/* Recherche : sous le titre, comme la maquette (champ 44px, rayon 12.5px, bordure #ced4da) */
+.tm-header-tools {
+    flex: 0 0 100%;
+    order: 3;
+}
+
+.tm-header-tools .content-search {
+    max-width: 380px;
+}
+
+.content-search .form-widget {
+    position: relative;
+    display: block;
+}
+
+.content-search-icon {
+    position: absolute;
+    top: 50%;
+    left: 14px;
+    z-index: 1;
+    transform: translateY(-50%);
+    color: var(--tm-grey-500);
+    pointer-events: none;
+}
+
+.content-search-label {
+    display: block;
+    margin: 0;
+}
+
+.content-search .form-control,
+.form-action-search .form-control {
+    width: 100%;
+    height: 44px;
+    padding: 0 12.5px 0 40px;
+    border: 1.25px solid var(--tm-grey-400);
+    border-radius: var(--tm-radius-field);
+    background: var(--tm-white);
+    color: var(--tm-grey-700);
+    font-size: 16px;
+    font-weight: 600;
+    box-shadow: none;
+}
+
+.content-search .form-control:focus {
+    border-color: var(--tm-green);
+    outline: 0;
+}
+
+.content-body {
+    padding: 0;
+}
+
+.page-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* ----------------------------------------------------------------------------------------------------------------
+ * 5. Boutons
+ * ------------------------------------------------------------------------------------------------------------- */
+.btn,
+.tm-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 43px;
+    padding: 8px 24px;
+    border: 1px solid transparent;
+    border-radius: var(--tm-radius-btn);
+    font-family: var(--tm-font);
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1.2;
+    text-decoration: none;
+    cursor: pointer;
+    box-shadow: none;
+}
+
+.btn-primary,
+.tm-btn-primary {
+    background: var(--tm-green);
+    border-color: var(--tm-green);
+    color: var(--tm-white);
+}
+
+.btn-primary:hover,
+.tm-btn-primary:hover {
+    background: var(--tm-green-dark);
+    border-color: var(--tm-green-dark);
+    color: var(--tm-white);
+}
+
+.btn-secondary,
+.btn-outline-secondary,
+.tm-btn-outline {
+    background: var(--tm-green-soft);
+    border-color: var(--tm-green);
+    border-radius: 10px;
+    color: var(--tm-green);
+}
+
+.btn-secondary:hover,
+.tm-btn-outline:hover {
+    background: var(--tm-green-soft-hover);
+    color: var(--tm-green);
+}
+
+.btn-danger {
+    background: var(--tm-danger);
+    border-color: var(--tm-danger);
+    color: var(--tm-white);
+}
+
+.btn-invisible {
+    min-height: auto;
+    padding: 4px;
+    background: transparent;
+    border-color: transparent;
+}
+
+.tm-btn-gold {
+    background: var(--tm-gold);
+    border-color: var(--tm-gold);
+    color: var(--tm-ink);
+}
+
+.tm-btn-gold:hover {
+    background: var(--tm-gold-dark);
+    color: var(--tm-ink);
+}
+
+.tm-btn-block {
+    width: 100%;
+}
+
+.tm-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-top: 40px;
+}
+
+/* Petits liens d'action de ligne ("Voir le profil", "Répondre", "Gérer"...) */
+.datagrid .actions a,
+.datagrid .actions .action-detail,
+.datagrid .actions .action-edit {
+    min-height: auto;
+    padding: 0 6px;
+    border: 0;
+    background: transparent;
+    color: var(--tm-green);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.datagrid .actions .action-delete {
+    color: var(--tm-grey-500);
+    font-weight: 500;
+}
+
+/* ----------------------------------------------------------------------------------------------------------------
+ * 6. Badges (texte + couleur : l'information n'est jamais portée par la couleur seule)
+ * ------------------------------------------------------------------------------------------------------------- */
+.badge,
+.tm-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--tm-radius-badge);
+    background: var(--tm-grey-200);
+    color: var(--tm-grey-700);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    box-shadow: none;
+}
+
+.badge-success,
+.badge-primary,
+.badge-boolean-true,
+.tm-badge-subscription {
+    background: var(--tm-green-soft);
+    color: var(--tm-green);
+}
+
+.badge-warning,
+.tm-badge-report {
+    background: var(--tm-warning-soft);
+    color: var(--tm-warning);
+}
+
+.badge-danger {
+    background: var(--tm-danger-soft);
+    color: var(--tm-danger);
+}
+
+.badge-secondary,
+.badge-boolean-false,
+.tm-badge-producer,
+.tm-badge-client,
+.tm-badge-support {
+    background: var(--tm-grey-200);
+    color: var(--tm-grey-700);
+}
+
+/* ----------------------------------------------------------------------------------------------------------------
+ * 7. Tableaux : datagrid EasyAdmin + tableau sur mesure (.tm-table)
+ * ------------------------------------------------------------------------------------------------------------- */
+.tm-panel {
+    overflow: hidden;
+    border: 1px solid var(--tm-grey-200);
+    border-radius: var(--tm-radius-card);
+    background: var(--tm-white);
+}
+
+.tm-panel-padded {
+    padding: 20px;
+}
+
+.tm-table {
+    width: 100%;
+    margin: 0;
+    border-collapse: collapse;
+    background: var(--tm-white);
+}
+
+/* Le datagrid EasyAdmin n'a pas de conteneur : le tableau devient lui-même la carte de la maquette (bordure 1px,
+   rayon 12px). border-collapse: separate est nécessaire pour qu'un border-radius s'applique à un <table> ; les
+   coins des cellules d'angle sont arrondis à la main. */
+.datagrid {
+    width: 100%;
+    margin: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid var(--tm-grey-200);
+    border-radius: var(--tm-radius-card);
+    background: var(--tm-white);
+}
+
+.datagrid thead tr:first-child th:first-child {
+    border-top-left-radius: 11px;
+}
+
+.datagrid thead tr:first-child th:last-child {
+    border-top-right-radius: 11px;
+}
+
+.datagrid tbody tr:last-child td:first-child {
+    border-bottom-left-radius: 11px;
+}
+
+.datagrid tbody tr:last-child td:last-child {
+    border-bottom-right-radius: 11px;
+}
+
+.datagrid thead th,
+.tm-table thead th {
+    padding: 14px 20px;
+    border: 0;
+    border-bottom: 1px solid var(--tm-grey-200);
+    background: #fcfcfc;
+    color: var(--tm-grey-500);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-align: left;
+    text-transform: uppercase;
+}
+
+.datagrid thead th a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.datagrid tbody td,
+.tm-table tbody td {
+    padding: 14px 20px;
+    border: 0;
+    border-bottom: 1px solid var(--tm-grey-200);
+    background: transparent;
+    box-shadow: none;
+    color: var(--tm-grey-700);
+    font-size: 14px;
+    vertical-align: middle;
+}
+
+.datagrid tbody tr:last-child td,
+.tm-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.datagrid tbody tr:hover td {
+    background: #f6faf3;
+}
+
+.datagrid tbody td a:not(.btn):not(.dropdown-item) {
+    color: inherit;
+    text-decoration: none;
+}
+
+.datagrid tbody td a:not(.btn):not(.dropdown-item):hover {
+    color: var(--tm-green);
+}
+
+.datagrid tbody td:first-child a,
+.tm-table tbody td.tm-cell-main {
+    color: var(--tm-ink);
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.tm-cell-muted {
+    color: var(--tm-grey-500);
+}
+
+.tm-cell-end {
+    text-align: right;
+}
+
+.tm-empty td {
+    padding: 28px 20px;
+    color: var(--tm-grey-500);
+    text-align: center;
+}
+
+/* Pagination / compteur ("Affichage de 1 à 6 sur 1 284", "‹ Précédent  Suivant ›") */
+.list-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 16px;
+    color: var(--tm-grey-500);
+    font-size: 13px;
+}
+
+.list-pagination .pagination {
+    gap: 12px;
+}
+
+.list-pagination .page-link {
+    border: 0;
+    background: transparent;
+    color: var(--tm-green);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.list-pagination .disabled .page-link {
+    color: var(--tm-grey-500);
+}
+
+/* ----------------------------------------------------------------------------------------------------------------
+ * 8. Formulaires
+ * ------------------------------------------------------------------------------------------------------------- */
+.form-control,
+.form-select,
+.tm-field input {
+    height: 44px;
+    padding: 0 12.5px;
+    border: 1.25px solid var(--tm-grey-400);
+    border-radius: var(--tm-radius-field);
+    background: var(--tm-white);
+    color: var(--tm-grey-700);
+    font-family: var(--tm-font);
+    font-size: 16px;
+    font-weight: 500;
+    box-shadow: none;
+}
+
+textarea.form-control {
+    height: auto;
+    padding: 12px;
+}
+
+/* États focus visibles (exigence d'accessibilité du CDC graphisme) */
+.form-control:focus,
+.form-select:focus,
+.tm-field input:focus {
+    border-color: var(--tm-green);
+    outline: 0;
+    box-shadow: 0 0 0 3px rgba(66, 117, 12, 0.15);
+}
+
+.form-label,
+.form-group > label,
+.tm-field label {
+    margin-bottom: 6px;
+    color: var(--tm-grey-700);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.form-check-input:checked {
+    background-color: var(--tm-green);
+    border-color: var(--tm-green);
+}
+
+.tm-btn:focus-visible,
+.btn:focus-visible,
+.ea-sidebar-item-link:focus-visible {
+    outline: 3px solid rgba(66, 117, 12, 0.35);
+    outline-offset: 2px;
+}
+
+/* ----------------------------------------------------------------------------------------------------------------
+ * 9. Tuiles de statistiques, titres de section, grilles (dashboard / statistiques)
+ * ------------------------------------------------------------------------------------------------------------- */
+.tm-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 142px);
+    align-items: start;
+    gap: 24px;
+    margin-bottom: 40px;
+}
+
+.tm-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 17.5px 15px;
+    border: 1.25px solid var(--tm-grey-200);
+    border-radius: var(--tm-radius-field);
+    background: var(--tm-white);
+}
+
+.tm-stat-value {
+    color: var(--tm-green);
+    font-size: 27.5px;
+    font-weight: 600;
+    line-height: 1.15;
+}
+
+.tm-stat-label {
+    color: var(--tm-grey-700);
+    font-size: 15px;
+    line-height: 1.25;
+}
+
+.tm-stat-detail {
+    color: var(--tm-grey-500);
+    font-size: 13px;
+}
+
+.tm-section-title {
+    margin: 0 0 16px;
+    color: var(--tm-ink);
+    font-size: 22px;
+    font-weight: 600;
+}
+
+.tm-panel-block {
+    margin-bottom: 32px;
+}
+
+.tm-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 32px;
+}
+
+/* ----------------------------------------------------------------------------------------------------------------
+ * 10. Page de connexion
+ * ------------------------------------------------------------------------------------------------------------- */
+.tm-login-page {
+    margin: 0;
+    background: var(--tm-bg);
+    color: var(--tm-grey-700);
+    font-family: var(--tm-font);
+}
+
+.tm-login {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 24px;
+}
+
+.tm-login-card {
+    width: 100%;
+    max-width: 420px;
+    padding: 32px;
+    border: 1px solid var(--tm-grey-200);
+    border-radius: var(--tm-radius-card);
+    background: var(--tm-white);
+}
+
+.tm-login-logo {
+    margin-bottom: 16px;
+}
+
+.tm-login-title {
+    margin: 0;
+    color: var(--tm-ink);
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.tm-login .tm-subtitle {
+    margin-bottom: 24px;
+}
+
+.tm-field {
+    margin-bottom: 16px;
+}
+
+.tm-field label {
+    display: block;
+}
+
+.tm-field input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.tm-login .alert-danger {
+    margin: 0 0 16px;
+    padding: 12px 14px;
+    border-radius: var(--tm-radius-btn);
+    background: var(--tm-danger-soft);
+    color: var(--tm-danger);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* ----------------------------------------------------------------------------------------------------------------
+ * 11. Mobile (maquette Mobile Admin, 393px) : en-tête avec bouton menu + titre, tuiles sur 3 colonnes,
+ *     tableaux transformés en cartes empilées
+ * ------------------------------------------------------------------------------------------------------------- */
+.tm-mobile-title {
+    color: var(--tm-ink);
+    font-size: 18px;
+    font-weight: 700;
+}
+
+@media (max-width: 991px) {
+    :root {
+        --tm-gutter: 16px;
+    }
+
+    .responsive-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--tm-grey-200);
+        background: var(--tm-white);
+    }
+
+    #responsive-header-logo {
+        margin-left: 0;
+        margin-right: auto;
+    }
+
+    .content-wrapper {
+        padding: 16px var(--tm-gutter) 32px;
+    }
+
+    /* Le titre de page est déjà dans l'en-tête mobile (bouton menu + titre) : la maquette n'a pas de second gros titre,
+       ni de barre supérieure séparée (le menu utilisateur est déjà dans l'en-tête mobile). */
+    .content-header-title,
+    .content-top {
+        display: none;
+    }
+
+    .content-header {
+        margin-bottom: 16px;
+    }
+
+    .tm-header-tools {
+        flex-basis: 100%;
+    }
+
+    .tm-header-tools .content-search {
+        max-width: none;
+    }
+
+    .tm-stats {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 24px;
+    }
+
+    .tm-stat {
+        padding: 12px;
+    }
+
+    .tm-stat-value {
+        font-size: 22px;
+    }
+
+    .tm-stat-label {
+        font-size: 13px;
+    }
+
+    .tm-section-title {
+        font-size: 18px;
+    }
+
+    .tm-grid-2 {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .tm-actions {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .tm-actions .tm-btn {
+        width: 100%;
+    }
+
+    /* Tableaux -> cartes : chaque ligne devient une carte, les en-têtes disparaissent. */
+    .tm-panel {
+        overflow: visible;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+    }
+
+    .datagrid,
+    .datagrid tbody,
+    .tm-table,
+    .tm-table tbody {
+        display: block;
+        border: 0;
+        background: transparent;
+    }
+
+    .datagrid {
+        border-radius: 0;
+    }
+
+    .datagrid thead,
+    .tm-table thead {
+        display: none;
+    }
+
+    .datagrid tbody tr,
+    .tm-table tbody tr {
+        margin-bottom: 12px;
+        padding: 14px 16px;
+        border: 1px solid var(--tm-grey-200);
+        border-radius: var(--tm-radius-card);
+        background: var(--tm-white);
+    }
+
+    .tm-table tbody tr {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 12px;
+    }
+
+    .datagrid tbody td,
+    .tm-table tbody td {
+        display: block;
+        min-height: 0;
+        padding: 0;
+        border: 0;
+        text-align: left;
+    }
+
+    /* Carte du datagrid EasyAdmin : 1re colonne = titre, badges de statut à droite du titre, autres colonnes en
+       lignes de détail. Les libellés de colonne positionnés en absolu par EasyAdmin (td::before) sont masqués. */
+    .datagrid tbody tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 4px 12px;
+    }
+
+    table.datagrid:not(.datagrid-empty) td::before {
+        content: none;
+    }
+
+    .datagrid tbody td.batch-actions-selector {
+        display: none;
+    }
+
+    .datagrid tbody td.batch-actions-selector + td {
+        grid-column: 1;
+        color: var(--tm-ink);
+        font-size: 16px;
+        font-weight: 600;
+    }
+
+    /* Plusieurs badges (ex. priorité + statut d'un ticket) : seul le dernier va à droite du titre, les autres restent
+       en ligne de détail. */
+    .datagrid tbody td:has(.badge) {
+        grid-column: 1 / -1;
+        justify-self: start;
+    }
+
+    .datagrid tbody td:has(.badge):not(:has(~ td .badge)) {
+        grid-column: 2;
+        grid-row: 1;
+        justify-self: end;
+    }
+
+    .datagrid tbody td:not(.batch-actions-selector):not(.actions):not(:has(.badge)):not(.batch-actions-selector + td) {
+        grid-column: 1 / -1;
+        color: var(--tm-grey-700);
+        font-size: 14px;
+    }
+
+    .datagrid tbody td.actions {
+        grid-column: 1 / -1;
+        text-align: right;
+    }
+
+    .tm-activity .tm-cell-main {
+        flex: 1 1 60%;
+        font-size: 16px;
+    }
+
+    .tm-activity .tm-cell-badge {
+        order: 2;
+        margin-left: auto;
+    }
+
+    .tm-activity .tm-cell-text,
+    .tm-activity .tm-cell-muted {
+        order: 3;
+        font-size: 14px;
+    }
+}
