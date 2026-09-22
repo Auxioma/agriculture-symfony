@@ -10,6 +10,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
+use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
@@ -17,7 +18,9 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\BooleanField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
+use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
+use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\HttpFoundation\Response;
 use App\Service\Audit\AuditLogger;
 
@@ -72,6 +75,15 @@ class ProducerProfileCrudController extends AbstractCrudController
         yield BooleanField::new('isActive')->setLabel('Actif')->hideOnForm();
         yield AssociationField::new('labels')->setLabel('Labels')->onlyOnDetail();
         yield AssociationField::new('verificationDocuments')->setLabel('Documents')->onlyOnDetail();
+    }
+
+    // * Puces "En attente/Validés/Refusés" (layout.html.twig, tm_filter_chips) au lieu du bouton "+ Filtres".
+    // * TextFilter + setFormType(TextType::class) : par défaut EasyAdmin imbrique la valeur soumise sous
+    // * "comparison"/"value", ici on la garde plate ("filters[verificationStatus]=pending") pour rester
+    // * lisible par tm_filter_chips, comme RoleFilter sur UserCrudController.
+    public function configureFilters(Filters $filters): Filters
+    {
+        return $filters->add(TextFilter::new('verificationStatus')->setFormType(TextType::class));
     }
 
     public function configureActions(Actions $actions): Actions

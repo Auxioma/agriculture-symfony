@@ -19,6 +19,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
+use EasyCorp\Bundle\EasyAdminBundle\Filter\BooleanFilter;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -83,7 +84,10 @@ class LabelCrudController extends AbstractCrudController
 
     public function configureFilters(Filters $filters): Filters
     {
-        return $filters->add('isActive');
+        // * "Actif"/"Inactif" par défaut de BooleanFilter (traduit
+        // * globalement par label.true/label.false dans EasyAdminBundle -- le changer affecterait tous les
+        // * autres booléens du back-office, pas seulement celui-ci).
+        return $filters->add(BooleanFilter::new('isActive')->setFormTypeOption('choices', ['Actif' => true, 'Inactif' => false]));
     }
 
     public function configureActions(Actions $actions): Actions

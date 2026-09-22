@@ -1,0 +1,15 @@
+{# Surcharge minimale de crud/index.html.twig, seule à définir le bouton "+ Filtres" (bloc body_class, pas
+   celui de layout.html.twig : cette page l'écrase sans appeler parent(), donc l'y masquer n'avait aucun effet
+   -- constaté en testant). Cette page a aussi son propre "extends" direct de @EasyAdmin/layout.html.twig,
+   donc pas d'accès simple aux variables Twig de notre layout.html.twig (contexte d'une autre chaîne
+   d'héritage) : la liste ci-dessous duplique volontairement les clés "hideFiltersButton: true" de
+   tm_filter_chips (layout.html.twig) -- à garder synchronisée avec elle si un écran change de ce côté. #}
+{% extends '@!EasyAdmin/crud/index.html.twig' %}
+
+{% set tm_hide_filters_button_for = ['LabelCrudController', 'UserCrudController', 'ProducerProfileCrudController', 'ReviewCrudController', 'TicketCrudController'] %}
+
+{% block body_class %}
+    {%- set tm_crud_class = ea.request.attributes.get('crudControllerFqcn') is not null ? ea.request.attributes.get('crudControllerFqcn')|split('\\')|last : null -%}
+    {{- parent() -}}
+    {%- if tm_crud_class in tm_hide_filters_button_for %} tm-hide-filters-button{% endif -%}
+{% endblock %}

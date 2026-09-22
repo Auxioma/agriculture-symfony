@@ -252,8 +252,64 @@ body.ea {
 
 /* Recherche : sous le titre, comme la maquette (champ 44px, rayon 12.5px, bordure #ced4da) */
 .tm-header-tools {
+    display: flex;
+    align-items: center;
     flex: 0 0 100%;
+    flex-wrap: wrap;
     order: 3;
+    gap: 12px;
+}
+
+/* EasyAdmin réserve du padding bas sous .form-group (24px) et sous son propre label de recherche (8px),
+ * place pour un message d'aide/erreur que la recherche n'affiche jamais. Sans ce padding, le champ visible
+ * (44px) fait toute la hauteur de sa boîte -- avec, sa boîte (76px, puis 52px une fois .form-group neutralisé
+ * ci-dessus) dépassait celle des puces, et le centrage vertical de la ligne (align-items: center sur
+ * .tm-header-tools) décalait alors la barre de recherche vers le haut par rapport à elles. */
+.tm-header-tools .form-group,
+.tm-header-tools .content-search-label {
+    padding-bottom: 0;
+}
+
+/* Puces de statut à côté de la recherche (maquette : Utilisateurs, Producteurs, Demandes, Support...), une
+ * seule active à la fois -- voir tm_filter_chips dans le layout EasyAdmin. */
+.tm-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tm-chip {
+    padding: 9px 18px;
+    border: 1.25px solid var(--tm-grey-400);
+    border-radius: 999px;
+    background: var(--tm-white);
+    color: var(--tm-grey-700);
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.tm-chip:hover {
+    border-color: var(--tm-green);
+    color: var(--tm-green);
+}
+
+.tm-chip-active,
+.tm-chip-active:hover {
+    border-color: var(--tm-green);
+    background: var(--tm-green);
+    color: var(--tm-white);
+}
+
+/* Le bouton "+ Filtres" d'EasyAdmin ne fait pas partie de la maquette sur les écrans qui utilisent des puces de
+ * statut (.tm-chips ci-dessus) : masqué uniquement là, pas globalement -- un écran sans puces garde la modale
+ * standard. .tm-hide-filters-button est posée sur <body> par le layout EasyAdmin (tm_filter_chips,
+ * hideFiltersButton) -- pas de sélecteur du genre "body.ea-index-<Entité>" : cette classe-là n'existe même pas
+ * quand la liste est vide (voir le commentaire de body_class dans layout.html.twig), ce qui aurait laissé
+ * réapparaître le bouton sur un écran sans résultat. */
+body.tm-hide-filters-button .datagrid-filters {
+    display: none;
 }
 
 .tm-header-tools .content-search {

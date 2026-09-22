@@ -148,6 +148,29 @@ final class LabelCrudControllerTest extends ApiTestCase
         self::assertStringContainsString('action-delete', $this->client->getResponse()->getContent());
     }
 
+    // * Puces "Tous"/"Actifs"/"Inactifs" (maquette Figma) au lieu du bouton "+ Filtres" d'EasyAdmin -- voir
+    // * tm_filter_chips dans templates/bundles/EasyAdminBundle/layout.html.twig. Charger directement une URL
+    // * déjà filtrée (pas seulement cliquer depuis une page sans filtre) est le seul cas qui exerçait
+    // * réellement ea.request.query.all('filters') : un ->get('filters') y aurait fait planter le rendu
+    // * (Symfony refuse ce genre d'accès sur une valeur non scalaire), régression qu'un simple aller-retour
+    // * page-sans-filtre -> lien n'aurait pas révélée.
+    public function testIndexWithChipFilterAlreadyAppliedRendersWithoutError(): void
+    {
+        $this->loginAsAdmin();
+        $this->makeLabel('bio', 'Bio');
+        $inactive = $this->makeLabel('local', 'Local');
+        $inactive->setIsActive(false);
+        $this->em->flush();
+
+        $this->client->request('GET', $this->url(Action::INDEX).'?filters%5BisActive%5D=0');
+
+        self::assertResponseIsSuccessful();
+        $html = $this->client->getResponse()->getContent();
+        self::assertStringContainsString('tm-chip-active">Inactifs', $html);
+        self::assertStringContainsString('Local', $html);
+        self::assertStringNotContainsString('>Bio<', $html);
+    }
+
     public function testEditingTranslationsSucceeds(): void
     {
         $this->loginAsAdmin();

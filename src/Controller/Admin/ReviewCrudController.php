@@ -27,7 +27,9 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
+use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
+use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
@@ -76,9 +78,12 @@ class ReviewCrudController extends AbstractCrudController
         yield DateTimeField::new('createdAt')->setLabel('Date')->setFormat('d MMM y')->hideOnForm();
     }
 
+    // * Puces "En attente/Publiés/Rejetés" (layout.html.twig, tm_filter_chips) au lieu du bouton "+ Filtres".
+    // * TextFilter + setFormType(TextType::class) : voir le commentaire équivalent sur
+    // * ProducerProfileCrudController::configureFilters() -- valeur soumise gardée plate pour tm_filter_chips.
     public function configureFilters(Filters $filters): Filters
     {
-        return $filters->add('status');
+        return $filters->add(TextFilter::new('status')->setFormType(TextType::class));
     }
 
     // * DELETE reste actif : nettoyage d'un avis manifestement abusif, comme pour les demandes clients

@@ -9,6 +9,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
+use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
@@ -79,6 +80,13 @@ class UserCrudController extends AbstractCrudController
         ]);
         yield DateTimeField::new('createdAt')->hideOnForm()->setLabel('Inscription')->setFormat('d MMMM y');
         yield DateTimeField::new('lastLoginAt')->hideOnForm()->hideOnIndex()->setLabel('Dernière connexion');
+    }
+
+    // * Puces "Tous/Clients/Producteurs/Support/Admins" (layout.html.twig, tm_filter_chips) au lieu du bouton
+    // * "+ Filtres" -- voir RoleFilter pour pourquoi $roles (simple_array) a besoin d'un filtre dédié.
+    public function configureFilters(Filters $filters): Filters
+    {
+        return $filters->add(RoleFilter::new('roles'));
     }
 
     public function configureActions(Actions $actions): Actions

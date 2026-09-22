@@ -4,12 +4,15 @@ namespace App\Controller\Admin;
 
 use App\Entity\Support\Ticket;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
+use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
+use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
+use Symfony\Component\Form\Extension\Core\Type\TextType;
 
 /**
  * Module "Support" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf :
@@ -73,5 +76,13 @@ class TicketCrudController extends AbstractCrudController
         yield DateTimeField::new('createdAt')->setLabel('Ouvert le')->setFormat('d MMM y')->hideOnForm();
         yield DateTimeField::new('closedAt')->setLabel('Fermé le')->hideOnForm()->hideOnIndex();
         yield AssociationField::new('messages')->onlyOnDetail();
+    }
+
+    // * Puces "Ouverts/En cours/Résolus" (layout.html.twig, tm_filter_chips) au lieu du bouton "+ Filtres".
+    // * TextFilter + setFormType(TextType::class) : voir le commentaire équivalent sur
+    // * ProducerProfileCrudController::configureFilters() -- valeur soumise gardée plate pour tm_filter_chips.
+    public function configureFilters(Filters $filters): Filters
+    {
+        return $filters->add(TextFilter::new('status')->setFormType(TextType::class));
     }
 }

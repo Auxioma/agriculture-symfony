@@ -24,13 +24,73 @@
     'CouponCrudController': "Créez et suivez les codes de réduction pour l'abonnement producteur",
 } %}
 
+{# Puces de statut de la maquette (Utilisateurs, Producteurs, Demandes, Avis, Support) : aucun de ces écrans
+   ne montre le bouton "+ Filtres"/la modale d'EasyAdmin, seulement une rangée de puces, une seule active à la
+   fois. Chaque écran listé ici garde son filtre EasyAdmin (configureFilters()) pour le filtrage réel -- ces
+   puces ne sont qu'une autre façon de soumettre le même paramètre "filters[...]" en querystring -- mais son
+   bouton "+ Filtres" est masqué (hideFiltersButton, via le bloc body_class plus bas), SAUF pour les demandes
+   clients qui gardent aussi le bouton (voir ClientRequestCrudController::configureFilters()). Un écran absent
+   de cette table garde le bouton "+ Filtres" standard, ex. Labels (voir son propre docblock) et Signalements
+   (pas encore de puce -- l'écran actuel, MessageCrudController, est un remplacement provisoire des vrais
+   signalements trust.reports, voir TODO.md). #}
+{% set tm_filter_chips = {
+    'LabelCrudController': {property: 'isActive', hideFiltersButton: true, chips: [
+        {label: 'Tous', value: null},
+        {label: 'Actifs', value: '1'},
+        {label: 'Inactifs', value: '0'},
+    ]},
+    'UserCrudController': {property: 'roles', hideFiltersButton: true, chips: [
+        {label: 'Tous', value: null},
+        {label: 'Clients', value: 'ROLE_CLIENT'},
+        {label: 'Producteurs', value: 'ROLE_PRODUCER|ROLE_PRODUCER_TEAM'},
+        {label: 'Support', value: 'ROLE_SUPPORT'},
+        {label: 'Admins', value: 'ROLE_ADMIN|ROLE_SUPER_ADMIN'},
+    ]},
+    'ProducerProfileCrudController': {property: 'verificationStatus', hideFiltersButton: true, chips: [
+        {label: 'Tous', value: null},
+        {label: 'En attente', value: 'pending'},
+        {label: 'Validés', value: 'verified'},
+        {label: 'Refusés', value: 'rejected'},
+    ]},
+    'ClientRequestCrudController': {property: 'status', hideFiltersButton: false, chips: [
+        {label: 'Toutes', value: null},
+        {label: 'Envoyées', value: 'sent'},
+        {label: 'En attente', value: 'waiting_replies'},
+        {label: 'Réponses reçues', value: 'replies_received'},
+        {label: 'Archivées', value: 'archived'},
+    ]},
+    'ReviewCrudController': {property: 'status', hideFiltersButton: true, chips: [
+        {label: 'Tous', value: null},
+        {label: 'En attente', value: 'pending'},
+        {label: 'Publiés', value: 'published'},
+        {label: 'Rejetés', value: 'rejected'},
+    ]},
+    'TicketCrudController': {property: 'status', hideFiltersButton: true, chips: [
+        {label: 'Tous', value: null},
+        {label: 'Ouverts', value: 'open'},
+        {label: 'En cours', value: 'in_progress'},
+        {label: 'Résolus', value: 'resolved'},
+    ]},
+} %}
+
 {% block search_wrapper %}{% endblock %}
 
 {% block responsive_header_logo %}
     <span class="tm-mobile-title">{{ block('content_title')|striptags|trim }}</span>
 {% endblock %}
 
+{# Le bouton "+ Filtres" d'EasyAdmin est masqué séparément, dans templates/bundles/EasyAdminBundle/
+   crud/index.html.twig (bloc body_class) : celui de CE fichier (layout.html.twig) n'a aucun effet sur les
+   pages de liste -- crud/index.html.twig écrase body_class sans jamais appeler parent(), donc le nôtre ici
+   n'est simplement jamais atteint pour ces pages (constaté en testant : la classe n'apparaissait jamais sur
+   <body>). #}
+
 {% block content_header %}
+    {# Un {% set %} à l'intérieur d'un {% block %} Twig est local à ce bloc, invisible du reste de
+       content_header -- content_subtitle et la rangée de puces plus bas en ont chacun besoin. #}
+    {% set tm_crud_class = ea.request.attributes.get('crudControllerFqcn') is not null ? ea.request.attributes.get('crudControllerFqcn')|split('\\')|last : null %}
+    {% set tm_chips_config = tm_filter_chips[tm_crud_class] ?? null %}
+
     <div class="content-header-title">
         <h1 class="title">
             {% block content_title %}{% endblock %}
@@ -45,7 +105,6 @@
         </h1>
 
         {% block content_subtitle %}
-            {% set tm_crud_class = ea.request.attributes.get('crudControllerFqcn') is not null ? ea.request.attributes.get('crudControllerFqcn')|split('\\')|last : null %}
             {% if ea.crud is not null and ea.crud.currentPage == 'index' and tm_crud_class in tm_subtitles|keys %}
                 <p class="tm-subtitle">{{ tm_subtitles[tm_crud_class] }}</p>
             {% endif %}
@@ -56,9 +115,27 @@
         <div class="page-actions">{% block page_actions %}{% endblock %}</div>
     {% endblock %}
 
-    {% if ea.crud is not null and ea.crud.currentPage == 'index' and ea.crud.isSearchEnabled %}
+    {% if ea.crud is not null and ea.crud.currentPage == 'index' and (ea.crud.isSearchEnabled or tm_chips_config is not null) %}
         <div class="tm-header-tools">
-            <div class="content-search">{{ block('search') }}</div>
+            {% if ea.crud.isSearchEnabled %}
+                <div class="content-search">{{ block('search') }}</div>
+            {% endif %}
+
+            {% if tm_chips_config is not null %}
+                {# ea.request.query.get('filters') planterait ici : InputBag::get() refuse toute valeur non
+                   scalaire (BadRequestException "contains a non-scalar value") dès qu'un filtre est actif --
+                   .all('filters') est la méthode prévue pour lire un paramètre de requête tableau. #}
+                {% set tm_current_filter = ea.request.query.all('filters')[tm_chips_config.property] ?? null %}
+                <div class="tm-chips">
+                    {% for chip in tm_chips_config.chips %}
+                        {% set tm_chip_active = chip.value is null ? tm_current_filter is null : tm_current_filter == chip.value %}
+                        {% set tm_chip_url = chip.value is null
+                            ? ea_url().unset('filters').setAction('index').generateUrl()
+                            : ea_url().set('filters', {(tm_chips_config.property): chip.value}).setAction('index').generateUrl() %}
+                        <a href="{{ tm_chip_url }}" class="tm-chip{{ tm_chip_active ? ' tm-chip-active' }}">{{ chip.label }}</a>
+                    {% endfor %}
+                </div>
+            {% endif %}
         </div>
     {% endif %}
 {% endblock content_header %}

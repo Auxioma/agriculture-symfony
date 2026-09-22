@@ -16,6 +16,8 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use EasyCorp\Bundle\EasyAdminBundle\Filter\EntityFilter;
+use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
+use Symfony\Component\Form\Extension\Core\Type\TextType;
 
 class ClientRequestCrudController extends AbstractCrudController
 {
@@ -85,8 +87,13 @@ class ClientRequestCrudController extends AbstractCrudController
         // * n'ont de __toString(), et le <select> du filtre (Symfony EntityType, non-autocomplete par défaut)
         // * plante sinon en tentant de caster l'entité en chaîne pour l'option affichée -- même mécanisme
         // * que sur les AssociationField de formulaire (CategoryCrudController::parent, etc.).
+        // * "status" reste accessible ici aussi via le bouton "+ Filtres" , le cahier fonctionnel demande plusieurs filtres sur les demandes ("Liste,
+        // * filtres, statut, doublons, spam..."), pas seulement le statut. TextFilter + setFormType(TextType::class) :
+        // * voir le commentaire équivalent sur ProducerProfileCrudController::configureFilters() -- valeur
+        // * soumise gardée plate pour que les puces "Toutes/Envoyées/En attente/..." (tm_filter_chips) et le
+        // * "+ Filtres" pilotent le même paramètre de requête.
         return $filters
-            ->add('status')
+            ->add(TextFilter::new('status')->setFormType(TextType::class))
             ->add('needType')
             ->add(EntityFilter::new('category')->setFormTypeOption('value_type_options.choice_label', 'name'))
             ->add(EntityFilter::new('country')->setFormTypeOption('value_type_options.choice_label', 'name'));
