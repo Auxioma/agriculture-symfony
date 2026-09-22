@@ -6,7 +6,7 @@
    tm_filter_chips (layout.html.twig) -- à garder synchronisée avec elle si un écran change de ce côté. #}
 {% extends '@!EasyAdmin/crud/index.html.twig' %}
 
-{% set tm_hide_filters_button_for = ['LabelCrudController', 'UserCrudController', 'ProducerProfileCrudController', 'ReviewCrudController', 'TicketCrudController'] %}
+{% set tm_hide_filters_button_for = ['LabelCrudController', 'UserCrudController', 'ProducerProfileCrudController', 'ReviewCrudController', 'TicketCrudController', 'AuditLogCrudController'] %}
 
 {% block body_class %}
     {%- set tm_crud_class = ea.request.attributes.get('crudControllerFqcn') is not null ? ea.request.attributes.get('crudControllerFqcn')|split('\\')|last : null -%}

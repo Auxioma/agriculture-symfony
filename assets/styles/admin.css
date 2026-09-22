@@ -139,18 +139,30 @@ body.ea {
     padding: 0;
 }
 
+/* Surlignage (survol/actif) étiré en pleine largeur de la colonne, à la demande de l'utilisateur -- la
+ * maquette Figma laisse 24px de marge des deux côtés (pastille de 192px dans une colonne de 240px, mesuré sur
+ * le composant "Sidebar navigation admin"). Marge négative gauche/droite = la largeur du padding de
+ * .ea-sidebar-content (24px) qu'elle annule, complétée par un padding interne équivalent pour que l'icône et
+ * le texte restent exactement à la même position visuelle qu'avant (36px = 24px de .ea-sidebar-content + les
+ * 12px de padding gauche d'origine). "inline-size" (pas "width") : EasyAdmin fixe déjà "inline-size: 100%"
+ * (sidebar.css) -- sans le réécrire ici, la marge négative se contente de décaler la pastille au lieu de
+ * l'élargir, sa largeur restant calée sur les 100% (191px) d'origine de son <li>. Rayon 8px conservé (comme la
+ * maquette) plutôt que des angles droits, pour rester aussi proche que possible de la pastille d'origine
+ * malgré la largeur pleine colonne. */
 .ea-sidebar-item-link {
     display: flex;
     align-items: center;
     gap: 12px;
     min-height: 44px;
-    padding: 0 4px 0 12px;
+    margin: 0 -24px;
+    padding: 0 28px 0 36px;
     border-radius: 8px;
     color: var(--tm-grey-700);
     font-size: 14px;
     font-weight: 600;
     text-decoration: none;
     white-space: nowrap;
+    inline-size: calc(100% + 48px);
 }
 
 .ea-sidebar-item-icon {
@@ -181,6 +193,17 @@ body.ea {
     font-weight: 600;
     letter-spacing: 0.02em;
     text-transform: uppercase;
+}
+
+/* Bascule "mode compact" d'EasyAdmin (rail à icônes, absent de la maquette) : masquée. Un clic dessus posait
+ * "ea-sidebar-width-compact" sur <body>, que la sidebar suivait (icônes seules) mais pas ".wrapper" ci-dessous
+ * (colonne de grille figée à 240px par --tm-sidebar-width) -- notre CSS, hors des @layer ea.* d'EasyAdmin,
+ * l'emporte toujours sur la règle (plus spécifique mais layered) qui aurait dû réduire cette colonne à 64px,
+ * d'où une bande vide entre les icônes et le contenu. Masquer la poignée plutôt que suivre la bascule : ce
+ * mode n'existe pas dans la maquette Figma.
+ */
+#sidebar-resizer-handler {
+    display: none;
 }
 
 /* ----------------------------------------------------------------------------------------------------------------

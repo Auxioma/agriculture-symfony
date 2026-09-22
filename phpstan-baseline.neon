@@ -1,6 +1,12 @@
 parameters:
 	ignoreErrors:
 		-
+			message: '#^Class App\\Controller\\Admin\\AuditLogCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
+			identifier: missingType.generics
+			count: 1
+			path: src/Controller/Admin/AuditLogCrudController.php
+
+		-
 			message: '#^Class App\\Controller\\Admin\\CategoryCrudController extends generic class EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController but does not specify its types\: TEntity$#'
 			identifier: missingType.generics
 			count: 1
@@ -827,6 +833,12 @@ parameters:
 			identifier: missingType.iterableValue
 			count: 1
 			path: tests/Functional/Command/SendExpiryRemindersCommandTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\AuditLogCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/AuditLogCrudControllerTest.php
 
 		-
 			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\BillingCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'

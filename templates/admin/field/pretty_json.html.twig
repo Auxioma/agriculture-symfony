@@ -1,0 +1,11 @@
+{# Affiche un champ JSON (oldData/newData de AuditLog) en liste "clé : valeur" plutôt qu'en JSON brut --
+   AuditLogCrudController. ArrayField (pas TextField/TextareaField) : ces derniers plantent sur une valeur non
+   scalaire (voir le docblock de LabelCrudController::configureFields() pour le même piège sur un booléen).
+   field.value reste le tableau PHP brut (pas field.formattedValue) : ArrayConfigurator ne construit une
+   formattedValue "aplatie" (jointe par virgules) que pour la page liste, jamais pour le détail. #}
+{% if field.value is empty %}
+    <span>—</span>
+{% else %}
+    <pre class="tm-audit-json">{% for key, value in field.value %}{{ key }}: {{ value }}
+{% endfor %}</pre>
+{% endif %}

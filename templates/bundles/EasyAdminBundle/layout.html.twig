@@ -22,6 +22,7 @@
     'TicketCrudController': "Tickets d'assistance client et producteur",
     'LegalPageCrudController': "Gérez le contenu juridique affiché sur la plateforme",
     'CouponCrudController': "Créez et suivez les codes de réduction pour l'abonnement producteur",
+    'AuditLogCrudController': "Historique des actions sensibles effectuées sur la plateforme",
 } %}
 
 {# Puces de statut de la maquette (Utilisateurs, Producteurs, Demandes, Avis, Support) : aucun de ces écrans
@@ -70,6 +71,12 @@
         {label: 'Ouverts', value: 'open'},
         {label: 'En cours', value: 'in_progress'},
         {label: 'Résolus', value: 'resolved'},
+    ]},
+    'AuditLogCrudController': {property: 'schemaName', hideFiltersButton: true, chips: [
+        {label: 'Toutes', value: null},
+        {label: 'Modération', value: 'producer|messaging|trust'},
+        {label: 'Facturation', value: 'billing'},
+        {label: 'Comptes', value: 'identity'},
     ]},
 } %}
 

@@ -2,6 +2,7 @@
 
 namespace App\Controller\Admin;
 
+use App\Controller\Admin\AuditLogCrudController;
 use App\Controller\Admin\CategoryCrudController;
 use App\Controller\Admin\ClientRequestCrudController;
 use App\Controller\Admin\ConversationCrudController;
@@ -188,6 +189,9 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkTo(CouponCrudController::class, 'Coupons', 'fas fa-tag');
         yield MenuItem::linkTo(PaymentCrudController::class, 'Paiements', 'fas fa-money-check');
         yield MenuItem::linkTo(SupportReplyTemplateCrudController::class, 'Modèles de réponse', 'far fa-comment-dots');
+        // * Absent de la barre latérale dans la maquette (atteint depuis le tableau de bord par un lien qui
+        // * n'apparaît nulle part ailleurs) : sous "Autres", comme Coupons -- même situation.
+        yield MenuItem::linkTo(AuditLogCrudController::class, "Journal d'audit", 'fas fa-clipboard-list');
     }
 
     /**
