@@ -1,0 +1,18 @@
+# See the configuration reference at https://symfony.com/bundles/SchebTwoFactorBundle/6.x/configuration.html
+#
+# Cahier DevOps, sécurité DevSecOps -- "Admin : ... 2FA obligatoire". TOTP (Google Authenticator/Authy,
+# scheb/2fa-totp) plutôt qu'un envoi par email/SMS : pas de coût ni de dépendance à un fournisseur tiers, et
+# fonctionne même si le mailer est en panne. Codes de secours (scheb/2fa-backup-code) en complément, pour ne
+# pas bloquer définitivement un admin qui perd son téléphone (voir TODO.md pour la suite des étapes -- ce
+# fichier active seulement les fournisseurs, l'inscription/l'obligation viennent dans les étapes suivantes).
+scheb_two_factor:
+    security_tokens:
+        - Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken
+        - Symfony\Component\Security\Http\Authenticator\Token\PostAuthenticationToken
+
+    totp:
+        enabled: true
+        issuer: 'TrouveMoi Agri Admin'
+
+    backup_codes:
+        enabled: true

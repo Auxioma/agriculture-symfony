@@ -39,6 +39,13 @@ security:
             logout:
                 path: admin_logout
                 target: admin_login
+            # * 2FA obligatoire admin (cahier DevOps). Étape "Fondations" : aucun comportement ne change tant
+            # * qu'aucun utilisateur n'a de totpSecret (Scheb ne déclenche l'écran /admin/2fa que si
+            # * isTotpAuthenticationEnabled() renvoie true, voir User::isTotpAuthenticationEnabled()).
+            two_factor:
+                auth_form_path: /admin/2fa
+                check_path: /admin/2fa_check
+                default_target_path: admin
 
         # ! api_login avavnt api sinon la requête
         # ! continuait alors vers le routeur normal, qui ne trouve aucun contrôleur pour /login -> 404.

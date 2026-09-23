@@ -1,0 +1,12 @@
+# Chemins sous /admin (pas /2fa, /2fa_check par défaut) : le pare-feu "admin" (security.yaml) ne protège que
+# ^/admin -- ces deux routes doivent y être pour que le firewall à formulaire + 2FA les reconnaisse et les gère
+# (interception avant authentification complète, CSRF, etc.). Noms de route inchangés (2fa_login,
+# 2fa_login_check) : ce sont eux, pas le chemin, que security.yaml (two_factor.auth_form_path/check_path) et
+# les templates du bundle référencent.
+2fa_login:
+    path: /admin/2fa
+    defaults:
+        _controller: "scheb_two_factor.form_controller::form"
+
+2fa_login_check:
+    path: /admin/2fa_check
