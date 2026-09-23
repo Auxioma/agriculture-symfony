@@ -52,6 +52,7 @@ class AuditLogCrudController extends AbstractCrudController
         'user_status_changed' => 'Statut utilisateur modifié',
         'verification_document_approved' => 'Document approuvé',
         'verification_document_rejected' => 'Document rejeté',
+        'admin_2fa_enabled' => 'Double authentification activée',
     ];
 
     // * Lignes posées par les triggers PostgreSQL (action = TG_OP brut) : combiné avec le nom de table pour un

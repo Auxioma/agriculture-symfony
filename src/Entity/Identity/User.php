@@ -492,27 +492,47 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, TwoFact
         return new TotpConfiguration($this->totpSecret, TotpConfiguration::ALGORITHM_SHA1, 30, 6);
     }
 
-    /**
-     * @return list<string>|null
-     */
-    public function getBackupCodes(): ?array
+    public function hasBackupCodes(): bool
     {
-        return $this->backupCodes;
+        return null !== $this->backupCodes && [] !== $this->backupCodes;
     }
 
     /**
-     * @param list<string>|null $backupCodes
+     * Génère de nouveaux codes de secours et remplace les précédents. Comme un mot de passe, ils ne sont
+     * jamais stockés en clair (password_hash) -- seul cet appel peut les révéler, à n'afficher qu'une fois à
+     * l'admin qui les a générés.
+     *
+     * @return list<string> Les codes en clair, à afficher une seule fois.
      */
-    public function setBackupCodes(?array $backupCodes): static
+    public function generateNewBackupCodes(int $count = 8): array
     {
-        $this->backupCodes = $backupCodes;
+        $plainCodes = [];
+        $hashedCodes = [];
 
-        return $this;
+        for ($i = 0; $i < $count; ++$i) {
+            $plainCode = strtoupper(bin2hex(random_bytes(4)));
+            $plainCodes[] = $plainCode;
+            $hashedCodes[] = password_hash($plainCode, \PASSWORD_BCRYPT);
+        }
+
+        $this->backupCodes = $hashedCodes;
+
+        return $plainCodes;
     }
 
     public function isBackupCode(string $code): bool
     {
-        return null !== $this->backupCodes && \in_array($code, $this->backupCodes, true);
+        if (null === $this->backupCodes) {
+            return false;
+        }
+
+        foreach ($this->backupCodes as $hash) {
+            if (password_verify($code, $hash)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function invalidateBackupCode(string $code): void
@@ -523,7 +543,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, TwoFact
 
         $this->backupCodes = array_values(array_filter(
             $this->backupCodes,
-            static fn (string $existing): bool => $existing !== $code
+            static fn (string $hash): bool => !password_verify($code, $hash)
         ));
     }
 
