@@ -917,6 +917,23 @@ textarea.form-control {
     box-sizing: border-box;
 }
 
+/* Lien "Mot de passe oublié ?" -- absent de la maquette (pas d'écran Figma dédié pour la connexion admin),
+ * placé sous le champ mot de passe et aligné à droite comme la convention la plus courante sur ce type de
+ * formulaire. Pointe vers le front Angular (SecurityController::login()), pas vers un écran de ce back-office. */
+.tm-login-forgot {
+    display: block;
+    margin: -8px 0 16px;
+    color: var(--tm-green);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: right;
+    text-decoration: none;
+}
+
+.tm-login-forgot:hover {
+    text-decoration: underline;
+}
+
 .tm-login .alert-danger {
     margin: 0 0 16px;
     padding: 12px 14px;

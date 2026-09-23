@@ -33,6 +33,10 @@
                     <label for="password">Mot de passe</label>
                     <input type="password" name="_password" id="password" required autocomplete="current-password">
                 </div>
+                {# Formulaire de saisie de l'email et page de réinitialisation : côté front Angular (voir
+                   SecurityController::login() et AuthController::forgotPassword()), pas dans ce back-office
+                   Twig -- ce lien n'est qu'un point d'entrée vers ce parcours. #}
+                <a href="{{ forgot_password_url }}" class="tm-login-forgot">Mot de passe oublié ?</a>
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token('authenticate') }}">
                 <button class="tm-btn tm-btn-primary tm-btn-block" type="submit">Se connecter</button>
             </form>

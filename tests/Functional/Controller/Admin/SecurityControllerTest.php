@@ -65,4 +65,16 @@ final class SecurityControllerTest extends ApiTestCase
 
         self::assertResponseStatusCodeSame(403);
     }
+
+    // * Le formulaire "mot de passe oublié" (saisie de l'email) vit côté front Angular (FRONTEND_URL, .env),
+    // * pas dans ce back-office Twig -- juste un point d'entrée vers ce parcours.
+    public function testLoginPageShowsForgotPasswordLinkToFrontend(): void
+    {
+        $crawler = $this->client->request('GET', '/admin/login');
+
+        self::assertResponseIsSuccessful();
+        $link = $crawler->filter('a.tm-login-forgot');
+        self::assertCount(1, $link);
+        self::assertSame('http://localhost:4200/auth/forgot-password', $link->attr('href'));
+    }
 }
