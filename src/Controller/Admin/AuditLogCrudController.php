@@ -14,6 +14,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 /**
  * Écran "Journal d'audit" du back-office (maquette Figma "Admin · Journal d'audit" : "Historique des actions
@@ -27,6 +28,9 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
  * de bord", qui n'apparaît nulle part ailleurs dans les écrans fournis) : ajouté sous "Autres" dans notre menu,
  * comme Coupons (même situation -- accessible uniquement par ce biais sinon).
  */
+// * RBAC (cahier DevOps ; cahier fonctionnel 22.2, "Le support accède uniquement aux éléments nécessaires") :
+// * pas dans le périmètre nécessaire au support (voir security.yaml pour le détail du mécanisme).
+#[IsGranted('ROLE_ADMIN')]
 class AuditLogCrudController extends AbstractCrudController
 {
     // * Actions posées explicitement par AuditLogger (voir les huit contrôleurs qui l'appellent) : libellé

@@ -16,12 +16,17 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 /**
  * Écran "Réponses et devis" du back-office (maquette Figma "Réponses et devis" : "Suivi des propositions
  * envoyées par les producteurs"). Consultation seule : une réponse naît de l'espace producteur
  * (ProducerRequestController) et l'admin ne fait que la suivre, sans la créer, la modifier ni la supprimer.
+ *
+ * RBAC (cahier DevOps ; cahier fonctionnel 22.2, "Le support accède uniquement aux éléments nécessaires") :
+ * pas dans le périmètre nécessaire au support (voir security.yaml pour le détail du mécanisme).
  */
+#[IsGranted('ROLE_ADMIN')]
 class ProducerReplyCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;

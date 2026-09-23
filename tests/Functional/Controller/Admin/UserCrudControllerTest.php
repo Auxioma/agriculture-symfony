@@ -19,18 +19,33 @@ final class UserCrudControllerTest extends ApiTestCase
 
     private function loginAsAdmin(): User
     {
-        $admin = $this->makeUserWithPassword('admin', 'motdepasse123');
-        $admin->setRoles([User::ROLE_ADMIN]);
+        return $this->loginAs('admin', [User::ROLE_ADMIN]);
+    }
+
+    // * RBAC (cahier DevOps) : changer les rôles d'un compte (roles ChoiceField, UserCrudController::
+    // * configureFields()) exige ROLE_SUPER_ADMIN -- un simple ROLE_ADMIN ne voit même pas ce champ.
+    private function loginAsSuperAdmin(): User
+    {
+        return $this->loginAs('superadmin', [User::ROLE_SUPER_ADMIN]);
+    }
+
+    /**
+     * @param list<string> $roles
+     */
+    private function loginAs(string $emailPrefix, array $roles): User
+    {
+        $user = $this->makeUserWithPassword($emailPrefix, 'motdepasse123');
+        $user->setRoles($roles);
         $this->em->flush();
 
         $this->client->followRedirects(true);
         $this->client->request('GET', '/admin/login');
         $this->client->submitForm('Se connecter', [
-            '_username' => $admin->getEmail(),
+            '_username' => $user->getEmail(),
             '_password' => 'motdepasse123',
         ]);
 
-        return $admin;
+        return $user;
     }
 
     // * Réutilise identity.anonymize_user(), déjà branchée par le RGPD self-service (AuthController::
@@ -68,9 +83,10 @@ final class UserCrudControllerTest extends ApiTestCase
     // * Vérifie le formulaire d'édition de bout en bout : status et roles sont mappés en ChoiceField (pas
     // * TextField/ArrayField comme dans une première version) précisément parce qu'ils doivent survivre à un
     // * vrai aller-retour de formulaire -- ce test aurait échoué (TypeError sur setStatus()) sans ce choix.
+    // * ROLE_SUPER_ADMIN ici (pas loginAsAdmin()) : changer les rôles exige ce niveau depuis le RBAC ci-dessous.
     public function testEditingUserRolesAndStatusSucceeds(): void
     {
-        $this->loginAsAdmin();
+        $this->loginAsSuperAdmin();
         $target = $this->makeUser('target');
         $this->em->flush();
 
@@ -113,6 +129,41 @@ final class UserCrudControllerTest extends ApiTestCase
         );
         self::assertNotFalse($audit);
         self::assertStringContainsString('suspended', $audit['new_data']);
+    }
+
+    // * RBAC (cahier DevOps ; cahier fonctionnel 22.2) : un ROLE_ADMIN garde le droit de bloquer un compte
+    // * (status), mais le champ "roles" (setPermission('ROLE_SUPER_ADMIN')) ne doit même pas être dans le
+    // * formulaire -- fermant ainsi l'auto-promotion qu'un simple ROLE_ADMIN pouvait faire auparavant.
+    public function testAdminCanChangeStatusButNotSeeRolesField(): void
+    {
+        $this->loginAsAdmin();
+        $target = $this->makeUser('target2');
+        $this->em->flush();
+
+        $editUrl = self::getContainer()->get(AdminUrlGenerator::class)
+            ->setController(UserCrudController::class)
+            ->setAction(Action::EDIT)
+            ->setEntityId($target->getId())
+            ->generateUrl();
+
+        $crawler = $this->client->request('GET', $editUrl);
+        self::assertResponseIsSuccessful();
+        self::assertCount(0, $crawler->filter('form#edit-User-form [name$="[roles][]"]'));
+
+        $form = $crawler->filter('form#edit-User-form')->form();
+        $values = $form->getPhpValues();
+        $rootKey = array_key_first($values);
+        $values[$rootKey]['status'] = 'suspended';
+
+        $this->client->request($form->getMethod(), $form->getUri(), $values, $form->getPhpFiles());
+        self::assertResponseIsSuccessful();
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT status, roles FROM identity.users WHERE id = :id',
+            ['id' => $target->getId()->toRfc4122()]
+        );
+        self::assertSame('suspended', $row['status']);
+        self::assertStringContainsString('ROLE_CLIENT', $row['roles']);
     }
 
     // * disable(Action::NEW) doit être appliqué côté serveur (ForbiddenActionException), pas seulement

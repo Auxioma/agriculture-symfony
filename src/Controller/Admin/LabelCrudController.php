@@ -23,6 +23,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Filter\BooleanFilter;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 /**
  * Écran "Labels" du back-office (maquette Figma "Labels et certifications" / "Modifier label"). "Type" reprend
@@ -32,6 +33,9 @@ use Symfony\Component\HttpFoundation\Response;
  * Traductions (labelTranslations) éditées via editTranslations() ci-dessous, PAS via un CollectionField
  * EasyAdmin : clé primaire composite (label+locale), voir CategoryCrudController.
  */
+// * RBAC (cahier DevOps ; cahier fonctionnel 22.2, "Le support accède uniquement aux éléments nécessaires") :
+// * pas dans le périmètre nécessaire au support (voir security.yaml pour le détail du mécanisme).
+#[IsGranted('ROLE_ADMIN')]
 class LabelCrudController extends AbstractCrudController
 {
     public static function getEntityFqcn(): string

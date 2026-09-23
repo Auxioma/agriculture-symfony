@@ -14,11 +14,15 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\BooleanField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 /**
  * Module "Abonnements" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf) -- volet "abonnements actifs". Consultation seule : le statut
  * change via les webhooks Stripe déjà branchés (StripeWebhookController), jamais à la main ici.
  */
+// * RBAC (cahier DevOps ; cahier fonctionnel 22.2, "Le support accède uniquement aux éléments nécessaires") :
+// * pas dans le périmètre nécessaire au support (voir security.yaml pour le détail du mécanisme).
+#[IsGranted('ROLE_ADMIN')]
 class SubscriptionCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;

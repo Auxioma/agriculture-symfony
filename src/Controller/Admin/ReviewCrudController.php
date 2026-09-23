@@ -32,7 +32,12 @@ use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
+// * RBAC (cahier DevOps ; cahier fonctionnel 22.2, "Un admin peut accéder aux contenus pour administration et
+// * modération" / "Le support accède uniquement aux éléments nécessaires") : modérer les avis clients est un
+// * geste d'admin, pas dans le périmètre nécessaire au support (voir security.yaml pour le mécanisme).
+#[IsGranted('ROLE_ADMIN')]
 class ReviewCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;

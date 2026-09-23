@@ -51,8 +51,10 @@ class UserCrudController extends AbstractCrudController
         yield TextField::new('lastName')->setLabel('Nom');
         yield EmailField::new('email')->setLabel('Email');
         // * ChoiceField (liste fermée) et non ArrayField (texte libre) : un ArrayField aurait permis à
-        // * n'importe quel ROLE_ADMIN de se taper ROLE_SUPER_ADMIN sur sa propre fiche (aucune role_hierarchy
-        // * n'existe dans security.yaml pour s'en prémunir autrement).
+        // * n'importe quel ROLE_ADMIN de se taper ROLE_SUPER_ADMIN sur sa propre fiche. setPermission() referme
+        // * ce risque une fois pour toutes : le champ n'est même pas rendu (donc pas soumissible) pour qui n'a
+        // * pas déjà ROLE_SUPER_ADMIN -- un simple ROLE_ADMIN ne peut plus toucher aux rôles de personne, ni les
+        // * siens ni ceux d'un tiers (RBAC, cahier DevOps).
         yield ChoiceField::new('roles')
             ->setChoices([
                 'Client' => User::ROLE_CLIENT,
@@ -64,7 +66,8 @@ class UserCrudController extends AbstractCrudController
             ])
             ->allowMultipleChoices()
             ->renderExpanded()
-            ->setLabel('Rôle');
+            ->setLabel('Rôle')
+            ->setPermission('ROLE_SUPER_ADMIN');
         // * ChoiceField (pas TextField) : getStatus()/setStatus() sont typés UserStatus (enum), un TextField
         // * soumettrait une chaîne brute et setStatus(string) ferait planter la sauvegarde (TypeError).
         yield $this->statusBadgeField('status', 'Statut', $pageName, [
@@ -89,6 +92,9 @@ class UserCrudController extends AbstractCrudController
         return $filters->add(RoleFilter::new('roles'));
     }
 
+    // * RBAC (cahier DevOps ; cahier fonctionnel 22.2, "Le support accède uniquement aux éléments nécessaires") :
+    // * Support garde INDEX/DETAIL (chercher un utilisateur en traitant un ticket), mais ni "Anonymiser" (RGPD,
+    // * irréversible) ni EDIT (statut, blocage de compte) -- des décisions d'admin, pas de simples consultations.
     public function configureActions(Actions $actions): Actions
     {
         $anonymize = Action::new('anonymize', 'Anonymiser')
@@ -98,7 +104,9 @@ class UserCrudController extends AbstractCrudController
         return $actions
             ->disable(Action::NEW)
             ->add(Crud::PAGE_INDEX, $anonymize)
-            ->add(Crud::PAGE_DETAIL, $anonymize);
+            ->add(Crud::PAGE_DETAIL, $anonymize)
+            ->setPermission(Action::EDIT, 'ROLE_ADMIN')
+            ->setPermission('anonymize', 'ROLE_ADMIN');
     }
 
     #[AdminRoute(path: '/{entityId}/anonymize', name: 'anonymize')]

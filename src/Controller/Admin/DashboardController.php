@@ -33,6 +33,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Theme;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractDashboardController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -161,37 +162,43 @@ class DashboardController extends AbstractDashboardController
     // * pas encore d'écran côté Symfony (pas de CRUD ProducerReply/Label ni de stockage de paramètres) -- absents
     // * du menu plutôt que des liens morts. Les écrans existants que la maquette ne place pas dans la barre latérale
     // * (produits, unités, plans, prix, coupons...) restent accessibles dans la section "Autres".
+    //
+    // * RBAC (cahier fonctionnel 22.2, "Le support accède uniquement aux éléments nécessaires") : ->setPermission()
+    // * masque l'entrée de menu à un compte Support seul (elle resterait un lien mort sinon, le contrôleur visé
+    // * étant lui-même protégé par #[IsGranted('ROLE_ADMIN')]) -- même partition que dans security.yaml/les
+    // * contrôleurs. Restent visibles à Support : Tableau de bord, Utilisateurs, Conversations, Signalements,
+    // * Support, Modèles de réponse.
     public function configureMenuItems(): iterable
     {
         yield MenuItem::linkToDashboard('Tableau de bord', 'fas fa-house');
         yield MenuItem::linkTo(UserCrudController::class, 'Utilisateurs', 'far fa-user');
-        yield MenuItem::linkTo(ProducerProfileCrudController::class, 'Producteurs', 'fas fa-leaf');
-        yield MenuItem::linkTo(ClientRequestCrudController::class, 'Demandes', 'fas fa-bars-staggered');
-        yield MenuItem::linkTo(ProducerReplyCrudController::class, 'Réponses & devis', 'fas fa-file-invoice');
+        yield MenuItem::linkTo(ProducerProfileCrudController::class, 'Producteurs', 'fas fa-leaf')->setPermission('ROLE_ADMIN');
+        yield MenuItem::linkTo(ClientRequestCrudController::class, 'Demandes', 'fas fa-bars-staggered')->setPermission('ROLE_ADMIN');
+        yield MenuItem::linkTo(ProducerReplyCrudController::class, 'Réponses & devis', 'fas fa-file-invoice')->setPermission('ROLE_ADMIN');
         yield MenuItem::linkTo(ConversationCrudController::class, 'Conversations', 'far fa-comment');
         yield MenuItem::linkTo(MessageCrudController::class, 'Signalements', 'far fa-flag');
-        yield MenuItem::linkTo(ReviewCrudController::class, 'Avis', 'far fa-star');
-        yield MenuItem::linkTo(CategoryCrudController::class, 'Catégories', 'fas fa-table-cells-large');
-        yield MenuItem::linkTo(LabelCrudController::class, 'Labels', 'fas fa-certificate');
-        yield MenuItem::linkTo(SubscriptionCrudController::class, 'Abonnements', 'far fa-credit-card');
-        yield MenuItem::linkTo(InvoiceCrudController::class, 'Paiements & factures', 'fas fa-receipt');
+        yield MenuItem::linkTo(ReviewCrudController::class, 'Avis', 'far fa-star')->setPermission('ROLE_ADMIN');
+        yield MenuItem::linkTo(CategoryCrudController::class, 'Catégories', 'fas fa-table-cells-large')->setPermission('ROLE_ADMIN');
+        yield MenuItem::linkTo(LabelCrudController::class, 'Labels', 'fas fa-certificate')->setPermission('ROLE_ADMIN');
+        yield MenuItem::linkTo(SubscriptionCrudController::class, 'Abonnements', 'far fa-credit-card')->setPermission('ROLE_ADMIN');
+        yield MenuItem::linkTo(InvoiceCrudController::class, 'Paiements & factures', 'fas fa-receipt')->setPermission('ROLE_ADMIN');
         yield MenuItem::linkTo(TicketCrudController::class, 'Support', 'far fa-circle-question');
-        yield MenuItem::linkTo(LegalPageCrudController::class, 'Pages légales', 'far fa-file');
-        yield MenuItem::linkToRoute('Statistiques', 'fas fa-chart-simple', 'admin_reporting');
-        yield MenuItem::linkToRoute('Paramètres', 'fas fa-sliders', 'admin_settings');
+        yield MenuItem::linkTo(LegalPageCrudController::class, 'Pages légales', 'far fa-file')->setPermission('ROLE_ADMIN');
+        yield MenuItem::linkToRoute('Statistiques', 'fas fa-chart-simple', 'admin_reporting')->setPermission('ROLE_ADMIN');
+        yield MenuItem::linkToRoute('Paramètres', 'fas fa-sliders', 'admin_settings')->setPermission('ROLE_ADMIN');
 
         yield MenuItem::section('Autres');
-        yield MenuItem::linkTo(VerificationDocumentCrudController::class, 'Documents justificatifs', 'fas fa-file-shield');
-        yield MenuItem::linkTo(ProductCrudController::class, 'Produits', 'fas fa-carrot');
-        yield MenuItem::linkTo(UnitCrudController::class, 'Unités', 'fas fa-ruler');
-        yield MenuItem::linkTo(SubscriptionPlanCrudController::class, 'Plans', 'fas fa-list');
-        yield MenuItem::linkTo(PlanPriceCrudController::class, 'Prix', 'fas fa-euro-sign');
-        yield MenuItem::linkTo(CouponCrudController::class, 'Coupons', 'fas fa-tag');
-        yield MenuItem::linkTo(PaymentCrudController::class, 'Paiements', 'fas fa-money-check');
+        yield MenuItem::linkTo(VerificationDocumentCrudController::class, 'Documents justificatifs', 'fas fa-file-shield')->setPermission('ROLE_ADMIN');
+        yield MenuItem::linkTo(ProductCrudController::class, 'Produits', 'fas fa-carrot')->setPermission('ROLE_ADMIN');
+        yield MenuItem::linkTo(UnitCrudController::class, 'Unités', 'fas fa-ruler')->setPermission('ROLE_ADMIN');
+        yield MenuItem::linkTo(SubscriptionPlanCrudController::class, 'Plans', 'fas fa-list')->setPermission('ROLE_ADMIN');
+        yield MenuItem::linkTo(PlanPriceCrudController::class, 'Prix', 'fas fa-euro-sign')->setPermission('ROLE_ADMIN');
+        yield MenuItem::linkTo(CouponCrudController::class, 'Coupons', 'fas fa-tag')->setPermission('ROLE_ADMIN');
+        yield MenuItem::linkTo(PaymentCrudController::class, 'Paiements', 'fas fa-money-check')->setPermission('ROLE_ADMIN');
         yield MenuItem::linkTo(SupportReplyTemplateCrudController::class, 'Modèles de réponse', 'far fa-comment-dots');
         // * Absent de la barre latérale dans la maquette (atteint depuis le tableau de bord par un lien qui
         // * n'apparaît nulle part ailleurs) : sous "Autres", comme Coupons -- même situation.
-        yield MenuItem::linkTo(AuditLogCrudController::class, "Journal d'audit", 'fas fa-clipboard-list');
+        yield MenuItem::linkTo(AuditLogCrudController::class, "Journal d'audit", 'fas fa-clipboard-list')->setPermission('ROLE_ADMIN');
     }
 
     /**
@@ -206,7 +213,10 @@ class DashboardController extends AbstractDashboardController
      * Subscription -- pas un taux mensuel par cohorte, qui demanderait un champ supplémentaire.
      */
 
+    // * RBAC (cahier DevOps ; cahier fonctionnel 22.2, "Le support accède uniquement aux éléments nécessaires") :
+    // * les statistiques (revenus compris) ne sont pas dans le périmètre nécessaire au support.
     #[AdminRoute(path: '/reporting', name: 'reporting')]
+    #[IsGranted('ROLE_ADMIN')]
     public function reporting(): Response
     {
         $connection = $this->em->getConnection();
@@ -280,7 +290,10 @@ class DashboardController extends AbstractDashboardController
      * écriture passent par PlatformSettings ; chaque enregistrement est journalisé (paramètres = action admin
      * sensible) avec les valeurs avant/après.
      */
+    // * RBAC (cahier DevOps ; cahier fonctionnel 22.2, "Le support accède uniquement aux éléments nécessaires") :
+    // * les paramètres de la plateforme ne sont pas dans le périmètre nécessaire au support.
     #[AdminRoute(path: '/settings', name: 'settings')]
+    #[IsGranted('ROLE_ADMIN')]
     public function settings(Request $request, PlatformSettings $settings, AuditLogger $auditLogger): Response
     {
         $current = $settings->all();

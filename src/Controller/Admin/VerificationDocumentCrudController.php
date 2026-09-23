@@ -33,7 +33,11 @@ use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
+// * RBAC (cahier DevOps ; cahier fonctionnel 22.2, "Le support accède uniquement aux éléments nécessaires") :
+// * pas dans le périmètre nécessaire au support (voir security.yaml pour le détail du mécanisme).
+#[IsGranted('ROLE_ADMIN')]
 class VerificationDocumentCrudController extends AbstractCrudController
 {
     public function __construct(

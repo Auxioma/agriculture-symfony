@@ -18,7 +18,11 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use EasyCorp\Bundle\EasyAdminBundle\Filter\EntityFilter;
 use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
+// * RBAC (cahier DevOps ; cahier fonctionnel 22.2, "Le support accède uniquement aux éléments nécessaires") :
+// * pas dans le périmètre nécessaire au support (voir security.yaml pour le détail du mécanisme).
+#[IsGranted('ROLE_ADMIN')]
 class ClientRequestCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;

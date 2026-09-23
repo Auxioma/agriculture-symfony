@@ -22,8 +22,14 @@ use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 use App\Service\Audit\AuditLogger;
 
+// * RBAC (cahier DevOps, "Autorisation : RBAC côté Symfony" ; cahier fonctionnel 22.2, "Le support accède
+// * uniquement aux éléments nécessaires") : la validation d'un producteur est une décision d'admin, pas un
+// * geste de support -- ROLE_ADMIN exclut ROLE_SUPPORT seul (role_hierarchy va dans l'autre sens, voir
+// * security.yaml). Un ROLE_SUPPORT qui visite /admin/producer-profile reçoit un 403.
+#[IsGranted('ROLE_ADMIN')]
 class ProducerProfileCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;

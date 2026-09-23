@@ -11,6 +11,16 @@ security:
                 class: App\Entity\Identity\User
                 property: email
 
+    # * RBAC admin (cahier DevOps, "Autorisation : RBAC côté Symfony" ; cahier fonctionnel 22.2, "Le support
+    # * accède uniquement aux éléments nécessaires") : un rôle plus élevé hérite de tout ce que peut faire le
+    # * rôle en dessous. ROLE_SUPPORT n'ouvre donc PAS /admin à lui seul dans un access_control classique --
+    # * c'est cette hiérarchie qui le permet ci-dessous (roles: ROLE_SUPPORT couvre aussi ADMIN/SUPER_ADMIN).
+    # * Chaque écran restreint à ROLE_ADMIN (#[IsGranted] sur le contrôleur, voir DashboardController et les
+    # * autres CrudController) reste donc hors d'atteinte d'un compte Support seul.
+    role_hierarchy:
+        ROLE_SUPER_ADMIN: ROLE_ADMIN
+        ROLE_ADMIN: ROLE_SUPPORT
+
     firewalls:
         dev:
             # Ensure dev tools and static assets are always allowed
@@ -60,7 +70,9 @@ security:
     # Note: Only the *first* matching rule is applied
     access_control:
         - { path: ^/admin/login, roles: PUBLIC_ACCESS }
-        - { path: ^/admin, roles: [ROLE_ADMIN, ROLE_SUPER_ADMIN] }
+        # * ROLE_SUPPORT suffit à entrer dans /admin (role_hierarchy ci-dessus couvre ADMIN/SUPER_ADMIN) : les
+        # * écrans que Support ne doit pas voir sont bloqués individuellement par #[IsGranted('ROLE_ADMIN')].
+        - { path: ^/admin, roles: ROLE_SUPPORT }
         - { path: ^/api/auth/(login|register-client|register-producer|forgot-password|reset-password), roles: PUBLIC_ACCESS }
         - { path: ^/api/(categories|products|labels), roles: PUBLIC_ACCESS }
         - { path: ^/api/legal, roles: PUBLIC_ACCESS }
