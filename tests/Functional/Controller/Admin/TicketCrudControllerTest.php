@@ -5,6 +5,7 @@ namespace App\Tests\Functional\Controller\Admin;
 use App\Controller\Admin\TicketCrudController;
 use App\Entity\Identity\User;
 use App\Entity\Support\Ticket;
+use App\Entity\Support\TicketAttachment;
 use App\Entity\Support\TicketMessage;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
@@ -132,5 +133,136 @@ final class TicketCrudControllerTest extends ApiTestCase
             ->generateUrl());
         self::assertResponseIsSuccessful();
         self::assertStringContainsString('Problème de paiement', (string) $crawler->filter('body')->text());
+    }
+
+    private function detailUrl(Ticket $ticket): string
+    {
+        return self::getContainer()->get(AdminUrlGenerator::class)
+            ->setController(TicketCrudController::class)
+            ->setAction(Action::DETAIL)
+            ->setEntityId($ticket->getId())
+            ->generateUrl();
+    }
+
+    /**
+     * @return array{0: Ticket, 1: TicketMessage}
+     */
+    private function makeTicketWithMessage(User $author, string $content = 'Bonjour, besoin d\'aide.'): array
+    {
+        $ticket = new Ticket();
+        $ticket->setIdUser($author);
+        $ticket->setSubject('Question facturation');
+        $ticket->setStatus('open');
+        $ticket->setPriority('haute');
+        $this->em->persist($ticket);
+
+        $message = new TicketMessage();
+        $message->setTicket($ticket);
+        $message->setSender($author);
+        $message->setContent($content);
+        $this->em->persist($message);
+
+        return [$ticket, $message];
+    }
+
+    // * Ticket::$idUser est le demandeur : tout autre auteur d'un message est l'équipe support -- le fil doit les
+    // * distinguer, dans l'ordre chronologique.
+    public function testDetailThreadDistinguishesRequesterFromSupportInOrder(): void
+    {
+        $admin = $this->loginAsAdmin();
+        $author = $this->makeUser('requester');
+        [$ticket] = $this->makeTicketWithMessage($author, 'Première question');
+        $this->em->flush();
+
+        $reply = new TicketMessage();
+        $reply->setTicket($ticket);
+        // * Les requêtes HTTP du client (connexion) détachent l'objet renvoyé par loginAsAdmin() : on le recharge.
+        $reply->setSender($this->em->find(User::class, $admin->getId()));
+        $reply->setContent('Voici la réponse du support');
+        $this->em->persist($reply);
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+
+        self::assertResponseIsSuccessful();
+        $messages = $crawler->filter('.tm-message');
+        self::assertCount(2, $messages);
+        self::assertStringContainsString('Première question', $messages->eq(0)->text());
+        self::assertStringContainsString('Demandeur', $messages->eq(0)->text());
+        self::assertStringContainsString('Voici la réponse du support', $messages->eq(1)->text());
+        self::assertStringContainsString('Support', $messages->eq(1)->text());
+        self::assertSelectorTextContains('.tm-ticket-summary', 'Haute');
+    }
+
+    public function testMessageContentIsEscaped(): void
+    {
+        $this->loginAsAdmin();
+        [$ticket] = $this->makeTicketWithMessage($this->makeUser('xss'), '<script>alert(1)</script>');
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+
+        self::assertResponseIsSuccessful();
+        self::assertCount(0, $crawler->filter('.tm-message script'));
+        self::assertStringContainsString('<script>alert(1)</script>', $crawler->filter('.tm-message-body')->text());
+    }
+
+    private function attachTo(TicketMessage $message, string $content, string $name): TicketAttachment
+    {
+        $attachment = new TicketAttachment();
+        $attachment->setTicketMessage($message);
+        $attachment->setFileName($name);
+        $attachment->setMimeType('application/pdf');
+        $attachment->setFileSize(strlen($content));
+        $key = sprintf('%s/%s', $message->getTicket()->getId()->toRfc4122(), $attachment->getId()->toRfc4122());
+        self::getContainer()->get('ticket_attachments.storage')->write($key, $content);
+        $attachment->setFileUrl($key);
+        $this->em->persist($attachment);
+
+        return $attachment;
+    }
+
+    public function testAttachmentsAreListedAndDownloadableAsAttachment(): void
+    {
+        $this->loginAsAdmin();
+        [$ticket, $message] = $this->makeTicketWithMessage($this->makeUser('withfile'));
+        $first = $this->attachTo($message, 'contenu-pdf-1', 'facture.pdf');
+        $second = $this->attachTo($message, 'contenu-pdf-2', 'justificatif.pdf');
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+        $links = $crawler->filter('.tm-message-attachments a');
+        self::assertCount(2, $links);
+        self::assertSame('facture.pdf', trim($links->eq(0)->text()));
+
+        // * Un lien par fichier, chacun vers SON fichier (le générateur d'URL est partagé : une fuite d'état d'un
+        // * lien à l'autre ferait pointer les deux sur la même pièce jointe).
+        self::assertStringContainsString($first->getId()->toRfc4122(), $links->eq(0)->attr('href'));
+        self::assertStringContainsString($second->getId()->toRfc4122(), $links->eq(1)->attr('href'));
+
+        $this->client->request('GET', $links->eq(1)->attr('href'));
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString('attachment', (string) $this->client->getResponse()->headers->get('Content-Disposition'));
+        self::assertStringContainsString('justificatif.pdf', (string) $this->client->getResponse()->headers->get('Content-Disposition'));
+        self::assertSame('contenu-pdf-2', $this->client->getInternalResponse()->getContent());
+    }
+
+    public function testAttachmentOfAnotherTicketIsNotServedThroughThisOne(): void
+    {
+        $this->loginAsAdmin();
+        [$ticketA] = $this->makeTicketWithMessage($this->makeUser('a'));
+        [, $messageB] = $this->makeTicketWithMessage($this->makeUser('b'));
+        $foreign = $this->attachTo($messageB, 'secret-de-b', 'b.pdf');
+        $this->em->flush();
+
+        $url = self::getContainer()->get(AdminUrlGenerator::class)
+            ->setController(TicketCrudController::class)
+            ->setAction('downloadAttachment')
+            ->setEntityId($ticketA->getId())
+            ->set('attachmentId', $foreign->getId()->toRfc4122())
+            ->generateUrl();
+        $this->client->request('GET', $url);
+
+        self::assertResponseStatusCodeSame(404);
     }
 }

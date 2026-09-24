@@ -954,6 +954,66 @@ textarea.form-control {
     font-weight: 700;
 }
 
+/* Détail ticket (templates/admin/ticket/detail.html.twig) : mobile d'abord, la grille des informations passe
+   d'elle-même de 1 à 4 colonnes selon la largeur disponible. */
+.tm-ticket-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px 24px;
+    margin: 0;
+}
+
+.tm-ticket-summary dt {
+    margin-bottom: 4px;
+    color: var(--tm-grey-700);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.tm-ticket-summary dd {
+    margin: 0;
+}
+
+.tm-thread {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tm-message {
+    padding: 12px 16px;
+    border: 1px solid var(--tm-grey-200);
+    border-radius: var(--tm-radius-card);
+    background: var(--tm-white);
+}
+
+.tm-message-agent {
+    border-color: var(--tm-green-soft-hover);
+    background: var(--tm-green-soft);
+}
+
+.tm-message-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    margin-bottom: 6px;
+}
+
+.tm-message-body {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.tm-message-attachments {
+    margin: 8px 0 0;
+    padding-left: 18px;
+}
+
 @media (max-width: 991px) {
     :root {
         --tm-gutter: 16px;

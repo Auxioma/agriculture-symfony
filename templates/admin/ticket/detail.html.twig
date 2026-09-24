@@ -1,0 +1,77 @@
+{# Maquette Figma "Admin · Détail ticket" : informations du ticket puis fil de messages. Styles : assets/styles/admin.css. #}
+{% extends '@EasyAdmin/layout.html.twig' %}
+
+{% macro person(user) %}{{ (user.firstName ~ ' ' ~ user.lastName)|trim ?: user.email }}{% endmacro %}
+
+{% block content_title %}{{ ticket.subject ?: 'Ticket sans sujet' }}{% endblock %}
+
+{% block content_subtitle %}
+    <p class="tm-subtitle">Ouvert le {{ ticket.createdAt|date('d/m/Y à H:i') }}</p>
+{% endblock %}
+
+{% block main %}
+    {% import _self as ui %}
+
+    <section class="tm-panel-block">
+        <dl class="tm-ticket-summary">
+            <div>
+                <dt>Demandeur</dt>
+                <dd>{{ ui.person(requester) }}<br><span class="tm-hint">{{ requester.email }}</span></dd>
+            </div>
+            <div>
+                <dt>Statut</dt>
+                <dd><span class="badge badge-{{ statusVariant }}">{{ statusLabel }}</span></dd>
+            </div>
+            <div>
+                <dt>Priorité</dt>
+                <dd>{% if priorityLabel %}<span class="badge badge-{{ priorityVariant }}">{{ priorityLabel }}</span>{% else %}<span class="tm-hint">Non définie</span>{% endif %}</dd>
+            </div>
+            <div>
+                <dt>Assigné à</dt>
+                <dd>{% if ticket.assignedTo %}{{ ui.person(ticket.assignedTo) }}{% else %}<span class="tm-hint">Personne</span>{% endif %}</dd>
+            </div>
+        </dl>
+        {% if ticket.closedAt %}
+            <p class="tm-hint">Clos le {{ ticket.closedAt|date('d/m/Y à H:i') }}</p>
+        {% endif %}
+    </section>
+
+    <section class="tm-panel-block">
+        <h2 class="tm-section-title">Conversation</h2>
+
+        {% if messages is empty %}
+            <p class="tm-hint">Aucun message sur ce ticket.</p>
+        {% endif %}
+
+        <ol class="tm-thread">
+            {% for message in messages %}
+                {# Le propriétaire du ticket est le demandeur ; toute autre personne qui écrit est l'équipe support
+                   (voir Ticket::$idUser et TicketMessage::$sender). #}
+                {% set isRequester = message.sender is same as(requester) %}
+                <li class="tm-message {{ isRequester ? 'tm-message-requester' : 'tm-message-agent' }}">
+                    <div class="tm-message-meta">
+                        <strong>{% if message.sender %}{{ ui.person(message.sender) }}{% else %}Compte supprimé{% endif %}</strong>
+                        <span class="tm-badge {{ isRequester ? 'badge-secondary' : 'badge-success' }}">{{ isRequester ? 'Demandeur' : 'Support' }}</span>
+                        <span class="tm-hint">{{ message.createdAt|date('d/m/Y à H:i') }}</span>
+                    </div>
+                    {% if message.content %}
+                        <p class="tm-message-body">{{ message.content }}</p>
+                    {% endif %}
+                    {% if message.attachments is not empty %}
+                        <ul class="tm-message-attachments">
+                            {% for attachment in message.attachments %}
+                                <li><a href="{{ attachmentUrls[attachment.id.toRfc4122] }}">{{ attachment.fileName ?: 'Pièce jointe' }}</a>
+                                    {% if attachment.fileSize %}<span class="tm-hint">({{ (attachment.fileSize / 1024)|round }} Ko)</span>{% endif %}</li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ol>
+    </section>
+
+    <div class="tm-actions tm-actions-start">
+        <a href="{{ indexUrl }}" class="tm-btn">Retour à la liste</a>
+        <a href="{{ editUrl }}" class="tm-btn">Modifier le ticket</a>
+    </div>
+{% endblock %}
