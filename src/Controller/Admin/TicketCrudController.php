@@ -2,9 +2,11 @@
 
 namespace App\Controller\Admin;
 
+use App\Entity\Identity\User;
 use App\Entity\Support\Ticket;
 use App\Entity\Support\TicketAttachment;
 use App\Entity\Support\TicketMessage;
+use App\Service\Audit\AuditLogger;
 use Doctrine\ORM\EntityManagerInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
@@ -52,8 +54,12 @@ class TicketCrudController extends AbstractCrudController
     // * Injection par constructeur (comme ConversationCrudController) : le container restreint d'un
     // * AbstractCrudController ne connaît pas EntityManagerInterface. Le stockage des pièces jointes est le
     // * même que celui de TicketController (API) -- l'admin lit ce que l'utilisateur a téléversé.
+    // * Même plafond que SendTicketMessageRequest (API) : un message fait la même taille quel que soit son auteur.
+    private const MAX_REPLY_LENGTH = 5000;
+
     public function __construct(
         private readonly EntityManagerInterface $em,
+        private readonly AuditLogger $auditLogger,
         #[Autowire(service: 'ticket_attachments.storage')]
         private readonly FilesystemOperator $attachmentsStorage,
     ) {
@@ -131,7 +137,70 @@ class TicketCrudController extends AbstractCrudController
             'indexUrl' => $urls->setController(self::class)->setAction(Action::INDEX)->unset('entityId')->generateUrl(),
             'editUrl' => $urls->setController(self::class)->setAction(Action::EDIT)->setEntityId($ticket->getId())->generateUrl(),
             'attachmentUrls' => $this->attachmentUrls($messages, $ticket, $urls),
+            'canReply' => 'closed' !== $ticket->getStatus(),
+            'replyUrl' => $urls->setController(self::class)->setAction('replyToTicket')->setEntityId($ticket->getId())->generateUrl(),
+            'maxReplyLength' => self::MAX_REPLY_LENGTH,
         ]);
+    }
+
+    // * Réponse de l'agent (cahier fonctionnel, Support). Même règle que l'API (TicketController::
+    // * reopenOrRejectIfClosed()) : un ticket fermé n'accepte plus aucun message. Le premier agent qui répond prend le
+    // * ticket en charge s'il n'a personne, et un ticket "ouvert" passe "en cours" -- il n'attend plus une première
+    // * réponse. Un ticket "résolu" reste résolu (suivi après coup). Le contenu du message n'est pas journalisé
+    // * (données personnelles du demandeur) : seul l'identifiant du message l'est.
+    /**
+     * @param AdminContext<Ticket> $context
+     */
+    #[AdminRoute(path: '/{entityId}/reply', name: 'reply', options: ['methods' => ['POST']])]
+    public function replyToTicket(AdminContext $context): Response
+    {
+        /** @var Ticket $ticket */
+        $ticket = $context->getEntity()->getInstance();
+        $request = $context->getRequest();
+        $agent = $this->getUser();
+        if (!$agent instanceof User) {
+            throw $this->createAccessDeniedException();
+        }
+        if (!$this->isCsrfTokenValid('ticket_reply', (string) $request->request->get('_csrf_token'))) {
+            throw $this->createAccessDeniedException('Jeton CSRF invalide.');
+        }
+
+        $content = trim((string) $request->request->get('content'));
+        if ('closed' === $ticket->getStatus()) {
+            $this->addFlash('danger', 'Ce ticket est fermé : il n\'accepte plus de message.');
+        } elseif ('' === $content) {
+            $this->addFlash('danger', 'La réponse ne peut pas être vide.');
+        } elseif (mb_strlen($content) > self::MAX_REPLY_LENGTH) {
+            $this->addFlash('danger', sprintf('La réponse est trop longue (%d caractères maximum).', self::MAX_REPLY_LENGTH));
+        } else {
+            $message = new TicketMessage();
+            $message->setTicket($ticket);
+            $message->setSender($agent);
+            $message->setContent($content);
+            $this->em->persist($message);
+
+            if (null === $ticket->getAssignedTo()) {
+                $ticket->setAssignedTo($agent);
+            }
+            if ('open' === $ticket->getStatus()) {
+                $ticket->setStatus('in_progress');
+            }
+
+            $this->auditLogger->log('ticket_replied', 'support', 'tickets', $ticket->getId()->toRfc4122(), null, [
+                'message_id' => $message->getId()->toRfc4122(),
+                'status' => $ticket->getStatus(),
+            ]);
+            $this->em->flush();
+            $this->addFlash('success', 'Réponse envoyée.');
+        }
+
+        return $this->redirect(
+            $this->container->get(AdminUrlGenerator::class)
+                ->setController(self::class)
+                ->setAction(Action::DETAIL)
+                ->setEntityId($ticket->getId())
+                ->generateUrl()
+        );
     }
 
     // * Téléchargement d'une pièce jointe (cahier fonctionnel, Support : "pièces jointes"). Servie en flux par

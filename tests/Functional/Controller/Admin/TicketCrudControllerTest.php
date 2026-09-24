@@ -247,6 +247,141 @@ final class TicketCrudControllerTest extends ApiTestCase
         self::assertSame('contenu-pdf-2', $this->client->getInternalResponse()->getContent());
     }
 
+    private function submitReply(Ticket $ticket, string $content): \Symfony\Component\DomCrawler\Crawler
+    {
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+        $form = $crawler->filter('#ticket-reply-form')->form();
+        $form['content'] = $content;
+
+        return $this->client->submit($form);
+    }
+
+    /**
+     * @return array{status: string, assigned_to_id: ?string, messages: int}
+     */
+    private function ticketState(Ticket $ticket): array
+    {
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT status, assigned_to_id, (SELECT count(*) FROM support.ticket_messages WHERE ticket_id = t.id) AS messages
+             FROM support.tickets t WHERE t.id = :id',
+            ['id' => $ticket->getId()->toRfc4122()]
+        );
+        self::assertNotFalse($row);
+
+        return ['status' => $row['status'], 'assigned_to_id' => $row['assigned_to_id'], 'messages' => (int) $row['messages']];
+    }
+
+    public function testReplyAddsAgentMessageTakesTicketAndMovesItInProgress(): void
+    {
+        $admin = $this->loginAsAdmin();
+        [$ticket] = $this->makeTicketWithMessage($this->makeUser('asker'));
+        $this->em->flush();
+
+        $crawler = $this->submitReply($ticket, "Bonjour,\nnous corrigeons cela.");
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('.alert', 'Réponse envoyée');
+        $messages = $crawler->filter('.tm-message');
+        self::assertCount(2, $messages);
+        self::assertStringContainsString('nous corrigeons cela', $messages->eq(1)->text());
+        self::assertStringContainsString('Support', $messages->eq(1)->text());
+
+        $state = $this->ticketState($ticket);
+        self::assertSame('in_progress', $state['status']);
+        self::assertSame($admin->getId()->toRfc4122(), $state['assigned_to_id']);
+
+        $audit = $this->em->getConnection()->fetchAssociative(
+            "SELECT new_data FROM audit.audit_logs WHERE action = 'ticket_replied' AND record_id = :id",
+            ['id' => $ticket->getId()->toRfc4122()]
+        );
+        self::assertNotFalse($audit);
+        self::assertStringNotContainsString('nous corrigeons cela', $audit['new_data']);
+    }
+
+    public function testReplyKeepsExistingAssigneeAndResolvedStatus(): void
+    {
+        $this->loginAsAdmin();
+        $other = $this->makeUser('otheragent');
+        [$ticket] = $this->makeTicketWithMessage($this->makeUser('asker2'));
+        $ticket->setAssignedTo($other);
+        $ticket->setStatus('resolved');
+        $this->em->flush();
+
+        $this->submitReply($ticket, 'Un dernier point.');
+
+        $state = $this->ticketState($ticket);
+        self::assertSame('resolved', $state['status']);
+        self::assertSame($other->getId()->toRfc4122(), $state['assigned_to_id']);
+        self::assertSame(2, $state['messages']);
+    }
+
+    public function testClosedTicketHasNoReplyFormAndRejectsAReply(): void
+    {
+        $this->loginAsAdmin();
+        [$ticket] = $this->makeTicketWithMessage($this->makeUser('asker3'));
+        $this->em->flush();
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+        $replyUrl = $crawler->filter('#ticket-reply-form')->form()->getUri();
+        $token = $crawler->filter('#ticket-reply-form input[name=_csrf_token]')->attr('value');
+
+        $ticket = $this->em->find(Ticket::class, $ticket->getId());
+        $ticket->setStatus('closed');
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+        self::assertCount(0, $crawler->filter('#ticket-reply-form'));
+
+        $this->client->request('POST', $replyUrl, ['content' => 'Trop tard', '_csrf_token' => $token]);
+        self::assertSelectorTextContains('.alert', 'fermé');
+        self::assertSame(1, $this->ticketState($ticket)['messages']);
+    }
+
+    public function testEmptyReplyIsRejected(): void
+    {
+        $this->loginAsAdmin();
+        [$ticket] = $this->makeTicketWithMessage($this->makeUser('asker4'));
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+        $form = $crawler->filter('#ticket-reply-form')->form();
+        $this->client->request('POST', $form->getUri(), ['content' => "   \n ", '_csrf_token' => $crawler->filter('#ticket-reply-form input[name=_csrf_token]')->attr('value')]);
+
+        self::assertSelectorTextContains('.alert', 'vide');
+        $state = $this->ticketState($ticket);
+        self::assertSame(1, $state['messages']);
+        self::assertSame('open', $state['status']);
+    }
+
+    public function testReplyWithInvalidCsrfTokenIsForbidden(): void
+    {
+        $this->loginAsAdmin();
+        [$ticket] = $this->makeTicketWithMessage($this->makeUser('asker5'));
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+        $this->client->request('POST', $crawler->filter('#ticket-reply-form')->form()->getUri(), ['content' => 'Pirate', '_csrf_token' => 'faux']);
+
+        self::assertResponseStatusCodeSame(403);
+        self::assertSame(1, $this->ticketState($ticket)['messages']);
+    }
+
+    // * RBAC (cahier fonctionnel 22.2) : répondre aux tickets est précisément le périmètre du rôle Support.
+    public function testSupportRoleCanReply(): void
+    {
+        $support = $this->makeUserWithPassword('support', 'motdepasse123');
+        $support->setRoles([User::ROLE_SUPPORT]);
+        [$ticket] = $this->makeTicketWithMessage($this->makeUser('asker6'));
+        $this->em->flush();
+        $this->client->followRedirects(true);
+        $this->client->request('GET', '/admin/login');
+        $this->client->submitForm('Se connecter', ['_username' => $support->getEmail(), '_password' => 'motdepasse123']);
+
+        $this->submitReply($ticket, 'Réponse du support seul.');
+
+        self::assertSelectorTextContains('.alert', 'Réponse envoyée');
+        self::assertSame(2, $this->ticketState($ticket)['messages']);
+    }
+
     public function testAttachmentOfAnotherTicketIsNotServedThroughThisOne(): void
     {
         $this->loginAsAdmin();

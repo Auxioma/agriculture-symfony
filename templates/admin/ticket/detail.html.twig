@@ -70,6 +70,24 @@
         </ol>
     </section>
 
+    <section class="tm-panel-block">
+        <h2 class="tm-section-title">Répondre</h2>
+        {% if canReply %}
+            <form method="post" action="{{ replyUrl }}" id="ticket-reply-form">
+                <div class="tm-field">
+                    <label for="ticket-reply-content">Votre réponse au demandeur</label>
+                    <textarea class="form-control" name="content" id="ticket-reply-content" rows="6" maxlength="{{ maxReplyLength }}" required></textarea>
+                </div>
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('ticket_reply') }}">
+                <div class="tm-actions tm-actions-start">
+                    <button type="submit" class="tm-btn tm-btn-primary">Envoyer la réponse</button>
+                </div>
+            </form>
+        {% else %}
+            <p class="tm-hint">Ce ticket est fermé : il n'accepte plus de message. Le demandeur peut en ouvrir un nouveau.</p>
+        {% endif %}
+    </section>
+
     <div class="tm-actions tm-actions-start">
         <a href="{{ indexUrl }}" class="tm-btn">Retour à la liste</a>
         <a href="{{ editUrl }}" class="tm-btn">Modifier le ticket</a>
