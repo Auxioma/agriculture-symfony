@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Vérification en deux étapes — Back-office TrouveMoi Agri</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ asset('styles/admin.css') }}">
+</head>
+<body class="tm-login-page">
+    <main class="tm-login">
+        <div class="tm-login-card">
+            <div class="tm-logo tm-login-logo">
+                <img class="tm-logo-img" src="/img/logo.png" alt="TrouveMoi Agri" onerror="this.parentNode.classList.add('no-logo');this.remove()">
+                <span class="tm-logo-text">TrouveMoi Admin</span>
+            </div>
+            <h1 class="tm-login-title">Vérification en deux étapes</h1>
+            <p class="tm-subtitle">Saisissez le code de votre application d'authentification, ou un code de secours</p>
+
+            {% if authenticationError %}
+                <div class="alert alert-danger" role="alert">{{ authenticationError|trans(authenticationErrorData, 'SchebTwoFactorBundle') }}</div>
+            {% endif %}
+
+            {# Gabarit variables : voir vendor/scheb/2fa-bundle/Resources/views/Authentication/form.html.twig #}
+            <form action="{{ checkPathUrl ? checkPathUrl : path(checkPathRoute) }}" method="post">
+                <div class="tm-field">
+                    <label for="_auth_code">Code de vérification</label>
+                    <input type="text" name="{{ authCodeParameterName }}" id="_auth_code" autocomplete="one-time-code" required autofocus>
+                </div>
+                {% if isCsrfProtectionEnabled %}
+                    <input type="hidden" name="{{ csrfParameterName }}" value="{{ csrf_token(csrfTokenId) }}">
+                {% endif %}
+                <button class="tm-btn tm-btn-primary tm-btn-block" type="submit">Se connecter</button>
+            </form>
+
+            <p class="tm-hint"><a href="{{ logoutPath }}">Annuler et se déconnecter</a></p>
+        </div>
+    </main>
+</body>
+</html>

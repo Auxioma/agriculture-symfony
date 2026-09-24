@@ -77,6 +77,11 @@ security:
     # Note: Only the *first* matching rule is applied
     access_control:
         - { path: ^/admin/login, roles: PUBLIC_ACCESS }
+        # * Formulaire et vérification du code 2FA : un compte qui a saisi son mot de passe mais pas encore son
+        # * code n'a pas ROLE_SUPPORT (jeton "2FA en cours"), sans cette règle la règle ^/admin plus bas le
+        # * bloquerait sur le formulaire même du code. Anchré ($) pour ne pas couvrir /admin/2fa/setup, réservé
+        # * aux comptes pleinement authentifiés.
+        - { path: '^/admin/2fa(_check)?$', roles: IS_AUTHENTICATED_2FA_IN_PROGRESS }
         # * ROLE_SUPPORT suffit à entrer dans /admin (role_hierarchy ci-dessus couvre ADMIN/SUPER_ADMIN) : les
         # * écrans que Support ne doit pas voir sont bloqués individuellement par #[IsGranted('ROLE_ADMIN')].
         - { path: ^/admin, roles: ROLE_SUPPORT }

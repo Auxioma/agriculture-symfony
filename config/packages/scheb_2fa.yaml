@@ -13,6 +13,7 @@ scheb_two_factor:
     totp:
         enabled: true
         issuer: 'TrouveMoi Agri Admin'
+        template: admin/two_factor/login.html.twig
 
     backup_codes:
         enabled: true

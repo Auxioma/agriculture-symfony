@@ -35,10 +35,9 @@
                 {{ ui.row(form.session_minutes) }}
                 <div class="tm-field">
                     <span class="tm-label">Authentification à deux facteurs obligatoire</span>
-                    <div class="tm-switch-row">
-                        <span class="tm-switch" aria-hidden="true"></span>
-                        <span class="tm-hint">Indisponible : chaque admin/support peut déjà activer la double authentification sur son propre compte (menu utilisateur), mais rien ne l'impose encore automatiquement.</span>
-                    </div>
+                    {# Maquette : interrupteur. Remplacé par un simple constat : l'obligation vient du cahier DevOps
+                       ("2FA obligatoire admin"), imposée par RequireAdminTwoFactorListener, pas un réglage. #}
+                    <span class="tm-hint">Toujours activée : tout compte du back-office doit configurer la double authentification (menu utilisateur) avant d'accéder aux écrans.</span>
                 </div>
             </div>
         </section>
