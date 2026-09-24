@@ -492,6 +492,14 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, TwoFact
         return new TotpConfiguration($this->totpSecret, TotpConfiguration::ALGORITHM_SHA1, 30, 6);
     }
 
+    public function disableTwoFactor(): static
+    {
+        $this->totpSecret = null;
+        $this->backupCodes = null;
+
+        return $this;
+    }
+
     public function hasBackupCodes(): bool
     {
         return null !== $this->backupCodes && [] !== $this->backupCodes;
