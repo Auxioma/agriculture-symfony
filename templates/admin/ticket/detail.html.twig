@@ -74,6 +74,18 @@
         <h2 class="tm-section-title">Répondre</h2>
         {% if canReply %}
             <form method="post" action="{{ replyUrl }}" id="ticket-reply-form">
+                {% if replyTemplates is not empty %}
+                    {# Insère le texte du modèle à l'endroit du curseur, modifiable avant l'envoi (script en bas de page). #}
+                    <div class="tm-field">
+                        <label for="ticket-reply-template">Insérer un modèle de réponse</label>
+                        <select class="form-select" id="ticket-reply-template">
+                            <option value="">Choisir un modèle…</option>
+                            {% for template in replyTemplates %}
+                                <option value="{{ loop.index0 }}" data-content="{{ template.content }}">{{ template.title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                {% endif %}
                 <div class="tm-field">
                     <label for="ticket-reply-content">Votre réponse au demandeur</label>
                     <textarea class="form-control" name="content" id="ticket-reply-content" rows="6" maxlength="{{ maxReplyLength }}" required></textarea>
@@ -92,4 +104,26 @@
         <a href="{{ indexUrl }}" class="tm-btn">Retour à la liste</a>
         <a href="{{ editUrl }}" class="tm-btn">Modifier le ticket</a>
     </div>
+{% endblock %}
+
+{% block body_javascript %}
+    {{ parent() }}
+    <script>
+        (function () {
+            var select = document.getElementById('ticket-reply-template');
+            var area = document.getElementById('ticket-reply-content');
+            if (!select || !area) {
+                return;
+            }
+            select.addEventListener('change', function () {
+                var option = select.options[select.selectedIndex];
+                var text = option ? option.getAttribute('data-content') : '';
+                if (text) {
+                    area.setRangeText(text, area.selectionStart, area.selectionEnd, 'end');
+                    area.focus();
+                }
+                select.value = '';
+            });
+        })();
+    </script>
 {% endblock %}

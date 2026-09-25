@@ -3,6 +3,7 @@
 namespace App\Controller\Admin;
 
 use App\Entity\Identity\User;
+use App\Entity\Support\SupportReplyTemplate;
 use App\Entity\Support\Ticket;
 use App\Entity\Support\TicketAttachment;
 use App\Entity\Support\TicketMessage;
@@ -138,6 +139,12 @@ class TicketCrudController extends AbstractCrudController
             'editUrl' => $urls->setController(self::class)->setAction(Action::EDIT)->setEntityId($ticket->getId())->generateUrl(),
             'attachmentUrls' => $this->attachmentUrls($messages, $ticket, $urls),
             'canReply' => 'closed' !== $ticket->getStatus(),
+            // * Modèles de réponse du Support (SupportReplyTemplateCrudController) : seuls les actifs, dans l'ordre
+            // * d'affichage choisi par l'équipe. Le contenu part dans un attribut data-* : aucune requête au clic.
+            'replyTemplates' => array_map(
+                static fn (SupportReplyTemplate $t) => ['title' => $t->getTitle(), 'content' => $t->getContent()],
+                $this->em->getRepository(SupportReplyTemplate::class)->findBy(['isActive' => true], ['position' => 'ASC']),
+            ),
             'replyUrl' => $urls->setController(self::class)->setAction('replyToTicket')->setEntityId($ticket->getId())->generateUrl(),
             'maxReplyLength' => self::MAX_REPLY_LENGTH,
         ]);

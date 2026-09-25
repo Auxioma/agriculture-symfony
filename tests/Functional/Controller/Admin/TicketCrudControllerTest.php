@@ -4,6 +4,7 @@ namespace App\Tests\Functional\Controller\Admin;
 
 use App\Controller\Admin\TicketCrudController;
 use App\Entity\Identity\User;
+use App\Entity\Support\SupportReplyTemplate;
 use App\Entity\Support\Ticket;
 use App\Entity\Support\TicketAttachment;
 use App\Entity\Support\TicketMessage;
@@ -380,6 +381,51 @@ final class TicketCrudControllerTest extends ApiTestCase
 
         self::assertSelectorTextContains('.alert', 'Réponse envoyée');
         self::assertSame(2, $this->ticketState($ticket)['messages']);
+    }
+
+    private function makeReplyTemplate(string $title, string $content, int $position, bool $active = true): void
+    {
+        $template = new SupportReplyTemplate();
+        $template->setTitle($title);
+        $template->setContent($content);
+        $template->setPosition($position);
+        $template->setIsActive($active);
+        $this->em->persist($template);
+    }
+
+    // * Seuls les modèles actifs, dans l'ordre d'affichage voulu par l'équipe ; le contenu passe par un attribut
+    // * data-* (échappé par Twig, retours à la ligne conservés) et non par une requête au clic.
+    public function testReplyTemplatesAreOfferedActiveOnlyInPositionOrder(): void
+    {
+        $this->loginAsAdmin();
+        [$ticket] = $this->makeTicketWithMessage($this->makeUser('tpl'));
+        $this->makeReplyTemplate('Second', 'Texte "B"', 20);
+        $this->makeReplyTemplate('Inactif', 'Ne doit pas apparaître', 5, false);
+        $this->makeReplyTemplate('Premier', "Ligne 1\nLigne 2 <b>gras</b>", 10);
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+
+        $options = $crawler->filter('#ticket-reply-template option[data-content]');
+        self::assertCount(2, $options);
+        self::assertSame('Premier', trim($options->eq(0)->text()));
+        self::assertSame("Ligne 1\nLigne 2 <b>gras</b>", $options->eq(0)->attr('data-content'));
+        self::assertSame('Second', trim($options->eq(1)->text()));
+        self::assertSame('Texte "B"', $options->eq(1)->attr('data-content'));
+        self::assertStringNotContainsString('Ne doit pas apparaître', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testNoTemplateSelectorWhenThereAreNoActiveTemplates(): void
+    {
+        $this->loginAsAdmin();
+        [$ticket] = $this->makeTicketWithMessage($this->makeUser('notpl'));
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+
+        self::assertResponseIsSuccessful();
+        self::assertCount(0, $crawler->filter('#ticket-reply-template'));
+        self::assertCount(1, $crawler->filter('#ticket-reply-content'));
     }
 
     public function testAttachmentOfAnotherTicketIsNotServedThroughThisOne(): void
