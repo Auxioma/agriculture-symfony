@@ -46,6 +46,12 @@ security:
                 auth_form_path: /admin/2fa
                 check_path: /admin/2fa_check
                 default_target_path: admin
+            # * Protection brute force (cahier DevOps, sécurité "Authentification"), comme sur api_login : 5 essais par
+            # * 15 minutes par compte+IP, sur le mot de passe ET sur le code 2FA (dont le passeport porte un UserBadge,
+            # * donc couvert aussi). Le code 2FA a en plus une limite par compte seul : TwoFactorAttemptThrottleListener.
+            login_throttling:
+                max_attempts: 5
+                interval: '15 minutes'
 
         # ! api_login avavnt api sinon la requête
         # ! continuait alors vers le routeur normal, qui ne trouve aucun contrôleur pour /login -> 404.

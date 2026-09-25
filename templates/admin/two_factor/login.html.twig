@@ -21,7 +21,9 @@
             <p class="tm-subtitle">Saisissez le code de votre application d'authentification, ou un code de secours</p>
 
             {% if authenticationError %}
-                <div class="alert alert-danger" role="alert">{{ authenticationError|trans(authenticationErrorData, 'SchebTwoFactorBundle') }}</div>
+                {# Le message "trop de tentatives" (limite de connexion Symfony ou TwoFactorAttemptThrottleListener) vit dans le
+                   domaine "security" ; les erreurs de code, dans celui du bundle 2FA. #}
+                <div class="alert alert-danger" role="alert">{{ authenticationError|trans(authenticationErrorData, authenticationError starts with 'Too many' ? 'security' : 'SchebTwoFactorBundle') }}</div>
             {% endif %}
 
             {# Gabarit variables : voir vendor/scheb/2fa-bundle/Resources/views/Authentication/form.html.twig #}

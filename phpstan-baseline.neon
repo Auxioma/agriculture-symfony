@@ -841,6 +841,12 @@ parameters:
 			path: tests/Functional/Command/SendExpiryRemindersCommandTest.php
 
 		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\AdminBruteForceProtectionTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Admin/AdminBruteForceProtectionTest.php
+
+		-
 			message: '#^Method App\\Tests\\Functional\\Controller\\Admin\\AuditLogCrudControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
@@ -1205,6 +1211,12 @@ parameters:
 			identifier: missingType.generics
 			count: 2
 			path: tests/Functional/Database/UserSecurityTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Service\\RequestQualityAnalyzerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Service/RequestQualityAnalyzerTest.php
 
 		-
 			message: '#^Method App\\Tests\\Functional\\Service\\NotificationServiceTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
