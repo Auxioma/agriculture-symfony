@@ -250,13 +250,109 @@ final class TicketCrudControllerTest extends ApiTestCase
         self::assertSame('contenu-pdf-2', $this->client->getInternalResponse()->getContent());
     }
 
-    private function submitReply(Ticket $ticket, string $content): \Symfony\Component\DomCrawler\Crawler
+    private function submitReply(Ticket $ticket, string $content, ?string $filePath = null): \Symfony\Component\DomCrawler\Crawler
     {
         $crawler = $this->client->request('GET', $this->detailUrl($ticket));
         $form = $crawler->filter('#ticket-reply-form')->form();
         $form['content'] = $content;
+        if (null !== $filePath) {
+            $field = $form['attachment'];
+            self::assertInstanceOf(\Symfony\Component\DomCrawler\Field\FileFormField::class, $field);
+            $field->upload($filePath);
+        }
 
         return $this->client->submit($form);
+    }
+
+    /**
+     * Fichier temporaire commençant par la signature "%PDF-" : le type est lu sur le contenu (pas sur l'extension
+     * ni sur ce que déclare le navigateur), il faut donc un vrai début de PDF pour être accepté comme tel.
+     */
+    private function tempFile(string $name, string $content, int $padTo = 0): string
+    {
+        $path = sys_get_temp_dir().DIRECTORY_SEPARATOR.bin2hex(random_bytes(4)).'-'.$name;
+        file_put_contents($path, $content.str_repeat(' ', max(0, $padTo - strlen($content))));
+        register_shutdown_function(static fn () => @unlink($path));
+
+        return $path;
+    }
+
+    /**
+     * @return array{file_name: string, mime_type: string, file_size: int, file_url: string, content: ?string}|null
+     */
+    private function attachmentOf(Ticket $ticket): ?array
+    {
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT a.file_name, a.mime_type, a.file_size, a.file_url, m.content
+             FROM support.ticket_attachments a JOIN support.ticket_messages m ON m.id = a.ticket_message_id
+             WHERE m.ticket_id = :id',
+            ['id' => $ticket->getId()->toRfc4122()]
+        );
+
+        return false === $row ? null : $row;
+    }
+
+    public function testAgentReplyWithAnAttachmentStoresItAndItDownloads(): void
+    {
+        $this->loginAsAdmin();
+        [$ticket] = $this->makeTicketWithMessage($this->makeUser('withattach'));
+        $this->em->flush();
+        $pdf = $this->tempFile('devis.pdf', "%PDF-1.4\n% devis de test\n");
+
+        $crawler = $this->submitReply($ticket, 'Voici le devis demandé.', $pdf);
+
+        self::assertSelectorTextContains('.alert', 'Réponse envoyée');
+        $attachment = $this->attachmentOf($ticket);
+        self::assertNotNull($attachment);
+        self::assertStringEndsWith('devis.pdf', $attachment['file_name']);
+        self::assertSame('application/pdf', $attachment['mime_type']);
+        self::assertSame(filesize($pdf), (int) $attachment['file_size']);
+        self::assertSame('Voici le devis demandé.', $attachment['content']);
+        self::assertTrue(self::getContainer()->get('ticket_attachments.storage')->fileExists($attachment['file_url']));
+
+        $link = $crawler->filter('.tm-message-attachments a');
+        self::assertCount(1, $link);
+        $this->client->request('GET', $link->attr('href'));
+        self::assertResponseIsSuccessful();
+        self::assertStringStartsWith('%PDF-1.4', $this->client->getInternalResponse()->getContent());
+
+        $audit = $this->em->getConnection()->fetchOne(
+            "SELECT new_data FROM audit.audit_logs WHERE action = 'ticket_replied' AND record_id = :id",
+            ['id' => $ticket->getId()->toRfc4122()]
+        );
+        self::assertStringContainsString('"attachment_id"', $audit);
+    }
+
+    public function testAgentReplyMayCarryOnlyAFile(): void
+    {
+        $this->loginAsAdmin();
+        [$ticket] = $this->makeTicketWithMessage($this->makeUser('fileonly'));
+        $this->em->flush();
+
+        $this->submitReply($ticket, '', $this->tempFile('photo.pdf', "%PDF-1.4\n"));
+
+        self::assertSelectorTextContains('.alert', 'Réponse envoyée');
+        $attachment = $this->attachmentOf($ticket);
+        self::assertNotNull($attachment);
+        self::assertNull($attachment['content']);
+        self::assertSame(2, $this->ticketState($ticket)['messages']);
+    }
+
+    public function testAgentAttachmentWithUnsupportedTypeOrTooLargeIsRejected(): void
+    {
+        $this->loginAsAdmin();
+        [$ticket] = $this->makeTicketWithMessage($this->makeUser('badfile'));
+        $this->em->flush();
+
+        $this->submitReply($ticket, 'Texte OK', $this->tempFile('notes.txt', 'juste du texte'));
+        self::assertSelectorTextContains('.alert-danger', 'Format non supporté');
+
+        $this->submitReply($ticket, 'Texte OK', $this->tempFile('gros.pdf', "%PDF-1.4\n", 10 * 1024 * 1024 + 1));
+        self::assertSelectorTextContains('.alert-danger', 'trop volumineux');
+
+        self::assertNull($this->attachmentOf($ticket));
+        self::assertSame(1, $this->ticketState($ticket)['messages']);
+        self::assertSame('open', $this->ticketState($ticket)['status']);
     }
 
     /**
@@ -670,6 +766,24 @@ final class TicketCrudControllerTest extends ApiTestCase
         self::assertResponseIsSuccessful();
         self::assertCount(0, $crawler->filter('#ticket-reply-template'));
         self::assertCount(1, $crawler->filter('#ticket-reply-content'));
+    }
+
+    // * Les noms de fichiers des utilisateurs français portent des accents ("relevé"), des espaces, des "%" : la
+    // * livraison ne doit jamais planter (HeaderUtils::makeDisposition refuse un nom non ASCII sans repli).
+    public function testAttachmentWithAccentedOrOddFileNameStillDownloads(): void
+    {
+        $this->loginAsAdmin();
+        [$ticket, $message] = $this->makeTicketWithMessage($this->makeUser('accents'));
+        $this->attachTo($message, 'contenu-accentué', 'relevé bancaire 100%.pdf');
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+        $this->client->request('GET', $crawler->filter('.tm-message-attachments a')->first()->attr('href'));
+
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString('attachment', (string) $this->client->getResponse()->headers->get('Content-Disposition'));
+        self::assertStringContainsString("filename*=utf-8''relev%C3%A9%20bancaire", (string) $this->client->getResponse()->headers->get('Content-Disposition'));
+        self::assertSame('contenu-accentué', $this->client->getInternalResponse()->getContent());
     }
 
     public function testAttachmentOfAnotherTicketIsNotServedThroughThisOne(): void

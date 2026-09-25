@@ -10,6 +10,7 @@ use App\Entity\Support\TicketMessage;
 use App\Enum\UserStatus;
 use App\Service\Audit\AuditLogger;
 use App\Service\Notification\NotificationService;
+use App\Service\Support\TicketAttachmentUploader;
 use Doctrine\ORM\EntityManagerInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
@@ -28,6 +29,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use League\Flysystem\FilesystemOperator;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\HeaderUtils;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -65,6 +67,7 @@ class TicketCrudController extends AbstractCrudController
         private readonly EntityManagerInterface $em,
         private readonly AuditLogger $auditLogger,
         private readonly NotificationService $notificationService,
+        private readonly TicketAttachmentUploader $attachmentUploader,
         #[Autowire(service: 'ticket_attachments.storage')]
         private readonly FilesystemOperator $attachmentsStorage,
     ) {
@@ -312,18 +315,32 @@ class TicketCrudController extends AbstractCrudController
         }
 
         $content = trim((string) $request->request->get('content'));
+        // * Aucun fichier choisi -> null (Symfony ignore UPLOAD_ERR_NO_FILE) ; un fichier reçu mais invalide (dépasse
+        // * upload_max_filesize de PHP, transfert coupé...) arrive ici avec isValid() à false.
+        $file = $request->files->get('attachment');
+        $file = $file instanceof UploadedFile ? $file : null;
+
         if ('closed' === $ticket->getStatus()) {
             $this->addFlash('danger', 'Ce ticket est fermé : il n\'accepte plus de message.');
-        } elseif ('' === $content) {
-            $this->addFlash('danger', 'La réponse ne peut pas être vide.');
+        } elseif (null !== $file && !$file->isValid()) {
+            $this->addFlash('danger', 'Le fichier n\'a pas pu être téléversé.');
+        } elseif ('' === $content && null === $file) {
+            $this->addFlash('danger', 'La réponse ne peut pas être vide : saisissez un texte ou joignez un fichier.');
         } elseif (mb_strlen($content) > self::MAX_REPLY_LENGTH) {
             $this->addFlash('danger', sprintf('La réponse est trop longue (%d caractères maximum).', self::MAX_REPLY_LENGTH));
+        } elseif (null !== $file && null !== ($fileError = $this->attachmentUploader->validationError($file))) {
+            $this->addFlash('danger', $fileError);
         } else {
             $message = new TicketMessage();
             $message->setTicket($ticket);
             $message->setSender($agent);
-            $message->setContent($content);
+            // * Comme côté demandeur (TicketController::uploadAttachment()), un message peut ne porter qu'un fichier.
+            $message->setContent('' === $content ? null : $content);
             $this->em->persist($message);
+            $attachment = null !== $file ? $this->attachmentUploader->store($message, $file) : null;
+            if (null !== $attachment) {
+                $this->em->persist($attachment);
+            }
 
             if (null === $ticket->getAssignedTo()) {
                 $ticket->setAssignedTo($agent);
@@ -334,6 +351,7 @@ class TicketCrudController extends AbstractCrudController
 
             $this->auditLogger->log('ticket_replied', 'support', 'tickets', $ticket->getId()->toRfc4122(), null, [
                 'message_id' => $message->getId()->toRfc4122(),
+                'attachment_id' => $attachment?->getId()->toRfc4122(),
                 'status' => $ticket->getStatus(),
             ]);
             $this->notifyRequester($ticket, $agent);
@@ -374,7 +392,11 @@ class TicketCrudController extends AbstractCrudController
             fclose($stream);
         });
         $response->headers->set('Content-Type', $attachment->getMimeType() ?? 'application/octet-stream');
-        $response->headers->set('Content-Disposition', HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, $attachment->getFileName() ?? 'piece-jointe'));
+        // * makeDisposition() exige un nom de repli en ASCII pur, sans "%" : les navigateurs modernes lisent le vrai
+        // * nom (UTF-8, "relevé.pdf") dans filename*, le repli ne sert qu'aux très anciens.
+        $fileName = $attachment->getFileName() ?? 'piece-jointe';
+        $fallback = preg_replace('/[^\x20-\x7e]|%/', '_', $fileName) ?? 'piece-jointe';
+        $response->headers->set('Content-Disposition', HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, $fileName, $fallback));
 
         return $response;
     }

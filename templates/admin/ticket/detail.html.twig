@@ -114,7 +114,7 @@
     <section class="tm-panel-block">
         <h2 class="tm-section-title">Répondre</h2>
         {% if canReply %}
-            <form method="post" action="{{ replyUrl }}" id="ticket-reply-form">
+            <form method="post" action="{{ replyUrl }}" id="ticket-reply-form" enctype="multipart/form-data">
                 {% if replyTemplates is not empty %}
                     {# Insère le texte du modèle à l'endroit du curseur, modifiable avant l'envoi (script en bas de page). #}
                     <div class="tm-field">
@@ -129,7 +129,13 @@
                 {% endif %}
                 <div class="tm-field">
                     <label for="ticket-reply-content">Votre réponse au demandeur</label>
-                    <textarea class="form-control" name="content" id="ticket-reply-content" rows="6" maxlength="{{ maxReplyLength }}" required></textarea>
+                    <textarea class="form-control" name="content" id="ticket-reply-content" rows="6" maxlength="{{ maxReplyLength }}"></textarea>
+                </div>
+                {# Un seul fichier par réponse, comme côté demandeur (mêmes types et même plafond : TicketAttachmentUploader). #}
+                <div class="tm-field">
+                    <label for="ticket-reply-attachment">Pièce jointe (facultative)</label>
+                    <input type="file" name="attachment" id="ticket-reply-attachment" accept="image/jpeg,image/png,image/webp,application/pdf">
+                    <span class="tm-hint">jpeg, png, webp ou pdf, 10 Mo maximum. Un texte ou un fichier suffit.</span>
                 </div>
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token('ticket_reply') }}">
                 <div class="tm-actions tm-actions-start">

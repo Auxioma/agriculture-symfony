@@ -8,6 +8,7 @@ use App\Entity\Identity\User;
 use App\Entity\Support\Ticket;
 use App\Entity\Support\TicketAttachment;
 use App\Entity\Support\TicketMessage;
+use App\Service\Support\TicketAttachmentUploader;
 use Doctrine\ORM\EntityManagerInterface;
 use League\Flysystem\FilesystemOperator;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -31,9 +32,6 @@ final class TicketController extends AbstractController
     private const STATUS_OPEN = 'open';
     private const STATUS_RESOLVED = 'resolved';
     private const STATUS_CLOSED = 'closed';
-
-    private const ALLOWED_ATTACHMENT_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-    private const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
 
     #[Route('/api/support/tickets', methods: ['POST'])]
     public function createTicket(
@@ -159,7 +157,7 @@ final class TicketController extends AbstractController
         Request $request,
         #[CurrentUser] User $user,
         EntityManagerInterface $em,
-        #[Autowire(service: 'ticket_attachments.storage')] FilesystemOperator $storage,
+        TicketAttachmentUploader $uploader,
     ): JsonResponse {
         $result = $this->findOwnedTicket($id, $user, $em);
         if ($result instanceof JsonResponse) {
@@ -176,11 +174,9 @@ final class TicketController extends AbstractController
         if ($file === null || !$file->isValid()) {
             return $this->json(['error' => 'Aucun fichier "file" valide reçu.'], 422);
         }
-        if (!in_array($file->getMimeType(), self::ALLOWED_ATTACHMENT_MIME_TYPES, true)) {
-            return $this->json(['error' => 'Format non supporté (jpeg, png, webp ou pdf uniquement).'], 422);
-        }
-        if ($file->getSize() > self::MAX_ATTACHMENT_SIZE_BYTES) {
-            return $this->json(['error' => 'Fichier trop volumineux (10 Mo maximum).'], 422);
+        $fileError = $uploader->validationError($file);
+        if (null !== $fileError) {
+            return $this->json(['error' => $fileError], 422);
         }
 
         $message = new TicketMessage();
@@ -188,15 +184,7 @@ final class TicketController extends AbstractController
         $message->setSender($user);
         $message->setContent($request->request->get('content'));
 
-        $attachment = new TicketAttachment();
-        $attachment->setTicketMessage($message);
-        $attachment->setFileName($file->getClientOriginalName());
-        $attachment->setMimeType($file->getMimeType());
-        $attachment->setFileSize($file->getSize());
-
-        $key = sprintf('%s/%s', $ticket->getId()->toRfc4122(), $attachment->getId()->toRfc4122());
-        $storage->write($key, file_get_contents($file->getPathname()));
-        $attachment->setFileUrl($key);
+        $attachment = $uploader->store($message, $file);
 
         $em->persist($message);
         $em->persist($attachment);
