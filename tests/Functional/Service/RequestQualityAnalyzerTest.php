@@ -70,6 +70,24 @@ final class RequestQualityAnalyzerTest extends ApiTestCase
         self::assertSame([$this->id($original)], $this->analyzer->duplicatesOf([$this->id($copy)])[$this->id($copy)]);
     }
 
+    // * created_at n'a que la seconde de précision : un double clic produit deux demandes à la même seconde exacte.
+    // * Exactement UNE des deux doit être signalée (l'autre est l'original), pas zéro ni deux.
+    public function testTwoIdenticalRequestsInTheSameSecondFlagExactlyOne(): void
+    {
+        $client = $this->makeUser('doubleclick');
+        $first = $this->request($client, hoursAgo: '1');
+        $second = $this->request($client, hoursAgo: '1');
+        $this->em->getConnection()->executeStatement(
+            'UPDATE matching.client_requests SET created_at = (SELECT created_at FROM matching.client_requests WHERE id = :first) WHERE id = :second',
+            ['first' => $this->id($first), 'second' => $this->id($second)]
+        );
+
+        $signals = $this->signals([$first, $second]);
+
+        self::assertCount(1, $signals);
+        self::assertSame([RequestQualityAnalyzer::SIGNAL_DUPLICATE], array_values($signals)[0]);
+    }
+
     public function testDuplicateComparisonIgnoresCaseAndSurroundingSpaces(): void
     {
         $client = $this->makeUser('dupcase');

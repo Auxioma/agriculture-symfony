@@ -4,14 +4,17 @@ namespace App\Controller\Admin;
 
 use App\Entity\Matching\ClientRequest;
 use App\Enum\RequestStatus;
+use App\Service\Matching\RequestQualityAnalyzer;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
+use EasyCorp\Bundle\EasyAdminBundle\Config\KeyValueStore;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\Field;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
@@ -26,6 +29,25 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 class ClientRequestCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;
+
+    /** @var array<string, list<string>>|null */
+    private ?array $flaggedSignals = null;
+
+    // * Injection par constructeur : le container restreint d'un AbstractCrudController ne connaît pas les services
+    // * applicatifs (voir ConversationCrudController).
+    public function __construct(private readonly RequestQualityAnalyzer $analyzer)
+    {
+    }
+
+    /**
+     * Calculé une seule fois par requête : la colonne "Signaux", le compteur de la puce et le filtre en ont besoin.
+     *
+     * @return array<string, list<string>> identifiant de demande => signaux (doublon, spam...)
+     */
+    private function flaggedSignals(): array
+    {
+        return $this->flaggedSignals ??= $this->analyzer->flaggedSignals();
+    }
 
     public static function getEntityFqcn(): string
     {
@@ -78,6 +100,14 @@ class ClientRequestCrudController extends AbstractCrudController
             RequestStatus::Cancelled->value => 'secondary',
             RequestStatus::Reported->value => 'danger',
         ]);
+        // * Doublons et spam (cahier fonctionnel 13, "Demandes") : champ virtuel, rempli en un seul lot pour toute la
+        // * page par configureResponseParameters() -- pas une requête par ligne.
+        yield Field::new('signals')
+            ->setLabel('Signaux')
+            ->setVirtual(true)
+            ->setSortable(false)
+            ->setTemplatePath('admin/field/request_signals.html.twig')
+            ->onlyOnIndex();
         yield AssociationField::new('country')->setLabel('Pays')->hideOnForm()->hideOnIndex();
         yield TextField::new('city')->setLabel('Ville')->hideOnForm();
         yield TextareaField::new('message')->setLabel('Message')->hideOnIndex();
@@ -98,6 +128,8 @@ class ClientRequestCrudController extends AbstractCrudController
         // * "+ Filtres" pilotent le même paramètre de requête.
         return $filters
             ->add(TextFilter::new('status')->setFormType(TextType::class))
+            // * Puce "À vérifier" : voir FlaggedFilter et RequestQualityAnalyzer (seuils : nos choix, pas ceux du cahier).
+            ->add(FlaggedFilter::new('quality', fn (): array => array_keys($this->flaggedSignals())))
             ->add('needType')
             ->add(EntityFilter::new('category')->setFormTypeOption('value_type_options.choice_label', 'name'))
             ->add(EntityFilter::new('country')->setFormTypeOption('value_type_options.choice_label', 'name'));
@@ -109,5 +141,26 @@ class ClientRequestCrudController extends AbstractCrudController
         // * explicitement listée dans le CDC pour ce module (nettoyage spam/doublons). Seule la création est
         // * bloquée -- une demande naît du tunnel client, jamais du back-office.
         return $actions->disable(Action::NEW);
+    }
+
+    // * Appelé par EasyAdmin après le chargement de la page : seul moment où l'on connaît les demandes affichées ET où
+    // * leurs champs sont déjà construits. Renseigne la colonne virtuelle "Signaux" de chaque ligne et le compteur de
+    // * la puce "À vérifier" (tm_filter_chips, layout.html.twig, variable tm_flagged_count).
+    public function configureResponseParameters(KeyValueStore $responseParameters): KeyValueStore
+    {
+        if (Crud::PAGE_INDEX !== $responseParameters->get('pageName')) {
+            return $responseParameters;
+        }
+
+        $signals = $this->flaggedSignals();
+        foreach ($responseParameters->get('entities') as $entityDto) {
+            $request = $entityDto->getInstance();
+            if ($request instanceof ClientRequest) {
+                $entityDto->getFields()->getByProperty('signals')?->setValue($signals[$request->getId()->toRfc4122()] ?? []);
+            }
+        }
+        $responseParameters->set('tm_flagged_count', \count($signals));
+
+        return $responseParameters;
     }
 }

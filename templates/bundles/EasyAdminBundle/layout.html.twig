@@ -59,6 +59,7 @@
         {label: 'En attente', value: 'waiting_replies'},
         {label: 'Réponses reçues', value: 'replies_received'},
         {label: 'Archivées', value: 'archived'},
+        {label: 'À vérifier', value: 'flagged', property: 'quality', countVar: 'tm_flagged_count'},
     ]},
     'ReviewCrudController': {property: 'status', hideFiltersButton: true, chips: [
         {label: 'Tous', value: null},
@@ -132,14 +133,21 @@
                 {# ea.request.query.get('filters') planterait ici : InputBag::get() refuse toute valeur non
                    scalaire (BadRequestException "contains a non-scalar value") dès qu'un filtre est actif --
                    .all('filters') est la méthode prévue pour lire un paramètre de requête tableau. #}
-                {% set tm_current_filter = ea.request.query.all('filters')[tm_chips_config.property] ?? null %}
+                {% set tm_filters = ea.request.query.all('filters') %}
+                {# Une puce peut porter sa propre propriété (chip.property, ex. "À vérifier" -> quality) : sinon celle de
+                   l'écran. "Toutes" est active quand AUCUNE des propriétés des puces n'est filtrée. #}
+                {% set tm_chip_props = tm_chips_config.chips|map(c => c.property ?? tm_chips_config.property) %}
+                {% set tm_any_chip_filter = tm_chip_props|filter(p => tm_filters[p] is defined)|length > 0 %}
                 <div class="tm-chips">
                     {% for chip in tm_chips_config.chips %}
-                        {% set tm_chip_active = chip.value is null ? tm_current_filter is null : tm_current_filter == chip.value %}
+                        {% set tm_chip_property = chip.property ?? tm_chips_config.property %}
+                        {% set tm_chip_active = chip.value is null ? not tm_any_chip_filter : (tm_filters[tm_chip_property] ?? null) == chip.value %}
                         {% set tm_chip_url = chip.value is null
                             ? ea_url().unset('filters').setAction('index').generateUrl()
-                            : ea_url().set('filters', {(tm_chips_config.property): chip.value}).setAction('index').generateUrl() %}
-                        <a href="{{ tm_chip_url }}" class="tm-chip{{ tm_chip_active ? ' tm-chip-active' }}">{{ chip.label }}</a>
+                            : ea_url().set('filters', {(tm_chip_property): chip.value}).setAction('index').generateUrl() %}
+                        {# chip.countVar : nom d'une variable de la page (posée par configureResponseParameters()) dont la valeur
+                           s'affiche entre parenthèses -- ex. le nombre de demandes à vérifier. #}
+                        <a href="{{ tm_chip_url }}" class="tm-chip{{ tm_chip_active ? ' tm-chip-active' }}">{{ chip.label }}{% if chip.countVar is defined %} ({{ _context[chip.countVar] ?? 0 }}){% endif %}</a>
                     {% endfor %}
                 </div>
             {% endif %}

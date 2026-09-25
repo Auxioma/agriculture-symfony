@@ -30,7 +30,9 @@ final class RequestQualityAnalyzer
     public const LIVE_STATUSES = ['sent', 'waiting_replies', 'replies_received', 'conversation_open'];
 
     // * Doublon : même client, même besoin, même lieu, publiés à moins de 48 h d'écart (double envoi, republication
-    // * impatiente). Voir le docblock de classe pour la marge par rapport aux récurrences.
+    // * impatiente). Voir le docblock de classe pour la marge par rapport aux récurrences. created_at n'a que la seconde
+    // * de précision en base : un double clic tombe presque toujours dans la MÊME seconde, d'où le départage par
+    // * identifiant (l'un des deux est arbitrairement "l'original", de façon stable) -- sans lui, aucun n'était signalé.
     public const DUPLICATE_WINDOW_HOURS = 48;
     // * Rafale : 5 demandes publiées ou plus par le même client sur les 24 h qui précèdent celle-ci.
     public const FLOOD_THRESHOLD = 5;
@@ -59,14 +61,23 @@ final class RequestQualityAnalyzer
     }
 
     /**
-     * Identifiants de toutes les demandes signalées (file "à vérifier" de l'écran Demandes). Parcourt la table :
-     * acceptable à l'échelle d'un back-office, à réévaluer (index, vue matérialisée) si elle devient très volumineuse.
+     * Signaux de TOUTES les demandes signalées (file "à vérifier" de l'écran Demandes : liste, compteur, filtre).
+     * Parcourt la table : acceptable à l'échelle d'un back-office (chaque règle est en une passe ou s'appuie sur
+     * l'index de client_id), à réévaluer (index, vue matérialisée) si elle devient très volumineuse.
      *
+     * @return array<string, list<string>> identifiant de demande => signaux
+     */
+    public function flaggedSignals(): array
+    {
+        return $this->collect(null);
+    }
+
+    /**
      * @return list<string>
      */
     public function flaggedIds(): array
     {
-        return array_keys($this->collect(null));
+        return array_keys($this->flaggedSignals());
     }
 
     /**
@@ -124,7 +135,7 @@ final class RequestQualityAnalyzer
                  JOIN matching.client_requests o
                    ON o.client_id = r.client_id
                   AND o.id <> r.id
-                  AND o.created_at < r.created_at
+                  AND (o.created_at < r.created_at OR (o.created_at = r.created_at AND o.id < r.id))
                   AND r.created_at - o.created_at <= make_interval(hours => :window)
                   AND o.need_type = r.need_type
                   AND %s = %s
@@ -192,6 +203,9 @@ final class RequestQualityAnalyzer
     }
 
     /**
+     * Le message est normalisé une seule fois par ligne puis regroupé (GROUP BY ... HAVING), au lieu d'une sous-requête
+     * par demande : coût linéaire en nombre de demandes, pas quadratique.
+     *
      * @param list<string>|null $ids
      *
      * @return list<string>
@@ -201,14 +215,18 @@ final class RequestQualityAnalyzer
         return $this->connection->fetchFirstColumn(
             sprintf(
                 "SELECT r.id FROM matching.client_requests r
-                 WHERE r.status IN (:live) %s
-                   AND length(%s) >= :minLength
-                   AND (SELECT count(DISTINCT x.client_id) FROM matching.client_requests x
-                        WHERE x.status <> 'draft' AND %s = %s) >= :minClients",
-                $this->idFilter($ids),
-                sprintf(self::NORMALIZE_MESSAGE, 'r'),
+                 JOIN (
+                     SELECT %s AS normalized
+                     FROM matching.client_requests x
+                     WHERE x.status <> 'draft' AND length(%s) >= :minLength
+                     GROUP BY normalized
+                     HAVING count(DISTINCT x.client_id) >= :minClients
+                 ) mass ON mass.normalized = %s
+                 WHERE r.status IN (:live) %s",
+                sprintf(self::NORMALIZE_MESSAGE, 'x'),
                 sprintf(self::NORMALIZE_MESSAGE, 'x'),
                 sprintf(self::NORMALIZE_MESSAGE, 'r'),
+                $this->idFilter($ids),
             ),
             $this->params($ids, ['live' => self::LIVE_STATUSES, 'minLength' => self::MASS_MESSAGE_MIN_LENGTH, 'minClients' => self::MASS_MESSAGE_MIN_CLIENTS]),
             $this->types($ids, ['live' => ArrayParameterType::STRING]),

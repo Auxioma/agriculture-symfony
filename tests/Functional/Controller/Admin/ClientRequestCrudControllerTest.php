@@ -158,6 +158,122 @@ final class ClientRequestCrudControllerTest extends ApiTestCase
         self::assertResponseIsSuccessful();
     }
 
+    /**
+     * Un client avec un doublon (l'original + sa copie), un autre avec un lien suspect, un troisième sans rien à
+     * signaler. Retourne les trois clients pour retrouver leurs lignes par email (la colonne "Client" est affichée).
+     *
+     * @return array{dup: User, spam: User, clean: User}
+     */
+    private function seedSignals(): array
+    {
+        $dup = $this->makeUser('dupclient');
+        $spam = $this->makeUser('spamclient');
+        $clean = $this->makeUser('cleanclient');
+        foreach ([[$dup, 'Fromage de chèvre', null], [$dup, 'Fromage de chèvre', null], [$spam, 'Miel', 'Offre sur https://promo.example'], [$clean, 'Pommes', 'Je cherche des pommes']] as [$client, $what, $message]) {
+            $request = $this->makeClientRequest($client);
+            $request->setCustomProduct($what);
+            $request->setCity('Rennes');
+            $request->setMessage($message);
+            $this->em->flush();
+        }
+
+        return ['dup' => $dup, 'spam' => $spam, 'clean' => $clean];
+    }
+
+    /**
+     * @return list<string> textes des badges de signal (avec infobulle) de la ligne de ce client
+     */
+    private function signalBadgesOf(\Symfony\Component\DomCrawler\Crawler $crawler, User $client): array
+    {
+        $badges = [];
+        $crawler->filter('table tbody tr')->reduce(static fn ($row) => str_contains($row->text(), $client->getEmail()))
+            ->each(static function ($row) use (&$badges): void {
+                $badges[] = implode('+', $row->filter('td .badge[title]')->each(static fn ($b) => trim($b->text())));
+            });
+
+        return $badges;
+    }
+
+    public function testIndexShowsDuplicateAndSpamBadgesOnlyOnFlaggedRequests(): void
+    {
+        $this->loginAsAdmin();
+        $clients = $this->seedSignals();
+
+        $crawler = $this->client->request('GET', $this->urlFor(Action::INDEX));
+
+        self::assertResponseIsSuccessful();
+        // * Deux lignes pour le client au doublon : l'original (rien) et la copie plus récente (Doublon).
+        self::assertEqualsCanonicalizing(['', 'Doublon'], $this->signalBadgesOf($crawler, $clients['dup']));
+        self::assertSame(['Spam · lien'], $this->signalBadgesOf($crawler, $clients['spam']));
+        self::assertSame([''], $this->signalBadgesOf($crawler, $clients['clean']));
+    }
+
+    public function testFlaggedChipShowsTheCountAndFiltersTheList(): void
+    {
+        $this->loginAsAdmin();
+        $clients = $this->seedSignals();
+
+        $crawler = $this->client->request('GET', $this->urlFor(Action::INDEX));
+        $chip = $crawler->filter('.tm-chip')->reduce(static fn ($c) => str_contains($c->text(), 'À vérifier'));
+        self::assertCount(1, $chip);
+        self::assertStringContainsString('À vérifier (2)', $chip->text());
+        self::assertStringNotContainsString('tm-chip-active', (string) $chip->attr('class'));
+
+        $crawler = $this->client->request('GET', $chip->attr('href'));
+
+        self::assertResponseIsSuccessful();
+        self::assertCount(2, $crawler->filter('table tbody tr[data-id]'));
+        self::assertSame(['Doublon'], $this->signalBadgesOf($crawler, $clients['dup']));
+        self::assertSame(['Spam · lien'], $this->signalBadgesOf($crawler, $clients['spam']));
+        self::assertSame([], $this->signalBadgesOf($crawler, $clients['clean']));
+        $active = $crawler->filter('.tm-chip-active');
+        self::assertCount(1, $active);
+        self::assertStringContainsString('À vérifier', $active->text());
+    }
+
+    public function testFlaggedFilterWithNothingFlaggedListsNothingWithoutError(): void
+    {
+        $this->loginAsAdmin();
+        $this->makeClientRequest($this->makeUser('alone'));
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->urlFor(Action::INDEX).'?filters[quality]=flagged');
+
+        self::assertResponseIsSuccessful();
+        self::assertCount(0, $crawler->filter('table tbody tr[data-id]'));
+        self::assertStringContainsString('À vérifier (0)', $crawler->filter('.tm-chips')->text());
+    }
+
+    // * "Toutes" ne doit être active que si AUCUNE puce n'est filtrée : la puce "À vérifier" a sa propre propriété
+    // * (quality), différente de celle des autres puces (status).
+    public function testAllChipIsActiveOnlyWhenNoChipIsFiltered(): void
+    {
+        $this->loginAsAdmin();
+        $this->seedSignals();
+        $activeChips = fn (string $suffix): array => $this->client->request('GET', $this->urlFor(Action::INDEX).$suffix)
+            ->filter('.tm-chip-active')->each(static fn ($c) => preg_replace('/\s*\(\d+\)$/', '', trim($c->text())));
+
+        self::assertSame(['Toutes'], $activeChips(''));
+        self::assertSame(['Envoyées'], $activeChips('?filters[status]=sent'));
+        self::assertSame(['À vérifier'], $activeChips('?filters[quality]=flagged'));
+    }
+
+    // * Le contenu de la fenêtre "+ Filtres" n'est pas dans la page d'index : EasyAdmin le charge à la demande (action
+    // * renderFilters). Elle passe aussi par configureResponseParameters(), qui ne doit pas s'y interposer.
+    public function testFiltersModalStillOffersTheFlaggedChoice(): void
+    {
+        $this->loginAsAdmin();
+        $this->seedSignals();
+
+        $crawler = $this->client->request('GET', $this->urlFor('renderFilters'));
+
+        self::assertResponseIsSuccessful();
+        $select = $crawler->filter('select[name="filters[quality]"]');
+        self::assertCount(1, $select);
+        self::assertSame(['', 'flagged'], $select->filter('option')->each(static fn ($o) => $o->attr('value')));
+        self::assertStringContainsString('À vérifier', $select->filter('option[value=flagged]')->text());
+    }
+
     public function testCreatingRequestFromBackofficeIsForbidden(): void
     {
         $this->loginAsAdmin();

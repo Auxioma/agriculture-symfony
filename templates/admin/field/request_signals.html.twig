@@ -1,0 +1,17 @@
+{# Signaux de qualité d'une demande (RequestQualityAnalyzer) : badges "Doublon" / "Spam" avec la règle exacte en
+   infobulle -- un admin doit pouvoir dire POURQUOI une demande est signalée. field.value : liste de codes (vide = rien
+   à signaler), posée par ClientRequestCrudController::configureResponseParameters(). #}
+{% set labels = {
+    duplicate: {label: 'Doublon', variant: 'warning', help: "Même client, même besoin, même lieu qu'une demande envoyée dans les 48 h précédentes."},
+    flood: {label: 'Spam · rafale', variant: 'danger', help: 'Au moins 5 demandes publiées par ce client sur les 24 h précédentes.'},
+    link: {label: 'Spam · lien', variant: 'danger', help: 'Le message ou le produit contient une adresse web (http://, https:// ou www.).'},
+    mass_message: {label: 'Spam · message copié', variant: 'danger', help: 'Le même message a été envoyé par au moins 3 clients différents.'},
+} %}
+{% if field.value is empty %}
+    <span class="tm-hint">—</span>
+{% else %}
+    {% for code in field.value %}
+        {% set signal = labels[code] ?? null %}
+        {% if signal %}<span class="badge badge-{{ signal.variant }}" title="{{ signal.help }}">{{ signal.label }}</span>{% endif %}
+    {% endfor %}
+{% endif %}
