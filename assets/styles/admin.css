@@ -974,6 +974,27 @@ textarea.form-control {
     margin: 0;
 }
 
+.tm-ticket-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--tm-grey-200);
+}
+
+.tm-ticket-actions form {
+    margin: 0;
+}
+
+.tm-ticket-priority {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
 .tm-thread {
     display: flex;
     flex-direction: column;

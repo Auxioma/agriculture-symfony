@@ -29,6 +29,7 @@ use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\HttpFoundation\HeaderUtils;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -122,6 +123,8 @@ class TicketCrudController extends AbstractCrudController
         /** @var Ticket $ticket */
         $ticket = $context->getEntity()->getInstance();
         $urls = $this->container->get(AdminUrlGenerator::class);
+        $me = $this->getUser();
+        $assignedToMe = $me instanceof User && true === $ticket->getAssignedTo()?->getId()->equals($me->getId());
 
         // * Triés explicitement par createdAt : Ticket::$messages n'a pas d'#[ORM\OrderBy] (même remarque que
         // * TicketController::getTicket() côté API).
@@ -139,6 +142,12 @@ class TicketCrudController extends AbstractCrudController
             'editUrl' => $urls->setController(self::class)->setAction(Action::EDIT)->setEntityId($ticket->getId())->generateUrl(),
             'attachmentUrls' => $this->attachmentUrls($messages, $ticket, $urls),
             'canReply' => 'closed' !== $ticket->getStatus(),
+            'canResolve' => \in_array($ticket->getStatus(), ['open', 'in_progress'], true),
+            'canReopen' => \in_array($ticket->getStatus(), ['resolved', 'closed'], true),
+            'canAssignToMe' => 'closed' !== $ticket->getStatus() && !$assignedToMe,
+            'canChangePriority' => 'closed' !== $ticket->getStatus(),
+            'priorityChoices' => array_flip(self::PRIORITIES),
+            'quickActionUrl' => $urls->setController(self::class)->setAction('quickAction')->setEntityId($ticket->getId())->generateUrl(),
             // * Modèles de réponse du Support (SupportReplyTemplateCrudController) : seuls les actifs, dans l'ordre
             // * d'affichage choisi par l'équipe. Le contenu part dans un attribut data-* : aucune requête au clic.
             'replyTemplates' => array_map(
@@ -148,6 +157,111 @@ class TicketCrudController extends AbstractCrudController
             'replyUrl' => $urls->setController(self::class)->setAction('replyToTicket')->setEntityId($ticket->getId())->generateUrl(),
             'maxReplyLength' => self::MAX_REPLY_LENGTH,
         ]);
+    }
+
+    // * Le formulaire "Modifier" change aussi le statut : closedAt doit suivre, sinon la date exposée par l'API
+    // * (TicketController : "closedAt") resterait vide quel que soit le chemin emprunté pour résoudre un ticket.
+    public function updateEntity(EntityManagerInterface $entityManager, object $entityInstance): void
+    {
+        if ($entityInstance instanceof Ticket) {
+            $this->syncClosedAt($entityInstance);
+        }
+
+        parent::updateEntity($entityManager, $entityInstance);
+    }
+
+    private function syncClosedAt(Ticket $ticket): void
+    {
+        if (\in_array($ticket->getStatus(), ['resolved', 'closed'], true)) {
+            $ticket->setClosedAt($ticket->getClosedAt() ?? new \DateTimeImmutable());
+        } else {
+            $ticket->setClosedAt(null);
+        }
+    }
+
+    // * Actions rapides de la page détail (cahier fonctionnel, Support : "priorités, assignation") : résoudre,
+    // * rouvrir, m'assigner le ticket, changer sa priorité. Une seule route à liste blanche d'opérations ; chaque
+    // * règle est revérifiée ici (l'interface ne montre que les boutons valables, mais un POST direct passe aussi).
+    // * Un ticket "fermé" est définitif côté API (aucun message accepté) : seule "Rouvrir" le concerne.
+    /**
+     * @param AdminContext<Ticket> $context
+     */
+    #[AdminRoute(path: '/{entityId}/quick-action', name: 'quick_action', options: ['methods' => ['POST']])]
+    public function quickAction(AdminContext $context): Response
+    {
+        /** @var Ticket $ticket */
+        $ticket = $context->getEntity()->getInstance();
+        $request = $context->getRequest();
+        $agent = $this->getUser();
+        if (!$agent instanceof User) {
+            throw $this->createAccessDeniedException();
+        }
+        if (!$this->isCsrfTokenValid('ticket_quick_action', (string) $request->request->get('_csrf_token'))) {
+            throw $this->createAccessDeniedException('Jeton CSRF invalide.');
+        }
+
+        $status = $ticket->getStatus();
+        $id = $ticket->getId()->toRfc4122();
+        $operation = (string) $request->request->get('operation');
+
+        if ('resolve' === $operation) {
+            if (!\in_array($status, ['open', 'in_progress'], true)) {
+                $this->addFlash('danger', 'Seul un ticket ouvert ou en cours peut être marqué comme résolu.');
+            } else {
+                $ticket->setStatus('resolved');
+                $this->syncClosedAt($ticket);
+                $this->auditLogger->log('ticket_status_changed', 'support', 'tickets', $id, ['status' => $status], ['status' => 'resolved']);
+                $this->em->flush();
+                $this->addFlash('success', 'Ticket marqué comme résolu.');
+            }
+        } elseif ('reopen' === $operation) {
+            if (!\in_array($status, ['resolved', 'closed'], true)) {
+                $this->addFlash('danger', 'Seul un ticket résolu ou fermé peut être rouvert.');
+            } else {
+                // * Pris en charge -> "en cours" ; personne dessus -> "ouvert" (il attend une première prise en charge).
+                $newStatus = null !== $ticket->getAssignedTo() ? 'in_progress' : 'open';
+                $ticket->setStatus($newStatus);
+                $this->syncClosedAt($ticket);
+                $this->auditLogger->log('ticket_status_changed', 'support', 'tickets', $id, ['status' => $status], ['status' => $newStatus]);
+                $this->em->flush();
+                $this->addFlash('success', 'Ticket rouvert.');
+            }
+        } elseif ('assign_me' === $operation) {
+            $previous = $ticket->getAssignedTo();
+            if ('closed' === $status) {
+                $this->addFlash('danger', 'Un ticket fermé ne peut pas être assigné : rouvrez-le d\'abord.');
+            } elseif (null !== $previous && $previous->getId()->equals($agent->getId())) {
+                $this->addFlash('info', 'Ce ticket vous est déjà assigné.');
+            } else {
+                $ticket->setAssignedTo($agent);
+                $this->auditLogger->log('ticket_assigned', 'support', 'tickets', $id, ['assigned_to' => $previous?->getId()->toRfc4122()], ['assigned_to' => $agent->getId()->toRfc4122()]);
+                $this->em->flush();
+                $this->addFlash('success', 'Ticket assigné à vous.');
+            }
+        } elseif ('priority' === $operation) {
+            $priority = (string) $request->request->get('priority');
+            if ('closed' === $status) {
+                $this->addFlash('danger', 'La priorité d\'un ticket fermé ne peut plus être modifiée.');
+            } elseif (!\in_array($priority, self::PRIORITIES, true)) {
+                $this->addFlash('danger', 'Priorité inconnue.');
+            } elseif ($priority !== $ticket->getPriority()) {
+                $previous = $ticket->getPriority();
+                $ticket->setPriority($priority);
+                $this->auditLogger->log('ticket_priority_changed', 'support', 'tickets', $id, ['priority' => $previous], ['priority' => $priority]);
+                $this->em->flush();
+                $this->addFlash('success', 'Priorité mise à jour.');
+            }
+        } else {
+            throw new BadRequestHttpException('Opération inconnue.');
+        }
+
+        return $this->redirect(
+            $this->container->get(AdminUrlGenerator::class)
+                ->setController(self::class)
+                ->setAction(Action::DETAIL)
+                ->setEntityId($ticket->getId())
+                ->generateUrl()
+        );
     }
 
     // * Réponse de l'agent (cahier fonctionnel, Support). Même règle que l'API (TicketController::

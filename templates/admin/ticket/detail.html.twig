@@ -34,6 +34,47 @@
         {% if ticket.closedAt %}
             <p class="tm-hint">Clos le {{ ticket.closedAt|date('d/m/Y à H:i') }}</p>
         {% endif %}
+
+        {# Actions rapides : chaque bouton ne s'affiche que s'il est valable pour le statut actuel (TicketCrudController::
+           quickAction() revérifie tout côté serveur). Un formulaire par action, même jeton CSRF. #}
+        {% if canResolve or canReopen or canAssignToMe or canChangePriority %}
+            <div class="tm-ticket-actions">
+                {% if canResolve %}
+                    <form method="post" action="{{ quickActionUrl }}">
+                        <input type="hidden" name="operation" value="resolve">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('ticket_quick_action') }}">
+                        <button type="submit" class="tm-btn tm-btn-primary">Marquer comme résolu</button>
+                    </form>
+                {% endif %}
+                {% if canReopen %}
+                    <form method="post" action="{{ quickActionUrl }}">
+                        <input type="hidden" name="operation" value="reopen">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('ticket_quick_action') }}">
+                        <button type="submit" class="tm-btn tm-btn-primary">Rouvrir le ticket</button>
+                    </form>
+                {% endif %}
+                {% if canAssignToMe %}
+                    <form method="post" action="{{ quickActionUrl }}">
+                        <input type="hidden" name="operation" value="assign_me">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('ticket_quick_action') }}">
+                        <button type="submit" class="tm-btn">Me l'assigner</button>
+                    </form>
+                {% endif %}
+                {% if canChangePriority %}
+                    <form method="post" action="{{ quickActionUrl }}" class="tm-ticket-priority">
+                        <input type="hidden" name="operation" value="priority">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('ticket_quick_action') }}">
+                        <label for="ticket-priority" class="tm-hint">Priorité</label>
+                        <select class="form-select" name="priority" id="ticket-priority">
+                            {% for value, label in priorityChoices %}
+                                <option value="{{ value }}"{{ value == ticket.priority ? ' selected' : '' }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="tm-btn">Appliquer</button>
+                    </form>
+                {% endif %}
+            </div>
+        {% endif %}
     </section>
 
     <section class="tm-panel-block">

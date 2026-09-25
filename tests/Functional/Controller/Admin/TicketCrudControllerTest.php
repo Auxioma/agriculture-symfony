@@ -100,12 +100,14 @@ final class TicketCrudControllerTest extends ApiTestCase
         self::assertResponseIsSuccessful();
 
         $row = $this->em->getConnection()->fetchAssociative(
-            'SELECT status, assigned_to_id FROM support.tickets WHERE id = :id',
+            'SELECT status, assigned_to_id, closed_at FROM support.tickets WHERE id = :id',
             ['id' => $ticket->getId()->toRfc4122()]
         );
         self::assertNotFalse($row);
         self::assertSame('resolved', $row['status']);
         self::assertSame($agent->getId()->toRfc4122(), $row['assigned_to_id']);
+        // * Le formulaire "Modifier" doit aussi renseigner closedAt (TicketCrudController::updateEntity()).
+        self::assertNotNull($row['closed_at']);
     }
 
     public function testTicketDetailShowsItsMessages(): void
@@ -258,18 +260,210 @@ final class TicketCrudControllerTest extends ApiTestCase
     }
 
     /**
-     * @return array{status: string, assigned_to_id: ?string, messages: int}
+     * @return array{status: string, priority: ?string, assigned_to_id: ?string, closed_at: ?string, messages: int}
      */
     private function ticketState(Ticket $ticket): array
     {
         $row = $this->em->getConnection()->fetchAssociative(
-            'SELECT status, assigned_to_id, (SELECT count(*) FROM support.ticket_messages WHERE ticket_id = t.id) AS messages
+            'SELECT status, priority, assigned_to_id, closed_at, (SELECT count(*) FROM support.ticket_messages WHERE ticket_id = t.id) AS messages
              FROM support.tickets t WHERE t.id = :id',
             ['id' => $ticket->getId()->toRfc4122()]
         );
         self::assertNotFalse($row);
 
-        return ['status' => $row['status'], 'assigned_to_id' => $row['assigned_to_id'], 'messages' => (int) $row['messages']];
+        return [
+            'status' => $row['status'],
+            'priority' => $row['priority'],
+            'assigned_to_id' => $row['assigned_to_id'],
+            'closed_at' => $row['closed_at'],
+            'messages' => (int) $row['messages'],
+        ];
+    }
+
+    /**
+     * Poste une action rapide avec le vrai jeton CSRF et la vraie URL lus dans le premier formulaire d'action de la page.
+     *
+     * @param array<string, string> $params
+     */
+    private function postQuickAction(Ticket $ticket, array $params): \Symfony\Component\DomCrawler\Crawler
+    {
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+        $form = $crawler->filter('input[name=operation]')->first()->closest('form');
+        self::assertNotNull($form);
+
+        return $this->client->request('POST', $form->form()->getUri(), $params + [
+            '_csrf_token' => $form->filter('input[name=_csrf_token]')->attr('value'),
+        ]);
+    }
+
+    private function makeOpenTicket(string $prefix, string $status = 'open', string $priority = 'moyenne'): Ticket
+    {
+        [$ticket] = $this->makeTicketWithMessage($this->makeUser($prefix));
+        $ticket->setStatus($status);
+        $ticket->setPriority($priority);
+
+        return $ticket;
+    }
+
+    public function testResolveButtonMarksTicketResolvedStampsClosedAtAndIsAudited(): void
+    {
+        $this->loginAsAdmin();
+        $ticket = $this->makeOpenTicket('resolve', 'in_progress');
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+        self::assertCount(0, $crawler->selectButton('Rouvrir le ticket'));
+        $crawler = $this->client->submit($crawler->selectButton('Marquer comme résolu')->form());
+
+        self::assertSelectorTextContains('.alert', 'résolu');
+        $state = $this->ticketState($ticket);
+        self::assertSame('resolved', $state['status']);
+        self::assertNotNull($state['closed_at']);
+        self::assertCount(0, $crawler->selectButton('Marquer comme résolu'));
+        self::assertCount(1, $crawler->selectButton('Rouvrir le ticket'));
+
+        $audit = $this->em->getConnection()->fetchAssociative(
+            "SELECT old_data, new_data FROM audit.audit_logs WHERE action = 'ticket_status_changed' AND record_id = :id",
+            ['id' => $ticket->getId()->toRfc4122()]
+        );
+        self::assertNotFalse($audit);
+        self::assertStringContainsString('in_progress', $audit['old_data']);
+        self::assertStringContainsString('resolved', $audit['new_data']);
+    }
+
+    public function testReopenGoesInProgressWhenAssignedAndOpenOtherwiseAndClearsClosedAt(): void
+    {
+        $this->loginAsAdmin();
+        $assigned = $this->makeOpenTicket('reopen1', 'resolved');
+        $assigned->setAssignedTo($this->makeUser('owner'));
+        $assigned->setClosedAt(new \DateTimeImmutable('-1 day'));
+        $unassigned = $this->makeOpenTicket('reopen2', 'closed');
+        $unassigned->setClosedAt(new \DateTimeImmutable('-1 day'));
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->detailUrl($assigned));
+        $this->client->submit($crawler->selectButton('Rouvrir le ticket')->form());
+        $crawler = $this->client->request('GET', $this->detailUrl($unassigned));
+        $this->client->submit($crawler->selectButton('Rouvrir le ticket')->form());
+
+        $a = $this->ticketState($assigned);
+        $u = $this->ticketState($unassigned);
+        self::assertSame('in_progress', $a['status']);
+        self::assertNull($a['closed_at']);
+        self::assertSame('open', $u['status']);
+        self::assertNull($u['closed_at']);
+    }
+
+    public function testAssignToMeTakesOverAndDisappearsOnceMine(): void
+    {
+        $admin = $this->loginAsAdmin();
+        $ticket = $this->makeOpenTicket('assign');
+        $ticket->setAssignedTo($this->makeUser('previous'));
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+        $crawler = $this->client->submit($crawler->selectButton('Me l\'assigner')->form());
+
+        self::assertSelectorTextContains('.alert', 'assigné à vous');
+        self::assertSame($admin->getId()->toRfc4122(), $this->ticketState($ticket)['assigned_to_id']);
+        self::assertCount(0, $crawler->selectButton('Me l\'assigner'));
+        self::assertNotFalse($this->em->getConnection()->fetchAssociative(
+            "SELECT 1 FROM audit.audit_logs WHERE action = 'ticket_assigned' AND record_id = :id",
+            ['id' => $ticket->getId()->toRfc4122()]
+        ));
+    }
+
+    public function testPriorityCanBeChangedFromTheDetailPage(): void
+    {
+        $this->loginAsAdmin();
+        $ticket = $this->makeOpenTicket('prio', 'open', 'basse');
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+        $form = $crawler->selectButton('Appliquer')->form();
+        $form['priority'] = 'critique';
+        $this->client->submit($form);
+
+        self::assertSelectorTextContains('.alert', 'Priorité mise à jour');
+        self::assertSame('critique', $this->ticketState($ticket)['priority']);
+    }
+
+    // * Un ticket fermé est définitif (l'API n'y accepte plus de message) : seule "Rouvrir" est proposée, et un POST
+    // * direct sur les autres opérations est refusé côté serveur, sans rien modifier.
+    public function testClosedTicketOffersOnlyReopenAndRejectsOtherOperations(): void
+    {
+        $this->loginAsAdmin();
+        $ticket = $this->makeOpenTicket('closed', 'closed', 'basse');
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+        self::assertCount(1, $crawler->selectButton('Rouvrir le ticket'));
+        self::assertCount(0, $crawler->selectButton('Marquer comme résolu'));
+        self::assertCount(0, $crawler->selectButton('Me l\'assigner'));
+        self::assertCount(0, $crawler->selectButton('Appliquer'));
+
+        foreach ([['operation' => 'resolve'], ['operation' => 'assign_me'], ['operation' => 'priority', 'priority' => 'critique']] as $params) {
+            $this->postQuickAction($ticket, $params);
+            self::assertSelectorExists('.alert-danger');
+        }
+        $state = $this->ticketState($ticket);
+        self::assertSame('closed', $state['status']);
+        self::assertSame('basse', $state['priority']);
+        self::assertNull($state['assigned_to_id']);
+    }
+
+    public function testResolvingAnAlreadyResolvedTicketIsRejected(): void
+    {
+        $this->loginAsAdmin();
+        $ticket = $this->makeOpenTicket('twice', 'resolved');
+        $this->em->flush();
+
+        $this->postQuickAction($ticket, ['operation' => 'resolve']);
+
+        self::assertSelectorExists('.alert-danger');
+        self::assertSame('resolved', $this->ticketState($ticket)['status']);
+    }
+
+    public function testUnknownPriorityIsRejectedAndUnknownOperationIs400(): void
+    {
+        $this->loginAsAdmin();
+        $ticket = $this->makeOpenTicket('bad', 'open', 'moyenne');
+        $this->em->flush();
+
+        $this->postQuickAction($ticket, ['operation' => 'priority', 'priority' => 'urgentissime']);
+        self::assertSelectorExists('.alert-danger');
+        self::assertSame('moyenne', $this->ticketState($ticket)['priority']);
+
+        $this->postQuickAction($ticket, ['operation' => 'supprimer-tout']);
+        self::assertResponseStatusCodeSame(400);
+    }
+
+    public function testQuickActionWithInvalidCsrfTokenIsForbidden(): void
+    {
+        $this->loginAsAdmin();
+        $ticket = $this->makeOpenTicket('csrf');
+        $this->em->flush();
+
+        $this->postQuickAction($ticket, ['operation' => 'resolve', '_csrf_token' => 'faux']);
+
+        self::assertResponseStatusCodeSame(403);
+        self::assertSame('open', $this->ticketState($ticket)['status']);
+    }
+
+    public function testSupportRoleCanUseQuickActions(): void
+    {
+        $support = $this->makeUserWithPassword('supportqa', 'motdepasse123');
+        $support->setRoles([User::ROLE_SUPPORT]);
+        $ticket = $this->makeOpenTicket('qa');
+        $this->em->flush();
+        $this->client->followRedirects(true);
+        $this->client->request('GET', '/admin/login');
+        $this->client->submitForm('Se connecter', ['_username' => $support->getEmail(), '_password' => 'motdepasse123']);
+
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+        $this->client->submit($crawler->selectButton('Marquer comme résolu')->form());
+
+        self::assertSame('resolved', $this->ticketState($ticket)['status']);
     }
 
     public function testReplyAddsAgentMessageTakesTicketAndMovesItInProgress(): void

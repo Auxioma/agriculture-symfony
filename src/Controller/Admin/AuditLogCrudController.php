@@ -55,6 +55,9 @@ class AuditLogCrudController extends AbstractCrudController
         'admin_2fa_enabled' => 'Double authentification activée',
         'admin_2fa_reset' => 'Double authentification réinitialisée',
         'ticket_replied' => 'Réponse à un ticket',
+        'ticket_status_changed' => 'Statut de ticket modifié',
+        'ticket_assigned' => 'Ticket assigné',
+        'ticket_priority_changed' => 'Priorité de ticket modifiée',
     ];
 
     // * Lignes posées par les triggers PostgreSQL (action = TG_OP brut) : combiné avec le nom de table pour un
