@@ -493,6 +493,56 @@ final class TicketCrudControllerTest extends ApiTestCase
         self::assertStringNotContainsString('nous corrigeons cela', $audit['new_data']);
     }
 
+    // * Redirections non suivies ici : assertEmailCount()/getMailerMessage() ne voient que la dernière requête, et la
+    // * page détail chargée après la redirection n'envoie évidemment aucun email.
+    public function testReplyNotifiesTheRequesterInAppAndByEmailWithoutLeakingTheReplyText(): void
+    {
+        $this->loginAsAdmin();
+        $requester = $this->makeUser('notified');
+        [$ticket] = $this->makeTicketWithMessage($requester);
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->detailUrl($ticket));
+        $form = $crawler->filter('#ticket-reply-form')->form();
+        $form['content'] = 'Information confidentielle : votre IBAN se termine par 1234.';
+        $this->client->followRedirects(false);
+        $this->client->submit($form);
+
+        self::assertEmailCount(1);
+        $email = self::getMailerMessage();
+        self::assertEmailAddressContains($email, 'to', $requester->getEmail());
+        self::assertEmailTextBodyContains($email, 'Question facturation');
+        self::assertEmailTextBodyNotContains($email, 'IBAN');
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            "SELECT title, data FROM notification.notifications WHERE user_id = :id AND type = 'support_reply'",
+            ['id' => $requester->getId()->toRfc4122()]
+        );
+        self::assertNotFalse($row);
+        self::assertStringContainsString($ticket->getId()->toRfc4122(), $row['data']);
+        self::assertStringNotContainsString('IBAN', $row['data'].$row['title']);
+    }
+
+    public function testNoNotificationWhenTheRequesterIsTheAgentOrDeletedOrTheReplyIsRejected(): void
+    {
+        $admin = $this->loginAsAdmin();
+        $deleted = $this->makeUser('gone');
+        $deleted->setStatus(\App\Enum\UserStatus::Deleted);
+        [$deletedTicket] = $this->makeTicketWithMessage($deleted);
+        [$ownTicket] = $this->makeTicketWithMessage($this->em->find(User::class, $admin->getId()));
+        [$emptyTicket] = $this->makeTicketWithMessage($this->makeUser('emptyreply'));
+        $this->em->flush();
+
+        $this->submitReply($deletedTicket, 'Réponse à un compte supprimé.');
+        $this->submitReply($ownTicket, 'Note sur mon propre ticket.');
+        $this->submitReply($emptyTicket, '   ');
+
+        $count = $this->em->getConnection()->fetchOne("SELECT count(*) FROM notification.notifications WHERE type = 'support_reply'");
+        self::assertSame(0, (int) $count);
+        self::assertSame(2, $this->ticketState($deletedTicket)['messages']);
+        self::assertSame(2, $this->ticketState($ownTicket)['messages']);
+    }
+
     public function testReplyKeepsExistingAssigneeAndResolvedStatus(): void
     {
         $this->loginAsAdmin();

@@ -7,7 +7,9 @@ use App\Entity\Support\SupportReplyTemplate;
 use App\Entity\Support\Ticket;
 use App\Entity\Support\TicketAttachment;
 use App\Entity\Support\TicketMessage;
+use App\Enum\UserStatus;
 use App\Service\Audit\AuditLogger;
+use App\Service\Notification\NotificationService;
 use Doctrine\ORM\EntityManagerInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
@@ -62,6 +64,7 @@ class TicketCrudController extends AbstractCrudController
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly AuditLogger $auditLogger,
+        private readonly NotificationService $notificationService,
         #[Autowire(service: 'ticket_attachments.storage')]
         private readonly FilesystemOperator $attachmentsStorage,
     ) {
@@ -157,6 +160,28 @@ class TicketCrudController extends AbstractCrudController
             'replyUrl' => $urls->setController(self::class)->setAction('replyToTicket')->setEntityId($ticket->getId())->generateUrl(),
             'maxReplyLength' => self::MAX_REPLY_LENGTH,
         ]);
+    }
+
+    // * Prévient le demandeur (in-app + email, MVP du cahier fonctionnel 14.3) qu'une réponse l'attend -- sans quoi
+    // * il devrait rouvrir son ticket au hasard pour la découvrir. ATTENTION : cette notification n'apparaît dans
+    // * aucune des listes 14.1/14.2 du cahier (ajout de notre part, à valider avec le client). Le texte de la réponse
+    // * n'est volontairement PAS repris dans l'email (contenu potentiellement sensible, envoyé en clair) : il faut se
+    // * connecter pour le lire. Pas de notification si le demandeur est l'agent lui-même (ticket ouvert pour compte
+    // * propre) ou si son compte est supprimé/anonymisé (l'email n'existe plus).
+    private function notifyRequester(Ticket $ticket, User $agent): void
+    {
+        $requester = $ticket->getIdUser();
+        if ($requester->getId()->equals($agent->getId()) || UserStatus::Deleted === $requester->getStatus()) {
+            return;
+        }
+
+        $this->notificationService->notify(
+            $requester,
+            'support_reply',
+            'Réponse de notre équipe support',
+            sprintf('Notre équipe support a répondu à votre ticket « %s ». Connectez-vous pour consulter sa réponse.', $ticket->getSubject() ?? 'sans sujet'),
+            ['ticket_id' => $ticket->getId()->toRfc4122()],
+        );
     }
 
     // * Le formulaire "Modifier" change aussi le statut : closedAt doit suivre, sinon la date exposée par l'API
@@ -311,6 +336,7 @@ class TicketCrudController extends AbstractCrudController
                 'message_id' => $message->getId()->toRfc4122(),
                 'status' => $ticket->getStatus(),
             ]);
+            $this->notifyRequester($ticket, $agent);
             $this->em->flush();
             $this->addFlash('success', 'Réponse envoyée.');
         }
