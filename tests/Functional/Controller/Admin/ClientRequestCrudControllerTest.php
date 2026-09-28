@@ -274,6 +274,80 @@ final class ClientRequestCrudControllerTest extends ApiTestCase
         self::assertStringContainsString('À vérifier', $select->filter('option[value=flagged]')->text());
     }
 
+    public function testDetailOfAnUnflaggedRequestSaysSoAndListsNoRelatedRequest(): void
+    {
+        $this->loginAsAdmin();
+        $request = $this->makeClientRequest($this->makeUser('alone2'));
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->urlFor(Action::DETAIL, $request->getId()->toRfc4122()));
+
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString('Aucun signal de doublon ou de spam', $crawler->filter('body')->text());
+        self::assertStringContainsString('Aucune autre demande de ce client', $crawler->filter('body')->text());
+        self::assertCount(0, $crawler->filter('.tm-related-requests li'));
+    }
+
+    // * La copie (la plus récente) doit afficher pourquoi elle est signalée et un lien vers l'original qu'elle
+    // * recopie ; l'original, lui, n'est pas signalé (RequestQualityAnalyzer ne marque que la copie).
+    public function testDetailOfADuplicateExplainsItAndLinksToTheOriginal(): void
+    {
+        $this->loginAsAdmin();
+        $client = $this->makeUser('dupdetail');
+        $original = $this->makeClientRequest($client);
+        $original->setCustomProduct('Fromage de chèvre');
+        $original->setCity('Rennes');
+        $this->em->flush();
+        // * created_at n'a qu'une précision à la seconde en base (DBAL tronque les microsecondes à l'écriture) :
+        // * sans cet écart explicite, les deux demandes tombent souvent dans la même seconde et le départage par
+        // * identifiant (RequestQualityAnalyzer::duplicateOriginals()) choisit alors arbitrairement laquelle des
+        // * deux est "l'original" -- ce test veut vérifier PRÉCISÉMENT que c'est la plus récente qui est signalée.
+        $this->em->getConnection()->executeStatement(
+            "UPDATE matching.client_requests SET created_at = created_at - interval '1 hour' WHERE id = :id",
+            ['id' => $original->getId()->toRfc4122()]
+        );
+        $copy = $this->makeClientRequest($client);
+        $copy->setCustomProduct('Fromage de chèvre');
+        $copy->setCity('Rennes');
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->urlFor(Action::DETAIL, $copy->getId()->toRfc4122()));
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('.badge[title]', 'Doublon');
+        $originalLink = $crawler->filter('.tm-related-requests a')->first();
+        self::assertStringContainsString($original->getId()->toRfc4122(), $originalLink->attr('href'));
+
+        $originalCrawler = $this->client->request('GET', $this->urlFor(Action::DETAIL, $original->getId()->toRfc4122()));
+        self::assertCount(0, $originalCrawler->filter('.badge[title]'), 'L\'original ne doit pas lui-même être marqué "Doublon".');
+    }
+
+    public function testDetailListsOtherRequestsFromTheSameClientButNotFromAnother(): void
+    {
+        $this->loginAsAdmin();
+        $client = $this->makeUser('related1');
+        $other = $this->makeUser('related2');
+        // * customProduct/city différents : sinon ces deux demandes du même client seraient elles-mêmes détectées
+        // * comme doublon l'une de l'autre (RequestQualityAnalyzer), et apparaîtraient aussi dans la section
+        // * "Signalement" -- ce test porte uniquement sur la section "Autres demandes de ce client".
+        $current = $this->makeClientRequest($client);
+        $current->setCustomProduct('Produit A');
+        $sibling = $this->makeClientRequest($client);
+        $sibling->setCustomProduct('Produit B');
+        $unrelated = $this->makeClientRequest($other);
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->urlFor(Action::DETAIL, $current->getId()->toRfc4122()));
+
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString('Aucun signal de doublon ou de spam', $crawler->filter('body')->text());
+        $links = $crawler->filter('.tm-related-requests a')->each(static fn ($a) => $a->attr('href'));
+        self::assertCount(1, $links);
+        self::assertStringContainsString($sibling->getId()->toRfc4122(), $links[0]);
+        self::assertStringNotContainsString($unrelated->getId()->toRfc4122(), $links[0]);
+        self::assertStringNotContainsString($current->getId()->toRfc4122(), $links[0]);
+    }
+
     public function testCreatingRequestFromBackofficeIsForbidden(): void
     {
         $this->loginAsAdmin();

@@ -5,11 +5,13 @@ namespace App\Controller\Admin;
 use App\Entity\Matching\ClientRequest;
 use App\Enum\RequestStatus;
 use App\Service\Matching\RequestQualityAnalyzer;
+use Doctrine\ORM\EntityManagerInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Config\KeyValueStore;
+use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
@@ -20,7 +22,9 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use EasyCorp\Bundle\EasyAdminBundle\Filter\EntityFilter;
 use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
+use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 // * RBAC (cahier DevOps ; cahier fonctionnel 22.2, "Le support accède uniquement aux éléments nécessaires") :
@@ -30,13 +34,45 @@ class ClientRequestCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;
 
+    // * Extraits en constantes (configureFields() les consommait seules jusqu'ici) : detail() en a aussi besoin,
+    // * pour afficher le même badge de statut que la liste.
+    private const STATUS_LABELS = [
+        RequestStatus::Draft->value => 'Brouillon',
+        RequestStatus::Sent->value => 'Envoyée',
+        RequestStatus::WaitingReplies->value => 'En attente de réponses',
+        RequestStatus::RepliesReceived->value => 'Réponses reçues',
+        RequestStatus::ConversationOpen->value => 'Conversation ouverte',
+        RequestStatus::DealFound->value => 'Accord trouvé',
+        RequestStatus::Expired->value => 'Expirée',
+        RequestStatus::Archived->value => 'Archivée',
+        RequestStatus::Cancelled->value => 'Annulée',
+        RequestStatus::Reported->value => 'Signalée',
+    ];
+    private const STATUS_VARIANTS = [
+        RequestStatus::Draft->value => 'secondary',
+        RequestStatus::Sent->value => 'info',
+        RequestStatus::WaitingReplies->value => 'warning',
+        RequestStatus::RepliesReceived->value => 'success',
+        RequestStatus::ConversationOpen->value => 'success',
+        RequestStatus::DealFound->value => 'success',
+        RequestStatus::Expired->value => 'secondary',
+        RequestStatus::Archived->value => 'secondary',
+        RequestStatus::Cancelled->value => 'secondary',
+        RequestStatus::Reported->value => 'danger',
+    ];
+    // * Nombre de demandes précédentes du même client montrées sur la page détail (cahier fonctionnel 13, "Demandes" :
+    // * détecter des doublons/du spam suppose de voir l'historique récent du client, pas seulement la demande isolée).
+    private const RELATED_REQUESTS_LIMIT = 10;
+
     /** @var array<string, list<string>>|null */
     private ?array $flaggedSignals = null;
 
     // * Injection par constructeur : le container restreint d'un AbstractCrudController ne connaît pas les services
     // * applicatifs (voir ConversationCrudController).
-    public function __construct(private readonly RequestQualityAnalyzer $analyzer)
-    {
+    public function __construct(
+        private readonly RequestQualityAnalyzer $analyzer,
+        private readonly EntityManagerInterface $em,
+    ) {
     }
 
     /**
@@ -77,29 +113,7 @@ class ClientRequestCrudController extends AbstractCrudController
         yield AssociationField::new('product')->setLabel('Produit')->hideOnForm();
         yield TextField::new('customProduct')->setLabel('Produit libre')->hideOnForm()->hideOnIndex();
         yield ChoiceField::new('needType')->setLabel('Type de besoin')->hideOnForm()->hideOnIndex();
-        yield $this->statusBadgeField('status', 'Statut', $pageName, [
-            RequestStatus::Draft->value => 'Brouillon',
-            RequestStatus::Sent->value => 'Envoyée',
-            RequestStatus::WaitingReplies->value => 'En attente de réponses',
-            RequestStatus::RepliesReceived->value => 'Réponses reçues',
-            RequestStatus::ConversationOpen->value => 'Conversation ouverte',
-            RequestStatus::DealFound->value => 'Accord trouvé',
-            RequestStatus::Expired->value => 'Expirée',
-            RequestStatus::Archived->value => 'Archivée',
-            RequestStatus::Cancelled->value => 'Annulée',
-            RequestStatus::Reported->value => 'Signalée',
-        ], [
-            RequestStatus::Draft->value => 'secondary',
-            RequestStatus::Sent->value => 'info',
-            RequestStatus::WaitingReplies->value => 'warning',
-            RequestStatus::RepliesReceived->value => 'success',
-            RequestStatus::ConversationOpen->value => 'success',
-            RequestStatus::DealFound->value => 'success',
-            RequestStatus::Expired->value => 'secondary',
-            RequestStatus::Archived->value => 'secondary',
-            RequestStatus::Cancelled->value => 'secondary',
-            RequestStatus::Reported->value => 'danger',
-        ]);
+        yield $this->statusBadgeField('status', 'Statut', $pageName, self::STATUS_LABELS, self::STATUS_VARIANTS);
         // * Doublons et spam (cahier fonctionnel 13, "Demandes") : champ virtuel, rempli en un seul lot pour toute la
         // * page par configureResponseParameters() -- pas une requête par ligne.
         yield Field::new('signals')
@@ -133,6 +147,55 @@ class ClientRequestCrudController extends AbstractCrudController
             ->add('needType')
             ->add(EntityFilter::new('category')->setFormTypeOption('value_type_options.choice_label', 'name'))
             ->add(EntityFilter::new('country')->setFormTypeOption('value_type_options.choice_label', 'name'));
+    }
+
+    // * Page détail sur mesure (cahier fonctionnel 13, "Demandes" : "doublons, spam") : la fiche générique d'EasyAdmin
+    // * ne peut pas montrer "pourquoi cette demande est signalée" ni les demandes liées, qui n'existent nulle part en
+    // * base (calculées par RequestQualityAnalyzer). Maquette Figma non consultée pour cette page (voir TODO.md).
+    public function detail(AdminContext $context): KeyValueStore|Response
+    {
+        /** @var ClientRequest $request */
+        $request = $context->getEntity()->getInstance();
+        $id = $request->getId()->toRfc4122();
+        $urls = $this->container->get(AdminUrlGenerator::class);
+
+        $signals = $this->analyzer->signalsFor([$id])[$id] ?? [];
+        $originalIds = $this->analyzer->duplicatesOf([$id])[$id] ?? [];
+        $originals = [] !== $originalIds
+            ? $this->em->createQueryBuilder()->select('o')->from(ClientRequest::class, 'o')
+                ->andWhere('o.id IN (:ids)')->setParameter('ids', $originalIds)
+                ->orderBy('o.createdAt', 'DESC')->getQuery()->getResult()
+            : [];
+
+        // * Historique récent du même client (cahier fonctionnel : détecter des doublons/du spam suppose de voir ce
+        // * qu'il a envoyé d'autre, pas seulement la demande isolée) -- limité, voir RELATED_REQUESTS_LIMIT.
+        $related = $this->em->createQueryBuilder()->select('r')->from(ClientRequest::class, 'r')
+            ->andWhere('r.client = :client')->setParameter('client', $request->getClient())
+            ->andWhere('r.id != :id')->setParameter('id', $request->getId())
+            ->orderBy('r.createdAt', 'DESC')->setMaxResults(self::RELATED_REQUESTS_LIMIT)
+            ->getQuery()->getResult();
+
+        // * Twig ne peut pas appeler une closure passée en variable comme une fonction ("detailUrlFor(r)") : une table
+        // * identifiant => URL, générée ici pendant que $urls est sous la main, comme TicketCrudController::
+        // * attachmentUrls() pour les pièces jointes.
+        $detailUrls = [];
+        foreach ([...$originals, ...$related] as $r) {
+            $detailUrls[$r->getId()->toRfc4122()] = $urls->setController(self::class)->setAction(Action::DETAIL)->setEntityId($r->getId())->generateUrl();
+        }
+
+        return $this->render('admin/client_request/detail.html.twig', [
+            'clientRequest' => $request,
+            'statusLabel' => self::STATUS_LABELS[$request->getStatus()->value] ?? $request->getStatus()->value,
+            'statusVariant' => self::STATUS_VARIANTS[$request->getStatus()->value] ?? 'secondary',
+            'statusLabels' => self::STATUS_LABELS,
+            'statusVariants' => self::STATUS_VARIANTS,
+            'signals' => $signals,
+            'originals' => $originals,
+            'related' => $related,
+            'detailUrls' => $detailUrls,
+            'indexUrl' => $urls->setController(self::class)->setAction(Action::INDEX)->unset('entityId')->generateUrl(),
+            'editUrl' => $urls->setController(self::class)->setAction(Action::EDIT)->setEntityId($request->getId())->generateUrl(),
+        ]);
     }
 
     public function configureActions(Actions $actions): Actions

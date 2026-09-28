@@ -1035,6 +1035,27 @@ textarea.form-control {
     padding-left: 18px;
 }
 
+/* Détail demande (templates/admin/client_request/detail.html.twig) : demandes liées (doublon d'origine, historique
+   récent du même client) -- simple liste séparée par des filets, pas de fond coloré (contrairement au fil de
+   messages d'un ticket, ce ne sont pas des échanges). */
+.tm-related-requests {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tm-related-requests li {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--tm-grey-200);
+}
+
+.tm-related-requests li:last-child {
+    border-bottom: none;
+}
+
 @media (max-width: 991px) {
     :root {
         --tm-gutter: 16px;
