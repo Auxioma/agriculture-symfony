@@ -25,15 +25,13 @@
     'AuditLogCrudController': "Historique des actions sensibles effectuées sur la plateforme",
 } %}
 
-{# Puces de statut de la maquette (Utilisateurs, Producteurs, Demandes, Avis, Support) : aucun de ces écrans
-   ne montre le bouton "+ Filtres"/la modale d'EasyAdmin, seulement une rangée de puces, une seule active à la
-   fois. Chaque écran listé ici garde son filtre EasyAdmin (configureFilters()) pour le filtrage réel -- ces
-   puces ne sont qu'une autre façon de soumettre le même paramètre "filters[...]" en querystring -- mais son
-   bouton "+ Filtres" est masqué (hideFiltersButton, via le bloc body_class plus bas), SAUF pour les demandes
-   clients qui gardent aussi le bouton (voir ClientRequestCrudController::configureFilters()). Un écran absent
-   de cette table garde le bouton "+ Filtres" standard, ex. Labels (voir son propre docblock) et Signalements
-   (pas encore de puce -- l'écran actuel, MessageCrudController, est un remplacement provisoire des vrais
-   signalements trust.reports, voir TODO.md). #}
+{# Puces de statut de la maquette (Utilisateurs, Producteurs, Demandes, Avis, Support, Signalements) : aucun de
+   ces écrans ne montre le bouton "+ Filtres"/la modale d'EasyAdmin, seulement une rangée de puces, une seule
+   active à la fois. Chaque écran listé ici garde son filtre EasyAdmin (configureFilters()) pour le filtrage
+   réel -- ces puces ne sont qu'une autre façon de soumettre le même paramètre "filters[...]" en querystring --
+   mais son bouton "+ Filtres" est masqué (hideFiltersButton, via le bloc body_class plus bas), SAUF pour les
+   demandes clients qui gardent aussi le bouton (voir ClientRequestCrudController::configureFilters()). Un écran
+   absent de cette table garde le bouton "+ Filtres" standard, ex. Labels (voir son propre docblock). #}
 {% set tm_filter_chips = {
     'LabelCrudController': {property: 'isActive', hideFiltersButton: true, chips: [
         {label: 'Tous', value: null},
@@ -78,6 +76,13 @@
         {label: 'Modération', value: 'producer|messaging|trust'},
         {label: 'Facturation', value: 'billing'},
         {label: 'Comptes', value: 'identity'},
+    ]},
+    'MessageCrudController': {property: 'reportStatus', hideFiltersButton: true, chips: [
+        {label: 'Tous', value: null},
+        {label: 'Ouverts', value: 'open'},
+        {label: 'En cours', value: 'in_review'},
+        {label: 'Résolus', value: 'resolved'},
+        {label: 'Rejetés', value: 'rejected'},
     ]},
 } %}
 

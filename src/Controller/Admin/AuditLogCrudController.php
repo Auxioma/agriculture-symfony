@@ -60,6 +60,8 @@ class AuditLogCrudController extends AbstractCrudController
         'ticket_priority_changed' => 'Priorité de ticket modifiée',
         'client_request_marked_spam' => 'Demande marquée comme spam',
         'client_request_marked_duplicate' => 'Demande marquée comme doublon',
+        'report_resolved' => 'Signalement résolu',
+        'report_rejected' => 'Signalement rejeté',
     ];
 
     // * Lignes posées par les triggers PostgreSQL (action = TG_OP brut) : combiné avec le nom de table pour un

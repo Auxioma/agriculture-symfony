@@ -1,0 +1,15 @@
+{# Statut du signalement (App\Entity\Trust\Report::$status) associé à la conversation de ce message -- field.value est
+   l'enum ReportStatus ou null si, par construction impossible aujourd'hui (la liste ne montre que des messages de
+   conversations signalées), aucun Report ne correspond. Posé par MessageCrudController::configureResponseParameters(). #}
+{% set labels = {
+    open: {label: 'Ouvert', variant: 'danger'},
+    in_review: {label: 'En cours', variant: 'warning'},
+    resolved: {label: 'Résolu', variant: 'success'},
+    rejected: {label: 'Rejeté', variant: 'secondary'},
+} %}
+{% if field.value is null %}
+    <span class="tm-hint">—</span>
+{% else %}
+    {% set signal = labels[field.value.value] ?? null %}
+    {% if signal %}<span class="badge badge-{{ signal.variant }}">{{ signal.label }}</span>{% endif %}
+{% endif %}
