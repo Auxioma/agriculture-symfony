@@ -2,10 +2,14 @@
 
 namespace App\Controller\Admin;
 
+use App\Entity\Identity\User;
 use App\Entity\Matching\ClientRequest;
+use App\Entity\Matching\RequestEvent;
 use App\Enum\RequestStatus;
+use App\Service\Audit\AuditLogger;
 use App\Service\Matching\RequestQualityAnalyzer;
 use Doctrine\ORM\EntityManagerInterface;
+use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
@@ -25,6 +29,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 // * RBAC (cahier DevOps ; cahier fonctionnel 22.2, "Le support accède uniquement aux éléments nécessaires") :
@@ -63,6 +68,9 @@ class ClientRequestCrudController extends AbstractCrudController
     // * Nombre de demandes précédentes du même client montrées sur la page détail (cahier fonctionnel 13, "Demandes" :
     // * détecter des doublons/du spam suppose de voir l'historique récent du client, pas seulement la demande isolée).
     private const RELATED_REQUESTS_LIMIT = 10;
+    // * "Marquer comme spam" n'est proposé que si l'un de ces trois signaux est présent -- "duplicate" a son propre
+    // * bouton ("Marquer comme doublon"), les deux pouvant être proposés en même temps sur une même demande.
+    private const SPAM_SIGNALS = [RequestQualityAnalyzer::SIGNAL_FLOOD, RequestQualityAnalyzer::SIGNAL_LINK, RequestQualityAnalyzer::SIGNAL_MASS_MESSAGE];
 
     /** @var array<string, list<string>>|null */
     private ?array $flaggedSignals = null;
@@ -72,6 +80,7 @@ class ClientRequestCrudController extends AbstractCrudController
     public function __construct(
         private readonly RequestQualityAnalyzer $analyzer,
         private readonly EntityManagerInterface $em,
+        private readonly AuditLogger $auditLogger,
     ) {
     }
 
@@ -183,6 +192,8 @@ class ClientRequestCrudController extends AbstractCrudController
             $detailUrls[$r->getId()->toRfc4122()] = $urls->setController(self::class)->setAction(Action::DETAIL)->setEntityId($r->getId())->generateUrl();
         }
 
+        $isLive = \in_array($request->getStatus()->value, RequestQualityAnalyzer::LIVE_STATUSES, true);
+
         return $this->render('admin/client_request/detail.html.twig', [
             'clientRequest' => $request,
             'statusLabel' => self::STATUS_LABELS[$request->getStatus()->value] ?? $request->getStatus()->value,
@@ -193,9 +204,97 @@ class ClientRequestCrudController extends AbstractCrudController
             'originals' => $originals,
             'related' => $related,
             'detailUrls' => $detailUrls,
+            // * Boutons visibles seulement si le signal correspondant est bien présent ET que la demande est encore en
+            // * circulation -- qualityAction() revérifie ces deux conditions côté serveur, un POST direct ne les
+            // * contourne donc pas.
+            'canMarkSpam' => $isLive && [] !== array_intersect($signals, self::SPAM_SIGNALS),
+            'canMarkDuplicate' => $isLive && \in_array(RequestQualityAnalyzer::SIGNAL_DUPLICATE, $signals, true),
+            'qualityActionUrl' => $urls->setController(self::class)->setAction('qualityAction')->setEntityId($request->getId())->generateUrl(),
             'indexUrl' => $urls->setController(self::class)->setAction(Action::INDEX)->unset('entityId')->generateUrl(),
             'editUrl' => $urls->setController(self::class)->setAction(Action::EDIT)->setEntityId($request->getId())->generateUrl(),
         ]);
+    }
+
+    // * Actions rapides "Marquer comme spam" / "Marquer comme doublon" (cahier fonctionnel 13, "Demandes" : "doublons,
+    // * spam"). Annule la demande (RequestStatus::Cancelled -- même levier que le ChoiceField "status" du formulaire
+    // * "Modifier", juste sans avoir à connaître/choisir la bonne valeur), journalise un RequestEvent (fil d'activité
+    // * propre à la demande, jusqu'ici jamais alimenté -- voir son docblock) et une entrée d'audit (action admin
+    // * sensible). Une demande annulée sort de LIVE_STATUSES, donc RequestQualityAnalyzer ne la signale plus : elle
+    // * quitte d'elle-même la file "à vérifier" (voir le docblock de la classe), pas besoin de logique dédiée ici.
+    /**
+     * @param AdminContext<ClientRequest> $context
+     */
+    #[AdminRoute(path: '/{entityId}/quality-action', name: 'quality_action', options: ['methods' => ['POST']])]
+    public function qualityAction(AdminContext $context): Response
+    {
+        /** @var ClientRequest $request */
+        $request = $context->getEntity()->getInstance();
+        $httpRequest = $context->getRequest();
+        $admin = $this->getUser();
+        if (!$admin instanceof User) {
+            throw $this->createAccessDeniedException();
+        }
+        if (!$this->isCsrfTokenValid('client_request_quality_action', (string) $httpRequest->request->get('_csrf_token'))) {
+            throw $this->createAccessDeniedException('Jeton CSRF invalide.');
+        }
+
+        $id = $request->getId()->toRfc4122();
+        $signals = $this->analyzer->signalsFor([$id])[$id] ?? [];
+        $isLive = \in_array($request->getStatus()->value, RequestQualityAnalyzer::LIVE_STATUSES, true);
+        $operation = (string) $httpRequest->request->get('operation');
+
+        if ('mark_spam' === $operation) {
+            if (!$isLive) {
+                $this->addFlash('danger', 'Seule une demande encore en circulation peut être marquée.');
+            } elseif ([] === array_intersect($signals, self::SPAM_SIGNALS)) {
+                $this->addFlash('danger', "Cette demande n'a aucun signal de spam.");
+            } else {
+                $this->applyQualityDecision($request, $admin, 'flagged_spam', 'client_request_marked_spam', $signals);
+                $this->addFlash('success', 'Demande marquée comme spam.');
+            }
+        } elseif ('mark_duplicate' === $operation) {
+            if (!$isLive) {
+                $this->addFlash('danger', 'Seule une demande encore en circulation peut être marquée.');
+            } elseif (!\in_array(RequestQualityAnalyzer::SIGNAL_DUPLICATE, $signals, true)) {
+                $this->addFlash('danger', "Cette demande n'est pas signalée comme doublon.");
+            } else {
+                $this->applyQualityDecision($request, $admin, 'flagged_duplicate', 'client_request_marked_duplicate', $signals);
+                $this->addFlash('success', 'Demande marquée comme doublon.');
+            }
+        } else {
+            throw new BadRequestHttpException('Opération inconnue.');
+        }
+
+        return $this->redirect(
+            $this->container->get(AdminUrlGenerator::class)
+                ->setController(self::class)->setAction(Action::DETAIL)->setEntityId($request->getId())->generateUrl()
+        );
+    }
+
+    /**
+     * @param list<string> $signals
+     */
+    private function applyQualityDecision(ClientRequest $request, User $admin, string $eventType, string $auditAction, array $signals): void
+    {
+        $previousStatus = $request->getStatus();
+        $request->setStatus(RequestStatus::Cancelled);
+
+        $event = new RequestEvent();
+        $event->setRequest($request);
+        $event->setActor($admin);
+        $event->setEventType($eventType);
+        $event->setPayload(['signals' => $signals]);
+        $this->em->persist($event);
+
+        $this->auditLogger->log(
+            $auditAction,
+            'matching',
+            'client_requests',
+            $request->getId()->toRfc4122(),
+            ['status' => $previousStatus->value],
+            ['status' => RequestStatus::Cancelled->value, 'signals' => $signals],
+        );
+        $this->em->flush();
     }
 
     public function configureActions(Actions $actions): Actions

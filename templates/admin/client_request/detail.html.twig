@@ -63,6 +63,26 @@
                 {% endfor %}
             </ul>
         {% endif %}
+
+        {% if canMarkSpam or canMarkDuplicate %}
+            <div class="tm-ticket-actions">
+                {% if canMarkSpam %}
+                    <form method="post" action="{{ qualityActionUrl }}">
+                        <input type="hidden" name="operation" value="mark_spam">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('client_request_quality_action') }}">
+                        <button type="submit" class="tm-btn tm-btn-danger">Marquer comme spam</button>
+                    </form>
+                {% endif %}
+                {% if canMarkDuplicate %}
+                    <form method="post" action="{{ qualityActionUrl }}">
+                        <input type="hidden" name="operation" value="mark_duplicate">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('client_request_quality_action') }}">
+                        <button type="submit" class="tm-btn tm-btn-danger">Marquer comme doublon</button>
+                    </form>
+                {% endif %}
+            </div>
+            <p class="tm-hint" style="margin-top: 8px;">Marquer annule la demande et journalise la décision.</p>
+        {% endif %}
     </section>
 
     <section class="tm-panel-block">

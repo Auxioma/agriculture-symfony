@@ -424,6 +424,20 @@ body.tm-hide-filters-button .datagrid-filters {
     color: var(--tm-white);
 }
 
+/* Actions destructives (annuler une demande pour spam/doublon, ClientRequestCrudController::qualityAction()) :
+   même forme que .tm-btn-primary, couleur danger pour signaler l'irréversibilité au clic. */
+.tm-btn-danger {
+    background: var(--tm-danger);
+    border-color: var(--tm-danger);
+    color: var(--tm-white);
+}
+
+.tm-btn-danger:hover {
+    background: #b52a37;
+    border-color: #b52a37;
+    color: var(--tm-white);
+}
+
 .btn-secondary,
 .btn-outline-secondary,
 .tm-btn-outline {
