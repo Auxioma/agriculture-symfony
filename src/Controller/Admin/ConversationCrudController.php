@@ -28,6 +28,8 @@ use App\Service\Audit\AuditLogger;
 
 class ConversationCrudController extends AbstractCrudController
 {
+    use EagerAssociationJoinTrait;
+
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly AuditLogger $auditLogger,
@@ -54,9 +56,14 @@ class ConversationCrudController extends AbstractCrudController
 
     public function createIndexQueryBuilder(SearchDto $searchDto, EntityDto $entityDto, FieldCollection $fields, FilterCollection $filters): QueryBuilder
     {
-        return parent::createIndexQueryBuilder($searchDto, $entityDto, $fields, $filters)
+        $qb = parent::createIndexQueryBuilder($searchDto, $entityDto, $fields, $filters)
             ->andWhere('entity.status = :reported')
-            ->setParameter('reported', ConversationStatus::Reported);
+            ->setParameter('reported', ConversationStatus::Reported)
+            ->leftJoin('entity.client', 'client')->addSelect('client')
+            ->leftJoin('entity.producer', 'producer')->addSelect('producer');
+        $qb = $this->joinUserEagerly($qb, 'client');
+
+        return $this->joinProducerEagerly($qb, 'producer');
     }
 
     public function detail(AdminContext $context): KeyValueStore|Response

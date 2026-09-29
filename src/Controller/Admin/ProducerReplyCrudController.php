@@ -5,11 +5,16 @@ namespace App\Controller\Admin;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\ProducerReply;
 use App\Enum\ReplyStatus;
+use Doctrine\ORM\QueryBuilder;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FieldCollection;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FilterCollection;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\EntityDto;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\SearchDto;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
@@ -30,6 +35,7 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 class ProducerReplyCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;
+    use EagerAssociationJoinTrait;
 
     public static function getEntityFqcn(): string
     {
@@ -45,6 +51,24 @@ class ProducerReplyCrudController extends AbstractCrudController
             ->setPageTitle(Crud::PAGE_DETAIL, 'Détail de la réponse')
             ->setSearchFields(['producer.farmName', 'replyText'])
             ->setDefaultSort(['createdAt' => 'DESC']);
+    }
+
+    // * request (et product/category/unit qu'elle référence), producer, currency et priceUnit forcent sinon
+    // * une requête par ligne (voir le commentaire équivalent sur
+    // * ClientRequestCrudController::createIndexQueryBuilder()) -- le cas le plus lourd de l'admin, describeRequest()
+    // * et describePrice() ci-dessous déréférencent chacune plusieurs associations.
+    public function createIndexQueryBuilder(SearchDto $searchDto, EntityDto $entityDto, FieldCollection $fields, FilterCollection $filters): QueryBuilder
+    {
+        $qb = parent::createIndexQueryBuilder($searchDto, $entityDto, $fields, $filters)
+            ->leftJoin('entity.request', 'request')->addSelect('request')
+            ->leftJoin('request.product', 'product')->addSelect('product')
+            ->leftJoin('request.category', 'category')->addSelect('category')
+            ->leftJoin('request.unit', 'unit')->addSelect('unit')
+            ->leftJoin('entity.producer', 'producer')->addSelect('producer')
+            ->leftJoin('entity.currency', 'currency')->addSelect('currency')
+            ->leftJoin('entity.priceUnit', 'priceUnit')->addSelect('priceUnit');
+
+        return $this->joinProducerEagerly($qb, 'producer');
     }
 
     public function configureFields(string $pageName): iterable

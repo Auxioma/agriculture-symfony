@@ -12,13 +12,18 @@ use App\Service\Audit\AuditLogger;
 use App\Service\Notification\NotificationService;
 use App\Service\Support\TicketAttachmentUploader;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FieldCollection;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FilterCollection;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Config\KeyValueStore;
 use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\EntityDto;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\SearchDto;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
@@ -50,6 +55,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 class TicketCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;
+    use EagerAssociationJoinTrait;
 
     private const STATUSES = ['Ouvert' => 'open', 'En cours' => 'in_progress', 'Résolu' => 'resolved', 'Fermé' => 'closed'];
     // * Niveaux de gravité repris du cahier DevOps ("Support et astreinte").
@@ -85,6 +91,17 @@ class TicketCrudController extends AbstractCrudController
             ->setEntityLabelInPlural('Tickets')
             ->setPageTitle(Crud::PAGE_INDEX, 'Support')
             ->setDefaultSort(['createdAt' => 'DESC']);
+    }
+
+    // * idUser force sinon une requête par ligne (voir le commentaire équivalent sur
+    // * ClientRequestCrudController::createIndexQueryBuilder()) ; assignedTo n'a pas besoin du même traitement,
+    // * son AssociationField est hideOnIndex (formatValue n'y tourne donc jamais sur la liste).
+    public function createIndexQueryBuilder(SearchDto $searchDto, EntityDto $entityDto, FieldCollection $fields, FilterCollection $filters): QueryBuilder
+    {
+        $qb = parent::createIndexQueryBuilder($searchDto, $entityDto, $fields, $filters)
+            ->leftJoin('entity.idUser', 'idUser')->addSelect('idUser');
+
+        return $this->joinUserEagerly($qb, 'idUser');
     }
 
     // * idUser visible seulement à la création (l'admin ouvre un ticket pour un appel/mail reçu hors plateforme,

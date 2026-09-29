@@ -6,13 +6,18 @@ use App\Entity\Producer\ProducerProfile;
 use App\Enum\VerificationStatus;
 use App\Service\Notification\NotificationService;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FieldCollection;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FilterCollection;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\EntityDto;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\SearchDto;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\BooleanField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
@@ -33,6 +38,7 @@ use App\Service\Audit\AuditLogger;
 class ProducerProfileCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;
+    use EagerAssociationJoinTrait;
 
     public function __construct(private readonly AuditLogger $auditLogger)
     {
@@ -50,6 +56,19 @@ class ProducerProfileCrudController extends AbstractCrudController
             ->setEntityLabelInPlural('Producteurs')
             ->setPageTitle(Crud::PAGE_INDEX, 'Validation des producteurs')
             ->setDefaultSort(['farmName' => 'ASC']);
+    }
+
+    // * owner force sinon une requête par ligne (voir le commentaire équivalent sur
+    // * ClientRequestCrudController::createIndexQueryBuilder()) ; entity elle-même (ProducerProfile) a sa
+    // * propre association eager forcée (settings, voir EagerAssociationJoinTrait) qui se déclencherait sinon
+    // * une fois par ligne même sans jointure explicite -- entity est ici aussi le producteur "racine".
+    public function createIndexQueryBuilder(SearchDto $searchDto, EntityDto $entityDto, FieldCollection $fields, FilterCollection $filters): QueryBuilder
+    {
+        $qb = parent::createIndexQueryBuilder($searchDto, $entityDto, $fields, $filters)
+            ->leftJoin('entity.owner', 'owner')->addSelect('owner');
+        $qb = $this->joinUserEagerly($qb, 'owner');
+
+        return $this->joinProducerEagerly($qb, 'entity');
     }
 
     // * verificationStatus n'est PAS éditable ici (hideOnForm) les transitions passent uniquement par les

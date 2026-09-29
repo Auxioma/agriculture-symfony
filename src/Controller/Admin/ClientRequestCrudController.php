@@ -9,7 +9,10 @@ use App\Enum\RequestStatus;
 use App\Service\Audit\AuditLogger;
 use App\Service\Matching\RequestQualityAnalyzer;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FieldCollection;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FilterCollection;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
@@ -17,6 +20,8 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Config\KeyValueStore;
 use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\EntityDto;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\SearchDto;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
@@ -38,6 +43,7 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 class ClientRequestCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;
+    use EagerAssociationJoinTrait;
 
     // * Extraits en constantes (configureFields() les consommait seules jusqu'ici) : detail() en a aussi besoin,
     // * pour afficher le même badge de statut que la liste.
@@ -136,6 +142,18 @@ class ClientRequestCrudController extends AbstractCrudController
         yield TextareaField::new('message')->setLabel('Message')->hideOnIndex();
         yield DateTimeField::new('createdAt')->setLabel('Date')->setFormat('d MMM y')->hideOnForm();
         yield DateTimeField::new('expiresAt')->setLabel('Expire le')->hideOnForm()->hideOnIndex();
+    }
+
+    // * User a trois OneToOne inverses (preference/producerProfile/presence) que Doctrine ne peut pas
+    // * proxifier paresseusement (pas de FK côté User) : chaque hydratation de client via getClient()?->getEmail()
+    // * en formatValue (colonne "client" ci-dessus) forcerait sinon une requête -- et ses 3 LEFT JOIN -- par ligne.
+    // * Un leftJoin + addSelect ici les regroupe en une seule requête pour toute la page.
+    public function createIndexQueryBuilder(SearchDto $searchDto, EntityDto $entityDto, FieldCollection $fields, FilterCollection $filters): QueryBuilder
+    {
+        $qb = parent::createIndexQueryBuilder($searchDto, $entityDto, $fields, $filters)
+            ->leftJoin('entity.client', 'client')->addSelect('client');
+
+        return $this->joinUserEagerly($qb, 'client');
     }
 
     public function configureFilters(Filters $filters): Filters

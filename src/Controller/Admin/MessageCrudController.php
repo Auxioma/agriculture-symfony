@@ -38,6 +38,8 @@ use App\Service\Audit\AuditLogger;
 
 class MessageCrudController extends AbstractCrudController
 {
+    use EagerAssociationJoinTrait;
+
     /** @var array<string, Report>|null identifiant de conversation => signalement */
     private ?array $reportsByConversationId = null;
 
@@ -98,10 +100,13 @@ class MessageCrudController extends AbstractCrudController
 
     public function createIndexQueryBuilder(SearchDto $searchDto, EntityDto $entityDto, FieldCollection $fields, FilterCollection $filters): QueryBuilder
     {
-        return parent::createIndexQueryBuilder($searchDto, $entityDto, $fields, $filters)
+        $qb = parent::createIndexQueryBuilder($searchDto, $entityDto, $fields, $filters)
             ->innerJoin('entity.conversation', 'c')
             ->andWhere('c.status = :reported')
-            ->setParameter('reported', ConversationStatus::Reported);
+            ->setParameter('reported', ConversationStatus::Reported)
+            ->leftJoin('entity.sender', 'sender')->addSelect('sender');
+
+        return $this->joinUserEagerly($qb, 'sender');
     }
 
     public function detail(AdminContext $context): KeyValueStore|Response

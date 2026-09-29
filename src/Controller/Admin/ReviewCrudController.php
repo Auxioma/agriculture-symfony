@@ -14,13 +14,18 @@ use App\Entity\Trust\Review;
 use App\Enum\ReviewStatus;
 use App\Service\Audit\AuditLogger;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FieldCollection;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FilterCollection;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\EntityDto;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\SearchDto;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
@@ -41,6 +46,7 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 class ReviewCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;
+    use EagerAssociationJoinTrait;
 
     public function __construct(
         private readonly EntityManagerInterface $em,
@@ -60,6 +66,18 @@ class ReviewCrudController extends AbstractCrudController
             ->setEntityLabelInPlural('Avis clients')
             ->setPageTitle(Crud::PAGE_INDEX, 'Avis')
             ->setDefaultSort(['createdAt' => 'DESC']);
+    }
+
+    // * Voir le commentaire équivalent sur ClientRequestCrudController::createIndexQueryBuilder() : client et
+    // * producer forcent sinon une requête (et ses joints eager) par ligne via les formatValue ci-dessous.
+    public function createIndexQueryBuilder(SearchDto $searchDto, EntityDto $entityDto, FieldCollection $fields, FilterCollection $filters): QueryBuilder
+    {
+        $qb = parent::createIndexQueryBuilder($searchDto, $entityDto, $fields, $filters)
+            ->leftJoin('entity.client', 'client')->addSelect('client')
+            ->leftJoin('entity.producer', 'producer')->addSelect('producer');
+        $qb = $this->joinUserEagerly($qb, 'client');
+
+        return $this->joinProducerEagerly($qb, 'producer');
     }
 
     public function configureFields(string $pageName): iterable

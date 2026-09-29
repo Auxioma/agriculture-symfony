@@ -5,13 +5,18 @@ namespace App\Controller\Admin;
 use App\Entity\Identity\User;
 use App\Enum\UserStatus;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FieldCollection;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FilterCollection;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\EntityDto;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\SearchDto;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\EmailField;
@@ -24,6 +29,7 @@ use App\Service\Audit\AuditLogger;
 class UserCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;
+    use EagerAssociationJoinTrait;
 
     public function __construct(private readonly AuditLogger $auditLogger)
     {
@@ -40,6 +46,15 @@ class UserCrudController extends AbstractCrudController
             ->setEntityLabelInSingular('Utilisateur')
             ->setEntityLabelInPlural('Utilisateurs')
             ->setDefaultSort(['createdAt' => 'DESC']);
+    }
+
+    // * entity EST un User ici (écran racine, pas une association) : ses trois OneToOne inverses forcées
+    // * (preference/producerProfile/presence, voir EagerAssociationJoinTrait) se résolvent sinon par une
+    // * requête séparée PAR LIGNE dès l'hydratation, même sans qu'aucun champ ne les affiche -- confirmé par
+    // * le profiler (55 requêtes pour 20 lignes avant ce correctif, contre ~6 après).
+    public function createIndexQueryBuilder(SearchDto $searchDto, EntityDto $entityDto, FieldCollection $fields, FilterCollection $filters): QueryBuilder
+    {
+        return $this->joinUserEagerly(parent::createIndexQueryBuilder($searchDto, $entityDto, $fields, $filters), 'entity');
     }
 
     // * passwordHash n'est volontairement pas listé ici : jamais affiché ni modifiable depuis le back-office.
