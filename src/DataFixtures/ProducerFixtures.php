@@ -28,10 +28,17 @@ use Doctrine\Bundle\FixturesBundle\Fixture;
 use Doctrine\Common\DataFixtures\DependentFixtureInterface;
 use Doctrine\Persistence\ObjectManager;
 use Faker\Factory;
+use League\Flysystem\FilesystemOperator;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 class ProducerFixtures extends Fixture implements DependentFixtureInterface
 {
     public const PRODUCER_PROFILE_REFERENCE_PREFIX = 'producer-profile-';
+
+    public function __construct(
+        #[Autowire(service: 'producer_media.storage')] private readonly FilesystemOperator $storage,
+    ) {
+    }
 
     // * Un statut différent par index (modulo la taille du tableau) : garantit au moins un producteur
     // * Pending et un abonnement Cancelled quel que soit UserFixtures::PRODUCER_OWNER_COUNT.
@@ -60,15 +67,16 @@ class ProducerFixtures extends Fixture implements DependentFixtureInterface
         ['Rennes', 48.1173, -1.6778],
     ];
 
-    // * Une photo par producteur (Unsplash, licence libre -- cf. memoire "Stockage fichiers = S3/MinIO" : en
-    // * prod le fileUrl pointe vers le bucket, ici c'est juste pour avoir une fiche de démo présentable).
-    private const PHOTO_URLS = [
-        'https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=600&h=600&fit=crop&q=80',
-        'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=600&h=600&fit=crop&q=80',
-        'https://images.unsplash.com/photo-1472396961693-142e6e269027?w=600&h=600&fit=crop&q=80',
-        'https://images.unsplash.com/photo-1500595046743-cd271d694d30?w=600&h=600&fit=crop&q=80',
-        'https://images.unsplash.com/photo-1464226184884-fa280b87c399?w=600&h=600&fit=crop&q=80',
-        'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=600&h=600&fit=crop&q=80',
+    // * Une photo par producteur, envoyee via producer_media.storage (meme service que
+    // * ProducerMediaController::uploadPhoto()) -- pas une URL externe en dur, un vrai fichier stocke
+    // * (disque local en dev, bucket S3/MinIO en prod) comme si un producteur l'avait uploadee.
+    private const PHOTO_FILES = [
+        __DIR__.'/assets/producer-photos/ferme-1.jpg',
+        __DIR__.'/assets/producer-photos/ferme-2.jpg',
+        __DIR__.'/assets/producer-photos/ferme-3.jpg',
+        __DIR__.'/assets/producer-photos/ferme-4.jpg',
+        __DIR__.'/assets/producer-photos/ferme-5.jpg',
+        __DIR__.'/assets/producer-photos/ferme-6.jpg',
     ];
 
     // * Deux labels par producteur (sauf celui volontairement non vérifié, cf. plus bas) : assez pour peupler
@@ -81,6 +89,10 @@ class ProducerFixtures extends Fixture implements DependentFixtureInterface
 
     public function load(ObjectManager $manager): void
     {
+        // * Chaque rechargement des fixtures genere de nouveaux UUID producteur/media : sans ca, les photos
+        // * du run precedent restent orphelines sur le disque (purge de la base, jamais du storage).
+        $this->storage->deleteDirectory('');
+
         $faker = Factory::create('fr_FR');
         $country = $this->getReference(CatalogFixtures::COUNTRY_FR, Country::class);
         $planPrice = $this->getReference(SubscriptionPlanFixtures::PLAN_PRICE_STANDARD_MONTHLY, PlanPrice::class);
@@ -109,9 +121,16 @@ class ProducerFixtures extends Fixture implements DependentFixtureInterface
             $photo = new ProducerMedia();
             $photo->setProducer($producer);
             $photo->setType('photo');
-            $photo->setFileUrl(self::PHOTO_URLS[$i % \count(self::PHOTO_URLS)]);
             $photo->setPosition(0);
             $photo->setIsPublic(true);
+
+            // * Meme logique de cle que ProducerMediaController::uploadPhoto() (producerId/mediaId.ext) --
+            // * un vrai write() sur le storage, pas juste une valeur de fileUrl inventee en base.
+            $photoFile = self::PHOTO_FILES[$i % \count(self::PHOTO_FILES)];
+            $key = sprintf('%s/%s.jpg', $producer->getId()->toRfc4122(), $photo->getId()->toRfc4122());
+            $this->storage->write($key, file_get_contents($photoFile));
+            $photo->setFileUrl($this->storage->publicUrl($key));
+
             $manager->persist($photo);
 
             // * Pas de label sur le producteur Pending : un profil pas encore validé n'a pas de raison
