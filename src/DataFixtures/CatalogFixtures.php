@@ -25,6 +25,9 @@ class CatalogFixtures extends Fixture
     public const UNIT_KG = 'unit-kg';
     public const UNIT_UNITE = 'unit-unite';
     public const LABEL_BIO = 'label-bio';
+    public const LABEL_HVE = 'label-hve';
+    public const LABEL_AGRICULTURE_RAISONNEE = 'label-agriculture-raisonnee';
+    public const LABEL_LOCAL = 'label-local';
     public const PRODUCT_REFERENCES = [
         'product-pommes',
         'product-fraises',
@@ -74,12 +77,18 @@ class CatalogFixtures extends Fixture
             }
         }
 
-        foreach (['Bio' => 'bio', 'Agriculture raisonnée' => 'agriculture-raisonnee', 'HVE' => 'hve'] as $labelName => $code) {
+        // * "Local" ajouté en plus des 3 labels déjà là : cahier fonctionnel, fiche producteur publique --
+        // * "Badges : vérifié, bio, local, HVE, AOP/AOC ou labels locaux".
+        $labelReferences = [
+            'Bio' => ['bio', self::LABEL_BIO],
+            'Agriculture raisonnée' => ['agriculture-raisonnee', self::LABEL_AGRICULTURE_RAISONNEE],
+            'HVE' => ['hve', self::LABEL_HVE],
+            'Local' => ['local', self::LABEL_LOCAL],
+        ];
+        foreach ($labelReferences as $labelName => [$code, $reference]) {
             $label = (new Label())->setCode($code)->setName($labelName);
             $manager->persist($label);
-            if ('bio' === $code) {
-                $this->addReference(self::LABEL_BIO, $label);
-            }
+            $this->addReference($reference, $label);
         }
 
         // * Chaque fixture flush la sienne : les fixtures suivantes résolvent leurs références

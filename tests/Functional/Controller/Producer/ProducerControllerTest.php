@@ -209,4 +209,87 @@ final class ProducerControllerTest extends ApiTestCase
         self::assertNotNull($data[0]['distanceKm']);
         self::assertLessThan($data[1]['distanceKm'], $data[0]['distanceKm']);
     }
+
+    public function testFeaturedProducersOrdersByAverageRatingDescending(): void
+    {
+        $country = $this->makeCountry();
+        $wellRated = $this->makeProducerProfile($this->makeUser('well-rated'), $country, farmName: 'Bien notée');
+        $averageRated = $this->makeProducerProfile($this->makeUser('average-rated'), $country, farmName: 'Moyennement notée');
+        $this->em->flush();
+
+        $client = $this->makeUser('client');
+        foreach ([5, 5, 4] as $i => $rating) {
+            $this->makeReview($client, $wellRated, $this->makeClientRequest($client), $rating);
+        }
+        foreach ([3, 2] as $i => $rating) {
+            $this->makeReview($client, $averageRated, $this->makeClientRequest($client), $rating);
+        }
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/featured');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame($wellRated->getFarmName(), $data[0]['farmName']);
+        self::assertSame($averageRated->getFarmName(), $data[1]['farmName']);
+        self::assertEqualsWithDelta(4.7, $data[0]['averageRating'], 0.1);
+        self::assertSame(3, $data[0]['reviewCount']);
+    }
+
+    public function testFeaturedProducersExcludesUnverifiedAndReviewless(): void
+    {
+        $country = $this->makeCountry();
+        $pending = $this->makeProducerProfile($this->makeUser('pending'), $country, VerificationStatus::Pending, 'En attente, bien notée');
+        $noReview = $this->makeProducerProfile($this->makeUser('no-review'), $country, farmName: 'Vérifiée sans avis');
+        $this->em->flush();
+
+        $client = $this->makeUser('client');
+        $this->makeReview($client, $pending, $this->makeClientRequest($client), 5);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/featured');
+
+        self::assertResponseIsSuccessful();
+        $names = array_column(json_decode($this->client->getResponse()->getContent(), true), 'farmName');
+        self::assertNotContains($pending->getFarmName(), $names, 'un producteur non vérifié ne doit jamais être mis en avant');
+        self::assertNotContains($noReview->getFarmName(), $names, "un producteur sans aucun avis n'a pas de moyenne à afficher");
+    }
+
+    public function testFeaturedProducersIncludesPhotoAndVerifiedLabelsOnly(): void
+    {
+        $country = $this->makeCountry();
+        $producer = $this->makeProducerProfile($this->makeUser('labeled'), $country, farmName: 'Ferme complète');
+        $this->em->flush();
+
+        $client = $this->makeUser('client');
+        $this->makeReview($client, $producer, $this->makeClientRequest($client), 5);
+        $this->makeProducerPhoto($producer, 'https://example.test/photo.jpg');
+        $this->makeProducerLabel($producer, $this->makeLabel('bio', 'Bio'), verified: true);
+        $this->makeProducerLabel($producer, $this->makeLabel('hve', 'HVE'), verified: false);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/featured');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame('https://example.test/photo.jpg', $data[0]['photoUrl']);
+        self::assertSame([['code' => 'bio', 'name' => 'Bio']], $data[0]['labels']);
+    }
+
+    public function testFeaturedProducersRespectsLimit(): void
+    {
+        $country = $this->makeCountry();
+        $client = $this->makeUser('client');
+        for ($i = 0; $i < 4; ++$i) {
+            $producer = $this->makeProducerProfile($this->makeUser('producer-'.$i), $country, farmName: 'Ferme '.$i);
+            $this->em->flush();
+            $this->makeReview($client, $producer, $this->makeClientRequest($client), 5);
+        }
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/featured?limit=2');
+
+        self::assertResponseIsSuccessful();
+        self::assertCount(2, json_decode($this->client->getResponse()->getContent(), true));
+    }
 }

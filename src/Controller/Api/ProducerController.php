@@ -102,6 +102,112 @@ final class ProducerController extends AbstractController
         return filter_var($value, FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false';
     }
 
+    /**
+     * Cahier fonctionnel, accueil : "Producteurs a la une avec badges" -- les N producteurs vérifiés avec la
+     * meilleure moyenne d'avis publiés (pas de sélection manuelle/admin pour l'instant, cf. échange avec le
+     * client : calcul automatique plutôt qu'un flag "featured"). Un producteur sans aucun avis publié
+     * n'apparaît jamais ici (INNER JOIN), ce qui est volontaire : une moyenne sur 0 avis n'a pas de sens.
+     */
+    #[Route('/api/producers/featured', methods: ['GET'])]
+    public function listFeaturedProducers(Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        // * (int) cast avant interpolation dans le SQL plus bas : LIMIT ne peut pas être un paramètre lié
+        // * nommé classique (Postgres n'infère pas son type via le protocole étendu), donc on caste nous-même
+        // * plutôt que de risquer une valeur non numérique dans la requête.
+        $limit = max(1, (int) ($request->query->get('limit') ?? 3));
+
+        $latitude = $request->query->get('latitude');
+        $longitude = $request->query->get('longitude');
+        $hasLocation = $latitude !== null && $longitude !== null;
+        $distanceSelect = $hasLocation ? 'ST_Distance(pp.location, ST_GeographyFromText(:point)) / 1000.0' : 'NULL';
+        $params = [];
+        if ($hasLocation) {
+            $params['point'] = sprintf('SRID=4326;POINT(%F %F)', $longitude, $latitude);
+        }
+
+        $sql = "
+            SELECT pp.id, pp.farm_name, pp.slug, pp.city, pp.country_code,
+                $distanceSelect AS distance_km,
+                reviews.average_rating, reviews.review_count,
+                (
+                    SELECT pm.file_url FROM producer.producer_media pm
+                    WHERE pm.producer_id = pp.id AND pm.is_public = true
+                    ORDER BY pm.position ASC NULLS LAST LIMIT 1
+                ) AS photo_url
+            FROM producer.producer_profiles pp
+            INNER JOIN (
+                SELECT producer_id, AVG(rating)::numeric(10,2) AS average_rating, COUNT(*) AS review_count
+                FROM trust.reviews
+                WHERE status = 'published' AND rating IS NOT NULL
+                GROUP BY producer_id
+            ) reviews ON reviews.producer_id = pp.id
+            WHERE pp.is_active = true AND pp.verification_status = 'verified'
+            ORDER BY reviews.average_rating DESC, reviews.review_count DESC
+            LIMIT $limit
+        ";
+
+        $rows = $em->getConnection()->fetchAllAssociative($sql, $params);
+
+        $producerIds = array_column($rows, 'id');
+        $labelsByProducerId = $this->findVerifiedLabelsByProducerId($em, $producerIds);
+
+        return $this->json(array_map(
+            static fn (array $row) => [
+                'id' => $row['id'],
+                'farmName' => $row['farm_name'],
+                'slug' => $row['slug'],
+                'city' => $row['city'],
+                'countryCode' => $row['country_code'],
+                'distanceKm' => $row['distance_km'] !== null ? round((float) $row['distance_km'], 1) : null,
+                'averageRating' => round((float) $row['average_rating'], 1),
+                'reviewCount' => (int) $row['review_count'],
+                'photoUrl' => $row['photo_url'],
+                'labels' => $labelsByProducerId[$row['id']] ?? [],
+            ],
+            $rows
+        ));
+    }
+
+    /**
+     * @param list<string> $producerIds
+     *
+     * @return array<string, list<array{code: string, name: string}>>
+     */
+    private function findVerifiedLabelsByProducerId(EntityManagerInterface $em, array $producerIds): array
+    {
+        if ($producerIds === []) {
+            return [];
+        }
+
+        // * Même filtre verifiedAt/expiresAt que getProducer() : un label revendiqué mais pas encore
+        // * validé ne doit pas apparaître comme badge sur une carte "producteur à la une".
+        $producerLabels = $em->createQueryBuilder()
+            ->select('pl')
+            ->from(ProducerLabel::class, 'pl')
+            ->where('IDENTITY(pl.producer) IN (:producerIds)')
+            ->setParameter('producerIds', $producerIds)
+            ->getQuery()
+            ->getResult();
+
+        $labelsByProducerId = [];
+        foreach ($producerLabels as $producerLabel) {
+            if ($producerLabel->getVerifiedAt() === null) {
+                continue;
+            }
+            if ($producerLabel->getExpiresAt() !== null && $producerLabel->getExpiresAt() < new \DateTimeImmutable()) {
+                continue;
+            }
+
+            $producerId = $producerLabel->getProducer()->getId()->toRfc4122();
+            $labelsByProducerId[$producerId][] = [
+                'code' => $producerLabel->getLabel()->getCode(),
+                'name' => $producerLabel->getLabel()->getName(),
+            ];
+        }
+
+        return $labelsByProducerId;
+    }
+
     #[Route('/api/producers/{id}', methods: ['GET'])]
     public function getProducer(string $id, EntityManagerInterface $em): JsonResponse
     {
