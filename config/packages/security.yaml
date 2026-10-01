@@ -11,6 +11,16 @@ security:
                 class: App\Entity\Identity\User
                 property: email
 
+    # * RBAC admin (cahier DevOps, "Autorisation : RBAC côté Symfony" ; cahier fonctionnel 22.2, "Le support
+    # * accède uniquement aux éléments nécessaires") : un rôle plus élevé hérite de tout ce que peut faire le
+    # * rôle en dessous. ROLE_SUPPORT n'ouvre donc PAS /admin à lui seul dans un access_control classique --
+    # * c'est cette hiérarchie qui le permet ci-dessous (roles: ROLE_SUPPORT couvre aussi ADMIN/SUPER_ADMIN).
+    # * Chaque écran restreint à ROLE_ADMIN (#[IsGranted] sur le contrôleur, voir DashboardController et les
+    # * autres CrudController) reste donc hors d'atteinte d'un compte Support seul.
+    role_hierarchy:
+        ROLE_SUPER_ADMIN: ROLE_ADMIN
+        ROLE_ADMIN: ROLE_SUPPORT
+
     firewalls:
         dev:
             # Ensure dev tools and static assets are always allowed
@@ -29,6 +39,19 @@ security:
             logout:
                 path: admin_logout
                 target: admin_login
+            # * 2FA obligatoire admin (cahier DevOps). Étape "Fondations" : aucun comportement ne change tant
+            # * qu'aucun utilisateur n'a de totpSecret (Scheb ne déclenche l'écran /admin/2fa que si
+            # * isTotpAuthenticationEnabled() renvoie true, voir User::isTotpAuthenticationEnabled()).
+            two_factor:
+                auth_form_path: /admin/2fa
+                check_path: /admin/2fa_check
+                default_target_path: admin
+            # * Protection brute force (cahier DevOps, sécurité "Authentification"), comme sur api_login : 5 essais par
+            # * 15 minutes par compte+IP, sur le mot de passe ET sur le code 2FA (dont le passeport porte un UserBadge,
+            # * donc couvert aussi). Le code 2FA a en plus une limite par compte seul : TwoFactorAttemptThrottleListener.
+            login_throttling:
+                max_attempts: 5
+                interval: '15 minutes'
 
         # ! api_login avavnt api sinon la requête
         # ! continuait alors vers le routeur normal, qui ne trouve aucun contrôleur pour /login -> 404.
@@ -60,7 +83,14 @@ security:
     # Note: Only the *first* matching rule is applied
     access_control:
         - { path: ^/admin/login, roles: PUBLIC_ACCESS }
-        - { path: ^/admin, roles: [ROLE_ADMIN, ROLE_SUPER_ADMIN] }
+        # * Formulaire et vérification du code 2FA : un compte qui a saisi son mot de passe mais pas encore son
+        # * code n'a pas ROLE_SUPPORT (jeton "2FA en cours"), sans cette règle la règle ^/admin plus bas le
+        # * bloquerait sur le formulaire même du code. Anchré ($) pour ne pas couvrir /admin/2fa/setup, réservé
+        # * aux comptes pleinement authentifiés.
+        - { path: '^/admin/2fa(_check)?$', roles: IS_AUTHENTICATED_2FA_IN_PROGRESS }
+        # * ROLE_SUPPORT suffit à entrer dans /admin (role_hierarchy ci-dessus couvre ADMIN/SUPER_ADMIN) : les
+        # * écrans que Support ne doit pas voir sont bloqués individuellement par #[IsGranted('ROLE_ADMIN')].
+        - { path: ^/admin, roles: ROLE_SUPPORT }
         - { path: ^/api/auth/(login|register-client|register-producer|forgot-password|reset-password), roles: PUBLIC_ACCESS }
         - { path: ^/api/(categories|products|labels), roles: PUBLIC_ACCESS }
         - { path: ^/api/legal, roles: PUBLIC_ACCESS }

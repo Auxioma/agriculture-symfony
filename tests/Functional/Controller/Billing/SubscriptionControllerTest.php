@@ -2,6 +2,7 @@
 
 namespace App\Tests\Functional\Controller\Billing;
 
+use App\Entity\Billing\CouponRedemption;
 use App\Entity\Billing\Invoice;
 use App\Entity\Billing\PlanPrice;
 use App\Entity\Billing\SubscriptionPlan;
@@ -244,6 +245,107 @@ final class SubscriptionControllerTest extends ApiTestCase
             'CONTENT_TYPE' => 'application/json',
             'HTTP_AUTHORIZATION' => 'Bearer '.$token,
         ], content: json_encode(['planPriceId' => \Symfony\Component\Uid\Uuid::v4()->toRfc4122()]));
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testCheckoutWithValidCouponSucceeds(): void
+    {
+        [$token] = $this->registerProducerAndLogin();
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_coupon_ok');
+        $this->makeCoupon('PROMO10');
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/subscription/checkout', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => $planPrice->getId()->toRfc4122(), 'couponCode' => 'PROMO10']));
+
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    // * CITEXT (voir la migration de billing.coupons) : la casse ne doit jamais empêcher un client de saisir
+    // * un coupon correctement -- vérifie que ce n'est pas une coïncidence de findOneBy() côté ORM.
+    public function testCheckoutWithCouponIsCaseInsensitive(): void
+    {
+        [$token] = $this->registerProducerAndLogin();
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_coupon_case');
+        $this->makeCoupon('PROMO10');
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/subscription/checkout', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => $planPrice->getId()->toRfc4122(), 'couponCode' => 'promo10']));
+
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    public function testCheckoutRejectsUnknownCoupon(): void
+    {
+        [$token] = $this->registerProducerAndLogin();
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_coupon_unknown');
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/subscription/checkout', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => $planPrice->getId()->toRfc4122(), 'couponCode' => 'INCONNU']));
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testCheckoutRejectsExpiredCoupon(): void
+    {
+        [$token] = $this->registerProducerAndLogin();
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_coupon_expired');
+        $coupon = $this->makeCoupon('EXPIRE');
+        $coupon->setValidUntil(new \DateTimeImmutable('-1 day'));
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/subscription/checkout', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => $planPrice->getId()->toRfc4122(), 'couponCode' => 'EXPIRE']));
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testCheckoutRejectsCouponAtMaxRedemptions(): void
+    {
+        $this->makeCountry();
+        $this->em->flush();
+        [, $producer] = $this->registerProducerAndLogin('producer', 'FR');
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_coupon_maxed');
+        $coupon = $this->makeCoupon('MAXED', maxRedemptions: 1);
+        $subscription = $this->makeActiveSubscription($producer);
+        $redemption = new CouponRedemption();
+        $redemption->setCoupon($coupon);
+        $redemption->setProducer($producer);
+        $redemption->setSubscription($subscription);
+        $this->em->persist($redemption);
+        $this->em->flush();
+
+        [$otherToken] = $this->registerProducerAndLogin('other', 'FR');
+        $this->client->request('POST', '/api/subscription/checkout', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$otherToken,
+        ], content: json_encode(['planPriceId' => $planPrice->getId()->toRfc4122(), 'couponCode' => 'MAXED']));
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testCheckoutRejectsCouponNotSynchronizedWithStripe(): void
+    {
+        [$token] = $this->registerProducerAndLogin();
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_coupon_unsynced');
+        $this->makeCoupon('UNSYNCED', providerCouponId: null);
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/subscription/checkout', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => $planPrice->getId()->toRfc4122(), 'couponCode' => 'UNSYNCED']));
 
         self::assertResponseStatusCodeSame(422);
     }

@@ -129,6 +129,10 @@ final class AuthController extends AbstractController
         // ! il faut référencer le service exact.
         #[Autowire(service: 'limiter.password_reset_requests')]
         RateLimiterFactory $passwordResetRequestsLimiter,
+        // * Base du front Angular (.env, FRONTEND_URL) : dev = http://localhost:4200, prod =
+        // * https://agriculture.trouvemoi.com (définie dans le .env.local du serveur, jamais commitée ici).
+        #[Autowire(env: 'FRONTEND_URL')]
+        string $frontendUrl,
     ): JsonResponse {
         $limiter = $passwordResetRequestsLimiter->create($request->email);
         if (!$limiter->consume(1)->isAccepted()) {
@@ -151,11 +155,20 @@ final class AuthController extends AbstractController
             $em->persist($resetToken);
             $em->flush();
 
+            // * Chemin "/auth/reset-password" à faire correspondre exactement à la route Angular qui lit le
+            // * paramètre "token" et appelle POST /api/auth/reset-password -- à valider avec le front avant tout
+            // * changement de ce chemin.
+            $resetUrl = sprintf('%s/auth/reset-password?token=%s', rtrim($frontendUrl, '/'), $plainToken);
+
             $mailer->send(
                 (new Email())
                     ->to($user->getEmail())
                     ->subject('Réinitialisation de votre mot de passe')
-                    ->text('Voici votre code de réinitialisation : '.$plainToken)
+                    ->text("Voici le lien pour réinitialiser votre mot de passe : {$resetUrl}\n\nCe lien expire dans 1 heure.")
+                    ->html(sprintf(
+                        '<p>Cliquez sur ce lien pour réinitialiser votre mot de passe : <a href="%1$s">%1$s</a></p><p>Ce lien expire dans 1 heure.</p>',
+                        htmlspecialchars($resetUrl, \ENT_QUOTES)
+                    ))
             );
         }
 

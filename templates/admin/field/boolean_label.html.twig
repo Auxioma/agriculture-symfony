@@ -1,0 +1,8 @@
+{# Booléen affiché avec des libellés métier (options personnalisées onLabel / offLabel), en badge si asBadge est vrai.
+   Utilisé par LabelCrudController : ChoiceField ne sait pas porter de valeurs booléennes, et TextField refuse un booléen. #}
+{% set label = field.value ? field.customOptions.get('onLabel') : field.customOptions.get('offLabel') %}
+{% if field.customOptions.get('asBadge') %}
+    <span class="badge {{ field.value ? 'badge-success' : 'badge-secondary' }}">{{ label }}</span>
+{% else %}
+    {{ label }}
+{% endif %}

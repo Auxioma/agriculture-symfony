@@ -1,86 +1,71 @@
+{# Maquette Figma "Admin · Statistiques" (desktop 236:6154, mobile 237:6779). Styles : assets/styles/admin.css. #}
 {% extends '@EasyAdmin/layout.html.twig' %}
 
-{% block content_title %}Reporting{% endblock %}
+{% macro stat(value, label, detail) %}
+    <div class="tm-stat">
+        <div class="tm-stat-value">{{ value }}</div>
+        <div class="tm-stat-label">{{ label }}</div>
+        {% if detail %}<div class="tm-stat-detail">{{ detail }}</div>{% endif %}
+    </div>
+{% endmacro %}
+
+{% macro ranking(title, heading, rows, valueLabel, empty, valueKey = 'total', nameKey = 'name') %}
+    <section class="tm-panel-block">
+        <h2 class="tm-section-title">{{ title }}</h2>
+        <div class="tm-panel">
+            <table class="tm-table">
+                <thead><tr><th>{{ heading }}</th><th class="tm-cell-end">{{ valueLabel }}</th></tr></thead>
+                <tbody>
+                    {% for row in rows %}
+                        <tr>
+                            <td class="tm-cell-main">{{ attribute(row, nameKey) }}</td>
+                            <td class="tm-cell-end">{{ attribute(row, valueKey) }}</td>
+                        </tr>
+                    {% else %}
+                        <tr class="tm-empty"><td colspan="2">{{ empty }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endmacro %}
+
+{% import _self as ui %}
+
+{% block content_title %}Statistiques{% endblock %}
+
+{% block content_subtitle %}
+    <p class="tm-subtitle">Indicateurs clés de la plateforme : demandes, réponses, abonnements et revenus</p>
+{% endblock %}
 
 {% block main %}
-    <div class="row">
-        <div class="col-md-3 mb-4">
-            <div class="card text-center">
-                <div class="card-header">Taux de réponse</div>
-                <div class="card-body">
-                    <h2 class="mb-0">{{ responseRate is not null ? responseRate ~ ' %' : 'N/A' }}</h2>
-                    <small class="text-muted">{{ responseRateRow.with_reply }} / {{ responseRateRow.total }} demandes</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3 mb-4">
-            <div class="card text-center">
-                <div class="card-header">Taux de résiliation (churn)</div>
-                <div class="card-body">
-                    <h2 class="mb-0">{{ churnRate is not null ? churnRate ~ ' %' : 'N/A' }}</h2>
-                    <small class="text-muted">{{ churnRow.cancelled }} / {{ churnRow.total }} abonnements</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6 mb-4">
-            <div class="card text-center">
-                <div class="card-header">Revenus (factures payées)</div>
-                <div class="card-body">
-                    <h2 class="mb-0">{{ totalRevenue|number_format(2, ',', ' ') }}</h2>
-                    <small class="text-muted">Total cumulé, toutes périodes</small>
-                </div>
-            </div>
-        </div>
+    <div class="tm-stats">
+        {{ ui.stat(responseRate is not null ? responseRate ~ ' %' : 'N/A', 'Taux de réponse', responseRateRow.with_reply ~ ' / ' ~ responseRateRow.total ~ ' demandes') }}
+        {{ ui.stat(churnRate is not null ? churnRate ~ ' %' : 'N/A', 'Taux de résiliation (churn)', churnRow.cancelled ~ ' / ' ~ churnRow.total ~ ' abonnements') }}
+        {{ ui.stat(totalRevenue|number_format(2, ',', ' ') ~ ' €', 'Revenus (factures payées)', 'Total cumulé, toutes périodes') }}
     </div>
 
-    <div class="row">
-        <div class="col-md-6 mb-4">
-            <div class="card">
-                <div class="card-header">Revenus par mois (6 derniers mois)</div>
-                <table class="table table-sm mb-0">
-                    <thead><tr><th>Mois</th><th class="text-end">Revenu</th></tr></thead>
+    <div class="tm-grid-2">
+        <section class="tm-panel-block">
+            <h2 class="tm-section-title">Revenus par mois (6 derniers mois)</h2>
+            <div class="tm-panel">
+                <table class="tm-table">
+                    <thead><tr><th>Mois</th><th class="tm-cell-end">Revenu</th></tr></thead>
                     <tbody>
                         {% for row in revenueByMonth %}
-                            <tr><td>{{ row.month }}</td><td class="text-end">{{ row.total|number_format(2, ',', ' ') }}</td></tr>
+                            <tr>
+                                <td class="tm-cell-main">{{ row.month }}</td>
+                                <td class="tm-cell-end">{{ row.total|number_format(2, ',', ' ') }}</td>
+                            </tr>
                         {% else %}
-                            <tr><td colspan="2" class="text-muted">Aucune facture payée sur la période.</td></tr>
+                            <tr class="tm-empty"><td colspan="2">Aucune facture payée sur la période.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-        </div>
-        <div class="col-md-6 mb-4">
-            <div class="card">
-                <div class="card-header">Demandes par pays</div>
-                <table class="table table-sm mb-0">
-                    <thead><tr><th>Pays</th><th class="text-end">Demandes</th></tr></thead>
-                    <tbody>
-                        {% for row in requestsByCountry %}
-                            <tr><td>{{ row.name }}</td><td class="text-end">{{ row.total }}</td></tr>
-                        {% else %}
-                            <tr><td colspan="2" class="text-muted">Aucune demande.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+        </section>
 
-    <div class="row">
-        <div class="col-md-6 mb-4">
-            <div class="card">
-                <div class="card-header">Catégories populaires</div>
-                <table class="table table-sm mb-0">
-                    <thead><tr><th>Catégorie</th><th class="text-end">Demandes</th></tr></thead>
-                    <tbody>
-                        {% for row in popularCategories %}
-                            <tr><td>{{ row.name }}</td><td class="text-end">{{ row.total }}</td></tr>
-                        {% else %}
-                            <tr><td colspan="2" class="text-muted">Aucune demande catégorisée.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+        {{ ui.ranking('Demandes par pays', 'Pays', requestsByCountry, 'Demandes', 'Aucune demande.') }}
+        {{ ui.ranking('Catégories populaires', 'Catégorie', popularCategories, 'Demandes', 'Aucune demande catégorisée.') }}
     </div>
 {% endblock %}

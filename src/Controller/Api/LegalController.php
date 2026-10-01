@@ -12,6 +12,7 @@
 namespace App\Controller\Api;
 
 use App\Entity\Content\LegalPage;
+use App\Service\Platform\PlatformSettings;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -20,10 +21,14 @@ use Symfony\Component\Routing\Attribute\Route;
 
 final class LegalController extends AbstractController
 {
+    public function __construct(private readonly PlatformSettings $settings)
+    {
+    }
+
     #[Route('/api/legal', methods: ['GET'])]
     public function listLegalPages(Request $request, EntityManagerInterface $em): JsonResponse
     {
-        $locale = $request->query->get('locale', 'fr');
+        $locale = $request->query->get('locale', $this->settings->defaultLocale());
         $pages = $em->getRepository(LegalPage::class)->findBy(['isActive' => true, 'locale' => $locale], ['code' => 'ASC']);
 
         return $this->json(array_map(
@@ -40,7 +45,7 @@ final class LegalController extends AbstractController
     #[Route('/api/legal/{code}', methods: ['GET'])]
     public function getLegalPage(string $code, Request $request, EntityManagerInterface $em): JsonResponse
     {
-        $locale = $request->query->get('locale', 'fr');
+        $locale = $request->query->get('locale', $this->settings->defaultLocale());
         $page = $em->getRepository(LegalPage::class)->findOneBy(['code' => $code, 'isActive' => true, 'locale' => $locale]);
         if ($page === null) {
             return $this->json(['error' => 'Page légale introuvable.'], 404);

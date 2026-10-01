@@ -42,6 +42,10 @@ use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Scheb\TwoFactorBundle\Model\BackupCodeInterface;
+use Scheb\TwoFactorBundle\Model\Totp\TotpConfiguration;
+use Scheb\TwoFactorBundle\Model\Totp\TotpConfigurationInterface;
+use Scheb\TwoFactorBundle\Model\Totp\TwoFactorInterface;
 use Symfony\Bridge\Doctrine\Types\UuidType;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
@@ -53,7 +57,10 @@ use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 #[UniqueEntity(fields: ['email'], message: 'Cet e-mail est déjà utilisé par un autre compte.')]
 #[ORM\Table(name: 'users', schema: 'identity')]
 #[ORM\HasLifecycleCallbacks]
-class User implements UserInterface, PasswordAuthenticatedUserInterface
+// * 2FA obligatoire admin (cahier DevOps) : TwoFactorInterface/BackupCodeInterface sont lus par le bundle
+// * scheb/2fa à chaque authentification (voir security.yaml, firewall "admin", two_factor:) -- tant que
+// * $totpSecret est null, isTotpAuthenticationEnabled() renvoie false et rien ne change pour le compte.
+class User implements UserInterface, PasswordAuthenticatedUserInterface, TwoFactorInterface, BackupCodeInterface
 {
     // un visiteur non authentifié n'a pas de ligne en base.
     public const ROLE_CLIENT = 'ROLE_CLIENT';
@@ -99,6 +106,17 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
     private ?\DateTimeImmutable $lastLoginAt = null;
+
+    // * Secret TOTP (base32) partagé avec l'appli d'authentification (Google Authenticator, etc.) une fois le
+    // * 2FA activé par l'admin -- écran d'activation à venir (étape suivante). Null = 2FA non configuré.
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $totpSecret = null;
+
+    /**
+     * @var list<string>|null
+     */
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $backupCodes = null;
 
     /**
      * @var Collection<int, RefreshToken>
@@ -441,6 +459,100 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function eraseCredentials(): void
     {
         // rien à effacer, pas de champ temporaire en clair
+    }
+
+    public function getTotpSecret(): ?string
+    {
+        return $this->totpSecret;
+    }
+
+    public function setTotpSecret(?string $totpSecret): static
+    {
+        $this->totpSecret = $totpSecret;
+
+        return $this;
+    }
+
+    public function isTotpAuthenticationEnabled(): bool
+    {
+        return null !== $this->totpSecret;
+    }
+
+    public function getTotpAuthenticationUsername(): ?string
+    {
+        return $this->email;
+    }
+
+    public function getTotpAuthenticationConfiguration(): ?TotpConfigurationInterface
+    {
+        if (null === $this->totpSecret) {
+            return null;
+        }
+
+        return new TotpConfiguration($this->totpSecret, TotpConfiguration::ALGORITHM_SHA1, 30, 6);
+    }
+
+    public function disableTwoFactor(): static
+    {
+        $this->totpSecret = null;
+        $this->backupCodes = null;
+
+        return $this;
+    }
+
+    public function hasBackupCodes(): bool
+    {
+        return null !== $this->backupCodes && [] !== $this->backupCodes;
+    }
+
+    /**
+     * Génère de nouveaux codes de secours et remplace les précédents. Comme un mot de passe, ils ne sont
+     * jamais stockés en clair (password_hash) -- seul cet appel peut les révéler, à n'afficher qu'une fois à
+     * l'admin qui les a générés.
+     *
+     * @return list<string> Les codes en clair, à afficher une seule fois.
+     */
+    public function generateNewBackupCodes(int $count = 8): array
+    {
+        $plainCodes = [];
+        $hashedCodes = [];
+
+        for ($i = 0; $i < $count; ++$i) {
+            $plainCode = strtoupper(bin2hex(random_bytes(4)));
+            $plainCodes[] = $plainCode;
+            $hashedCodes[] = password_hash($plainCode, \PASSWORD_BCRYPT);
+        }
+
+        $this->backupCodes = $hashedCodes;
+
+        return $plainCodes;
+    }
+
+    public function isBackupCode(string $code): bool
+    {
+        if (null === $this->backupCodes) {
+            return false;
+        }
+
+        foreach ($this->backupCodes as $hash) {
+            if (password_verify($code, $hash)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function invalidateBackupCode(string $code): void
+    {
+        if (null === $this->backupCodes) {
+            return;
+        }
+
+        $this->backupCodes = array_values(array_filter(
+            $this->backupCodes,
+            static fn (string $hash): bool => !password_verify($code, $hash)
+        ));
     }
 
     /**

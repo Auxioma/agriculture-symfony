@@ -14,25 +14,40 @@ use App\Entity\Trust\Review;
 use App\Enum\ReviewStatus;
 use App\Service\Audit\AuditLogger;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FieldCollection;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FilterCollection;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\EntityDto;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\SearchDto;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
+use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
+use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
+// * RBAC (cahier DevOps ; cahier fonctionnel 22.2, "Un admin peut accéder aux contenus pour administration et
+// * modération" / "Le support accède uniquement aux éléments nécessaires") : modérer les avis clients est un
+// * geste d'admin, pas dans le périmètre nécessaire au support (voir security.yaml pour le mécanisme).
+#[IsGranted('ROLE_ADMIN')]
 class ReviewCrudController extends AbstractCrudController
 {
+    use StatusBadgeFieldTrait;
+    use EagerAssociationJoinTrait;
+
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly AuditLogger $auditLogger,
@@ -49,24 +64,49 @@ class ReviewCrudController extends AbstractCrudController
         return $crud
             ->setEntityLabelInSingular('Avis client')
             ->setEntityLabelInPlural('Avis clients')
+            ->setPageTitle(Crud::PAGE_INDEX, 'Avis')
             ->setDefaultSort(['createdAt' => 'DESC']);
+    }
+
+    // * Voir le commentaire équivalent sur ClientRequestCrudController::createIndexQueryBuilder() : client et
+    // * producer forcent sinon une requête (et ses joints eager) par ligne via les formatValue ci-dessous.
+    public function createIndexQueryBuilder(SearchDto $searchDto, EntityDto $entityDto, FieldCollection $fields, FilterCollection $filters): QueryBuilder
+    {
+        $qb = parent::createIndexQueryBuilder($searchDto, $entityDto, $fields, $filters)
+            ->leftJoin('entity.client', 'client')->addSelect('client')
+            ->leftJoin('entity.producer', 'producer')->addSelect('producer');
+        $qb = $this->joinUserEagerly($qb, 'client');
+
+        return $this->joinProducerEagerly($qb, 'producer');
     }
 
     public function configureFields(string $pageName): iterable
     {
-        yield IdField::new('id')->hideOnForm();
-        yield AssociationField::new('client')->formatValue(fn ($v, $e) => $e?->getClient()?->getEmail())->hideOnForm();
-        yield AssociationField::new('producer')->formatValue(fn ($v, $e) => $e?->getProducer()?->getFarmName())->hideOnForm();
-        yield IntegerField::new('rating')->hideOnForm();
-        yield TextareaField::new('comment')->hideOnIndex()->hideOnForm();
-        yield ChoiceField::new('status')->hideOnForm();
-        yield TextareaField::new('producerResponse')->hideOnIndex()->hideOnForm();
-        yield DateTimeField::new('createdAt')->hideOnForm();
+        // * Colonnes de la maquette "Admin · Avis" : NOTE, COMMENTAIRE, statut de modération.
+        yield IdField::new('id')->hideOnForm()->hideOnIndex();
+        yield AssociationField::new('client')->setLabel('Client')->formatValue(fn ($v, $e) => $e?->getClient()?->getEmail())->hideOnForm();
+        yield AssociationField::new('producer')->setLabel('Producteur')->formatValue(fn ($v, $e) => $e?->getProducer()?->getFarmName())->hideOnForm();
+        yield IntegerField::new('rating')->setLabel('Note')->formatValue(fn ($v) => null === $v ? '—' : $v.' / 5')->hideOnForm();
+        yield TextareaField::new('comment')->setLabel('Commentaire')->hideOnIndex()->hideOnForm();
+        yield $this->statusBadgeField('status', 'Statut', $pageName, [
+            ReviewStatus::Pending->value => 'En attente',
+            ReviewStatus::Published->value => 'Publié',
+            ReviewStatus::Rejected->value => 'Rejeté',
+        ], [
+            ReviewStatus::Pending->value => 'warning',
+            ReviewStatus::Published->value => 'success',
+            ReviewStatus::Rejected->value => 'danger',
+        ])->hideOnForm();
+        yield TextareaField::new('producerResponse')->setLabel('Réponse du producteur')->hideOnIndex()->hideOnForm();
+        yield DateTimeField::new('createdAt')->setLabel('Date')->setFormat('d MMM y')->hideOnForm();
     }
 
+    // * Puces "En attente/Publiés/Rejetés" (layout.html.twig, tm_filter_chips) au lieu du bouton "+ Filtres".
+    // * TextFilter + setFormType(TextType::class) : voir le commentaire équivalent sur
+    // * ProducerProfileCrudController::configureFilters() -- valeur soumise gardée plate pour tm_filter_chips.
     public function configureFilters(Filters $filters): Filters
     {
-        return $filters->add('status');
+        return $filters->add(TextFilter::new('status')->setFormType(TextType::class));
     }
 
     // * DELETE reste actif : nettoyage d'un avis manifestement abusif, comme pour les demandes clients

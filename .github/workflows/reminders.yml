@@ -37,3 +37,13 @@ jobs:
             cd /var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
             php bin/console app:send-expiry-reminders --env=prod --no-interaction
           EOF
+
+      # * Même serveur, même job : republication des demandes récurrentes (RecurringRequestRule), une fois
+      # * par jour comme les rappels d'expiration -- pas besoin d'un workflow séparé pour une seconde commande cron.
+      - name: Republier les demandes récurrentes
+        run: |
+          sshpass -e ssh -p 22 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
+            set -e
+            cd /var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
+            php bin/console app:run-recurring-requests --env=prod --no-interaction
+          EOF

@@ -2,6 +2,8 @@
 
 namespace App\Controller\Api;
 
+use App\Entity\Billing\Coupon;
+use App\Entity\Billing\CouponRedemption;
 use App\Entity\Billing\Invoice;
 use App\Entity\Billing\PlanPrice;
 use App\Entity\Billing\Subscription;
@@ -106,6 +108,21 @@ final class StripeWebhookController extends AbstractController
         $subscription->setCurrentPeriodEnd((new \DateTimeImmutable())->setTimestamp($item->current_period_end));
         $subscription->setProviderSubscriptionId($stripeSubscription->id);
         $em->persist($subscription);
+
+        // * coupon_id (posé par SubscriptionController::checkout() dans subscription_data.metadata) : n'existe
+        // * que si un coupon valide a été appliqué à cette session de paiement. Une CouponRedemption n'est donc
+        // * créée que pour un coupon réellement utilisé sur un abonnement effectivement payé, jamais pour une
+        // * session de checkout abandonnée avant paiement (Stripe n'émet alors jamais cet événement).
+        $couponId = $stripeSubscription->metadata['coupon_id'] ?? null;
+        $coupon = $couponId !== null ? $em->find(Coupon::class, $couponId) : null;
+        if ($coupon !== null) {
+            $redemption = new CouponRedemption();
+            $redemption->setCoupon($coupon);
+            $redemption->setProducer($producer);
+            $redemption->setSubscription($subscription);
+            $redemption->setRedeemedAt(new \DateTimeImmutable());
+            $em->persist($redemption);
+        }
 
         return true;
     }

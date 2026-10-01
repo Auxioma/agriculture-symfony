@@ -4,6 +4,8 @@ namespace App\Controller\Api;
 
 use App\Dto\Subscription\ChangePlanRequest;
 use App\Dto\Subscription\CheckoutRequest;
+use App\Entity\Billing\Coupon;
+use App\Entity\Billing\CouponRedemption;
 use App\Entity\Billing\Invoice;
 use App\Entity\Billing\PlanPrice;
 use App\Entity\Billing\Subscription;
@@ -169,15 +171,59 @@ final class SubscriptionController extends AbstractController
             return $this->json(['error' => 'Un abonnement actif existe déjà -- utilisez change-plan.'], 409);
         }
 
+        $metadata = ['producer_id' => $producer->getId()->toRfc4122()];
+        $couponId = null;
+        if ($request->couponCode !== null) {
+            $coupon = $this->resolveValidCoupon($request->couponCode, $em);
+            if ($coupon instanceof JsonResponse) {
+                return $coupon;
+            }
+            // ! coupon_id (l'id local, pas providerCouponId) : c'est ce que
+            // ! StripeWebhookController::handleSubscriptionCreated() relit pour créer la CouponRedemption --
+            // ! il n'a lui-même aucune raison d'appeler Stripe pour retrouver le Coupon local.
+            $metadata['coupon_id'] = $coupon->getId()->toRfc4122();
+            $couponId = $coupon->getProviderCouponId();
+        }
+
         $checkoutUrl = $paymentGateway->createCheckoutSession(
             priceId: $planPrice->getProviderPriceId(),
             customerEmail: $user->getEmail(),
-            metadata: ['producer_id' => $producer->getId()->toRfc4122()],
+            metadata: $metadata,
             successUrl: 'https://app.trouvemoi.com/abonnement/succes?session_id={CHECKOUT_SESSION_ID}',
             cancelUrl: 'https://app.trouvemoi.com/abonnement/annule',
+            couponId: $couponId,
         );
 
         return $this->json(['checkoutUrl' => $checkoutUrl], 201);
+    }
+
+    // * discountPercent n'est jamais lu ici : c'est purement informatif côté Symfony (voir Coupon), la
+    // * réduction réelle vient du Coupon Stripe référencé par providerCouponId, appliqué par StripeGateway.
+    private function resolveValidCoupon(string $code, EntityManagerInterface $em): Coupon|JsonResponse
+    {
+        $coupon = $em->getRepository(Coupon::class)->findOneBy(['code' => $code]);
+        if ($coupon === null) {
+            return $this->json(['error' => 'Coupon inconnu.'], 422);
+        }
+
+        $now = new \DateTimeImmutable();
+        if (($coupon->getValidFrom() !== null && $coupon->getValidFrom() > $now)
+            || ($coupon->getValidUntil() !== null && $coupon->getValidUntil() < $now)) {
+            return $this->json(['error' => 'Ce coupon n\'est plus valide.'], 422);
+        }
+
+        if ($coupon->getMaxRedemptions() !== null) {
+            $redemptions = $em->getRepository(CouponRedemption::class)->count(['coupon' => $coupon]);
+            if ($redemptions >= $coupon->getMaxRedemptions()) {
+                return $this->json(['error' => 'Ce coupon a atteint son nombre maximal d\'utilisations.'], 422);
+            }
+        }
+
+        if ($coupon->getProviderCouponId() === null) {
+            return $this->json(['error' => 'Ce coupon n\'est pas synchronisé avec Stripe.'], 422);
+        }
+
+        return $coupon;
     }
 
     /**

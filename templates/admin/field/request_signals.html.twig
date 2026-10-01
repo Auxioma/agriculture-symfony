@@ -1,0 +1,6 @@
+{# Signaux de qualité d'une demande (RequestQualityAnalyzer) : badges "Doublon" / "Spam" avec la règle exacte en
+   infobulle -- un admin doit pouvoir dire POURQUOI une demande est signalée. field.value : liste de codes (vide = rien
+   à signaler), posée par ClientRequestCrudController::configureResponseParameters(). Labels/couleurs/raisons partagés
+   avec la page détail via _request_signals.html.twig. #}
+{% import 'admin/matching/_request_signals.html.twig' as signals %}
+{{ signals.badges(field.value) }}

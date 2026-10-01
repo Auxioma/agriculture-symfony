@@ -9,6 +9,7 @@ use App\Entity\Matching\ProducerReply;
 use App\Enum\RequestStatus;
 use App\Enum\SubscriptionStatus;
 use App\Service\Notification\NotificationService;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -26,6 +27,13 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * Idempotente par construction : avant d'envoyer un rappel, on vérifie qu'aucune notification du même
  * type pour le même enregistrement n'existe déjà, en relisant Notification.data (JSON) -- évite d'ajouter
  * un champ "reminderSentAt" sur ClientRequest/Subscription juste pour ça.
+ *
+ * ! setParameter() sans type explicite infère Types::DATETIME_IMMUTABLE (sans fuseau horaire) pour un
+ * ! \DateTimeImmutable -- Postgres interprète alors la valeur naïve avec le fuseau horaire de la session
+ * ! au lieu de la comparer telle quelle aux colonnes TIMESTAMPTZ (expiresAt/currentPeriodEnd), faussant
+ * ! la comparaison de plusieurs heures (bug réel trouvé en écrivant RunRecurringRequestsCommand,
+ * ! resté invisible ici uniquement parce que les fenêtres +2j/+7j sont bien plus larges que le décalage).
+ * ! DATETIMETZ_IMMUTABLE (même type que les colonnes comparées) est donc explicite sur now/threshold ci-dessous.
  */
 
 #[AsCommand(name: 'app:send-expiry-reminders', description: "Envoie les rappels d'expiration (demandes, abonnements)")]
@@ -69,8 +77,8 @@ final class SendExpiryRemindersCommand extends Command
             ->where('r.expiresAt IS NOT NULL')
             ->andWhere('r.expiresAt BETWEEN :now AND :threshold')
             ->andWhere('r.status IN (:statuses)')
-            ->setParameter('now', $now)
-            ->setParameter('threshold', $threshold)
+            ->setParameter('now', $now, Types::DATETIMETZ_IMMUTABLE)
+            ->setParameter('threshold', $threshold, Types::DATETIMETZ_IMMUTABLE)
             ->setParameter('statuses', self::ACTIVE_REQUEST_STATUSES)
             ->getQuery()->getResult();
 
@@ -121,8 +129,8 @@ final class SendExpiryRemindersCommand extends Command
             ->andWhere('s.cancelAtPeriodEnd = false')
             ->andWhere('s.currentPeriodEnd BETWEEN :now AND :threshold')
             ->setParameter('active', SubscriptionStatus::Active)
-            ->setParameter('now', $now)
-            ->setParameter('threshold', $threshold)
+            ->setParameter('now', $now, Types::DATETIMETZ_IMMUTABLE)
+            ->setParameter('threshold', $threshold, Types::DATETIMETZ_IMMUTABLE)
             ->getQuery()->getResult();
 
         $count = 0;

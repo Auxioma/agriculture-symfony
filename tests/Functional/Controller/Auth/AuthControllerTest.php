@@ -4,6 +4,8 @@ namespace App\Tests\Functional\Controller\Auth;
 
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
+use Symfony\Bundle\FrameworkBundle\Test\MailerAssertionsTrait;
+use Symfony\Component\Mime\Email;
 
 /**
  * Teste les 6 routes de AuthController (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf) en
@@ -15,6 +17,7 @@ use App\Tests\Fixtures\EntityFactoryTrait;
 class AuthControllerTest extends ApiTestCase
 {
     use EntityFactoryTrait;
+    use MailerAssertionsTrait;
 
     public function testRegisterClientCreatesAUserAndReturnsCreated(): void
     {
@@ -162,6 +165,45 @@ class AuthControllerTest extends ApiTestCase
         ]));
 
         self::assertResponseStatusCodeSame(200);
+        self::assertEmailCount(0);
+    }
+
+    // * Régression : le mail envoyait auparavant seulement le jeton en clair, sans lien -- aucune page pour le
+    // * saisir depuis l'email (voir la conversation avec l'utilisateur). Le lien pointe vers FRONTEND_URL
+    // * (.env, "http://localhost:4200" en dev/test), chemin "/auth/reset-password?token=..." à faire
+    // * correspondre à la route Angular qui lit ce paramètre.
+    public function testForgotPasswordEmailContainsAClickableResetLink(): void
+    {
+        $user = $this->makeUserWithPassword('forgot', 'motdepasse123');
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/auth/forgot-password', server: ['CONTENT_TYPE' => 'application/json'], content: json_encode([
+            'email' => $user->getEmail(),
+        ]));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertEmailCount(1);
+        $email = self::getMailerMessage(0);
+        self::assertEmailAddressContains($email, 'To', $user->getEmail());
+        self::assertEmailTextBodyContains($email, 'http://localhost:4200/auth/reset-password?token=');
+        self::assertEmailHtmlBodyContains($email, 'http://localhost:4200/auth/reset-password?token=');
+
+        // * Le jeton en clair envoyé par email doit fonctionner tel quel sur /api/auth/reset-password (seul son
+        // * hash SHA-256 est stocké, voir AuthController::forgotPassword()) -- vérifie que le lien mène bien à
+        // * un jeton réellement utilisable, pas seulement présent dans le texte du mail. getMailerMessage() est
+        // * typé RawMessage (pas Email) : ce contrôle confirme le type réel avant d'appeler getHtmlBody(), qui
+        // * n'existe que sur Email.
+        if (!$email instanceof Email) {
+            self::fail('Le message envoyé devrait être une instance de Email.');
+        }
+        preg_match('/token=([0-9a-f]+)/', (string) $email->getHtmlBody(), $matches);
+        self::assertNotEmpty($matches[1] ?? null);
+
+        $this->client->request('POST', '/api/auth/reset-password', server: ['CONTENT_TYPE' => 'application/json'], content: json_encode([
+            'token' => $matches[1],
+            'newPassword' => 'nouveaumotdepasse123',
+        ]));
+        self::assertResponseIsSuccessful();
     }
 
     public function testExportMyDataReturnsProfileAndRequests(): void

@@ -10,19 +10,25 @@
 
 namespace App\Tests\Fixtures;
 
+use App\Entity\Billing\Coupon;
 use App\Entity\Billing\PlanPrice;
 use App\Entity\Billing\Subscription;
 use App\Entity\Billing\SubscriptionPlan;
 use App\Entity\Catalog\Category;
 use App\Entity\Catalog\Country;
+use App\Entity\Catalog\Label;
 use App\Entity\Catalog\Product;
 use App\Entity\Identity\User;
 use App\Entity\Matching\ClientRequest;
+use App\Entity\Producer\ProducerLabel;
+use App\Entity\Producer\ProducerMedia;
 use App\Entity\Producer\ProducerProduct;
 use App\Entity\Producer\ProducerProfile;
+use App\Entity\Trust\Review;
 use App\Enum\BillingCycle;
 use App\Enum\NeedType;
 use App\Enum\RequestStatus;
+use App\Enum\ReviewStatus;
 use App\Enum\SubscriptionStatus;
 use App\Enum\VerificationStatus;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -56,6 +62,16 @@ trait EntityFactoryTrait
         $this->em->persist($product);
 
         return $product;
+    }
+
+    protected function makeLabel(string $code = 'bio', string $name = 'Bio'): Label
+    {
+        $label = new Label();
+        $label->setCode($code);
+        $label->setName($name);
+        $this->em->persist($label);
+
+        return $label;
     }
 
     protected function makeUser(string $emailPrefix = 'user'): User
@@ -146,6 +162,17 @@ trait EntityFactoryTrait
         return $subscription;
     }
 
+    protected function makeCoupon(string $code, ?string $providerCouponId = 'coupon_test', ?int $maxRedemptions = null): Coupon
+    {
+        $coupon = new Coupon();
+        $coupon->setCode($code);
+        $coupon->setProviderCouponId($providerCouponId);
+        $coupon->setMaxRedemptions($maxRedemptions);
+        $this->em->persist($coupon);
+
+        return $coupon;
+    }
+
     protected function makeClientRequest(
         User $client,
         ?Product $product = null,
@@ -164,5 +191,48 @@ trait EntityFactoryTrait
         $this->em->persist($request);
 
         return $request;
+    }
+
+    protected function makeReview(
+        User $client,
+        ProducerProfile $producer,
+        ClientRequest $request,
+        int $rating = 5,
+        ReviewStatus $status = ReviewStatus::Published,
+    ): Review {
+        $review = new Review();
+        $review->setClient($client);
+        $review->setProducer($producer);
+        $review->setRequest($request);
+        $review->setRating($rating);
+        $review->setStatus($status);
+        $this->em->persist($review);
+
+        return $review;
+    }
+
+    protected function makeProducerLabel(ProducerProfile $producer, Label $label, bool $verified = true): ProducerLabel
+    {
+        $producerLabel = new ProducerLabel();
+        $producerLabel->setProducer($producer);
+        $producerLabel->setLabel($label);
+        if ($verified) {
+            $producerLabel->setVerifiedAt(new \DateTimeImmutable('-5 days'));
+        }
+        $this->em->persist($producerLabel);
+
+        return $producerLabel;
+    }
+
+    protected function makeProducerPhoto(ProducerProfile $producer, string $fileUrl, bool $isPublic = true): ProducerMedia
+    {
+        $media = new ProducerMedia();
+        $media->setProducer($producer);
+        $media->setType('photo');
+        $media->setFileUrl($fileUrl);
+        $media->setIsPublic($isPublic);
+        $this->em->persist($media);
+
+        return $media;
     }
 }

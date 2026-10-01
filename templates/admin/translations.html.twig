@@ -1,23 +1,29 @@
+{# Maquette Figma "Admin · Modifier catégorie / label" : lien de retour vert, titre, sous-titre. #}
 {% extends '@EasyAdmin/layout.html.twig' %}
 
-{% block content_title %}Traductions — {{ entityLabel }}{% endblock %}
+{% block content_title %}Traductions{% endblock %}
+
+{% block content_subtitle %}
+    <p class="tm-subtitle">{{ entityLabel }}</p>
+{% endblock %}
 
 {% block main %}
-    <a href="{{ backUrl }}" class="btn btn-secondary mb-3">&larr; Retour</a>
+    <a href="{{ backUrl }}" class="tm-back">&lsaquo; Retour</a>
 
     {{ form_start(form) }}
-        <div class="row">
+        <div class="tm-grid-2">
             {% for child in form %}
-                <div class="col-md-6 mb-4">
-                    <div class="card">
-                        <div class="card-header">{{ child.vars.label }}</div>
-                        <div class="card-body">
-                            {{ form_widget(child) }}
-                        </div>
+                <section class="tm-panel-block">
+                    <h2 class="tm-section-title">{{ child.vars.label }}</h2>
+                    <div class="tm-panel tm-panel-padded">
+                        {{ form_widget(child) }}
                     </div>
-                </div>
+                </section>
             {% endfor %}
         </div>
-        <button type="submit" class="btn btn-primary">Enregistrer</button>
+        <div class="tm-actions">
+            <button type="submit" class="tm-btn tm-btn-primary">Enregistrer</button>
+            <a href="{{ backUrl }}" class="tm-btn tm-btn-outline">Annuler</a>
+        </div>
     {{ form_end(form) }}
 {% endblock %}

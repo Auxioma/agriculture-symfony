@@ -3,6 +3,7 @@
 namespace App\Controller\Admin;
 
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Authentication\AuthenticationUtils;
@@ -28,11 +29,19 @@ class SecurityController extends AbstractController
      */
 
     #[Route('/admin/login', name: 'admin_login')]
-    public function login(AuthenticationUtils $authenticationUtils): Response
-    {
+    public function login(
+        AuthenticationUtils $authenticationUtils,
+        // * Le formulaire "mot de passe oublié" (saisie de l'email, appel à POST /api/auth/forgot-password)
+        // * vit côté front Angular, pas dans ce back-office Twig -- voir AuthController::forgotPassword().
+        // * Chemin "/auth/forgot-password" à faire correspondre exactement à la route Angular, comme pour le
+        // * lien envoyé par email (AuthController::forgotPassword()).
+        #[Autowire(env: 'FRONTEND_URL')]
+        string $frontendUrl,
+    ): Response {
         return $this->render('admin/login.html.twig', [
             'last_username' => $authenticationUtils->getLastUsername(),
             'error' => $authenticationUtils->getLastAuthenticationError(),
+            'forgot_password_url' => rtrim($frontendUrl, '/').'/auth/forgot-password',
         ]);
     }
 

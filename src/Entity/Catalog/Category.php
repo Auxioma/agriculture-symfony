@@ -4,8 +4,9 @@
  * Catégorie de produits agricoles (cahier fonctionnel : "Catégories, sous-catégories, produits..."),
  * hiérarchie auto-référencée via $parent (une catégorie sans parent = catégorie racine). $name/$slug ne
  * portent que le contenu français par défaut -- les autres langues vivent dans CategoryTranslation, éditée
- * depuis le back-office (CategoryCrudController::editTranslations()) mais pas encore exposée par l'API
- * publique (CatalogController renvoie toujours ce $name de base, voir le docblock de CategoryTranslation).
+ * depuis le back-office (CategoryCrudController::editTranslations()) et exposée par l'API publique
+ * (CatalogController::listCategories(), ?locale=) : $name de base sert de repli tant qu'aucune traduction
+ * n'existe pour la locale demandée.
  */
 
 namespace App\Entity\Catalog;

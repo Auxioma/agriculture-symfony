@@ -1,0 +1,20 @@
+{# Labels/couleurs/raisons des signaux de qualité (App\Service\Matching\RequestQualityAnalyzer), partagés entre la
+   colonne "Signaux" de la liste (admin/field/request_signals.html.twig) et la page détail d'une demande -- un seul
+   endroit à mettre à jour si un libellé ou une règle change. Une seule macro (le dictionnaire est défini dans son
+   corps, exécuté à l'appel : un {% set %} au niveau racine d'un fichier seulement "import"é ne s'exécuterait pas). #}
+{% macro badges(codes) %}
+    {% set labels = {
+        duplicate: {label: 'Doublon', variant: 'warning', help: "Même client, même besoin, même lieu qu'une demande envoyée dans les 48 h précédentes."},
+        flood: {label: 'Spam · rafale', variant: 'danger', help: 'Au moins 5 demandes publiées par ce client sur les 24 h précédentes.'},
+        link: {label: 'Spam · lien', variant: 'danger', help: 'Le message ou le produit contient une adresse web (http://, https:// ou www.).'},
+        mass_message: {label: 'Spam · message copié', variant: 'danger', help: 'Le même message a été envoyé par au moins 3 clients différents.'},
+    } %}
+    {% if codes is empty %}
+        <span class="tm-hint">—</span>
+    {% else %}
+        {% for code in codes %}
+            {% set signal = labels[code] ?? null %}
+            {% if signal %}<span class="badge badge-{{ signal.variant }}" title="{{ signal.help }}">{{ signal.label }}</span>{% endif %}
+        {% endfor %}
+    {% endif %}
+{% endmacro %}

@@ -2,6 +2,9 @@
 
 namespace App\Controller\Api;
 
+use App\Entity\Producer\DeliveryZone;
+use App\Entity\Producer\OpeningHour;
+use App\Entity\Producer\ProducerLabel;
 use App\Entity\Producer\ProducerProfile;
 use App\Entity\Trust\Review;
 use App\Enum\ReviewStatus;
@@ -99,6 +102,112 @@ final class ProducerController extends AbstractController
         return filter_var($value, FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false';
     }
 
+    /**
+     * Cahier fonctionnel, accueil : "Producteurs a la une avec badges" -- les N producteurs vérifiés avec la
+     * meilleure moyenne d'avis publiés (pas de sélection manuelle/admin pour l'instant, cf. échange avec le
+     * client : calcul automatique plutôt qu'un flag "featured"). Un producteur sans aucun avis publié
+     * n'apparaît jamais ici (INNER JOIN), ce qui est volontaire : une moyenne sur 0 avis n'a pas de sens.
+     */
+    #[Route('/api/producers/featured', methods: ['GET'])]
+    public function listFeaturedProducers(Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        // * (int) cast avant interpolation dans le SQL plus bas : LIMIT ne peut pas être un paramètre lié
+        // * nommé classique (Postgres n'infère pas son type via le protocole étendu), donc on caste nous-même
+        // * plutôt que de risquer une valeur non numérique dans la requête.
+        $limit = max(1, (int) ($request->query->get('limit') ?? 3));
+
+        $latitude = $request->query->get('latitude');
+        $longitude = $request->query->get('longitude');
+        $hasLocation = $latitude !== null && $longitude !== null;
+        $distanceSelect = $hasLocation ? 'ST_Distance(pp.location, ST_GeographyFromText(:point)) / 1000.0' : 'NULL';
+        $params = [];
+        if ($hasLocation) {
+            $params['point'] = sprintf('SRID=4326;POINT(%F %F)', $longitude, $latitude);
+        }
+
+        $sql = "
+            SELECT pp.id, pp.farm_name, pp.slug, pp.city, pp.country_code,
+                $distanceSelect AS distance_km,
+                reviews.average_rating, reviews.review_count,
+                (
+                    SELECT pm.file_url FROM producer.producer_media pm
+                    WHERE pm.producer_id = pp.id AND pm.is_public = true
+                    ORDER BY pm.position ASC NULLS LAST LIMIT 1
+                ) AS photo_url
+            FROM producer.producer_profiles pp
+            INNER JOIN (
+                SELECT producer_id, AVG(rating)::numeric(10,2) AS average_rating, COUNT(*) AS review_count
+                FROM trust.reviews
+                WHERE status = 'published' AND rating IS NOT NULL
+                GROUP BY producer_id
+            ) reviews ON reviews.producer_id = pp.id
+            WHERE pp.is_active = true AND pp.verification_status = 'verified'
+            ORDER BY reviews.average_rating DESC, reviews.review_count DESC
+            LIMIT $limit
+        ";
+
+        $rows = $em->getConnection()->fetchAllAssociative($sql, $params);
+
+        $producerIds = array_column($rows, 'id');
+        $labelsByProducerId = $this->findVerifiedLabelsByProducerId($em, $producerIds);
+
+        return $this->json(array_map(
+            static fn (array $row) => [
+                'id' => $row['id'],
+                'farmName' => $row['farm_name'],
+                'slug' => $row['slug'],
+                'city' => $row['city'],
+                'countryCode' => $row['country_code'],
+                'distanceKm' => $row['distance_km'] !== null ? round((float) $row['distance_km'], 1) : null,
+                'averageRating' => round((float) $row['average_rating'], 1),
+                'reviewCount' => (int) $row['review_count'],
+                'photoUrl' => $row['photo_url'],
+                'labels' => $labelsByProducerId[$row['id']] ?? [],
+            ],
+            $rows
+        ));
+    }
+
+    /**
+     * @param list<string> $producerIds
+     *
+     * @return array<string, list<array{code: string, name: string}>>
+     */
+    private function findVerifiedLabelsByProducerId(EntityManagerInterface $em, array $producerIds): array
+    {
+        if ($producerIds === []) {
+            return [];
+        }
+
+        // * Même filtre verifiedAt/expiresAt que getProducer() : un label revendiqué mais pas encore
+        // * validé ne doit pas apparaître comme badge sur une carte "producteur à la une".
+        $producerLabels = $em->createQueryBuilder()
+            ->select('pl')
+            ->from(ProducerLabel::class, 'pl')
+            ->where('IDENTITY(pl.producer) IN (:producerIds)')
+            ->setParameter('producerIds', $producerIds)
+            ->getQuery()
+            ->getResult();
+
+        $labelsByProducerId = [];
+        foreach ($producerLabels as $producerLabel) {
+            if ($producerLabel->getVerifiedAt() === null) {
+                continue;
+            }
+            if ($producerLabel->getExpiresAt() !== null && $producerLabel->getExpiresAt() < new \DateTimeImmutable()) {
+                continue;
+            }
+
+            $producerId = $producerLabel->getProducer()->getId()->toRfc4122();
+            $labelsByProducerId[$producerId][] = [
+                'code' => $producerLabel->getLabel()->getCode(),
+                'name' => $producerLabel->getLabel()->getName(),
+            ];
+        }
+
+        return $labelsByProducerId;
+    }
+
     #[Route('/api/producers/{id}', methods: ['GET'])]
     public function getProducer(string $id, EntityManagerInterface $em): JsonResponse
     {
@@ -107,6 +216,19 @@ final class ProducerController extends AbstractController
         if ($producer === null || !$producer->isActive()) {
             return $this->json(['error' => 'Producteur introuvable.'], 404);
         }
+
+        // * Incrémente le compteur du jour dans analytics.producer_daily_metrics (module "Statistiques"
+        // * du dashboard producteur, voir ProducerStatisticsController) -- upsert atomique plutôt qu'un
+        // * find()+persist() Doctrine, pour éviter une condition de course si deux visites arrivent en
+        // * même temps (deux requêtes concurrentes verraient sinon la même valeur de départ et une
+        // * incrémentation se perdrait).
+        $em->getConnection()->executeStatement(
+            'INSERT INTO analytics.producer_daily_metrics (producer_id, metric_date, profile_views)
+             VALUES (:producerId, CURRENT_DATE, 1)
+             ON CONFLICT (producer_id, metric_date)
+             DO UPDATE SET profile_views = COALESCE(analytics.producer_daily_metrics.profile_views, 0) + 1',
+            ['producerId' => $producer->getId()->toRfc4122()]
+        );
 
         // ! Pas de coordonnées GPS précises exposées ici : ProducerProfile::$addressVisibility est prévu pour
         // ! contrôler la précision affichée publiquement (ville seule vs adresse complète), mais cette logique
@@ -121,6 +243,40 @@ final class ProducerController extends AbstractController
             'city' => $producer->getCity(),
             'countryCode' => $producer->getCountry()?->getCode(),
             'verificationStatus' => $producer->getVerificationStatus()->value,
+            // * Cahier fonctionnel, fiche producteur publique : "Modes de retrait, livraison, horaires,
+            // * zones couvertes". Le tracé du polygone lui-même n'est pas renvoyé (pas de conversion
+            // * GeoJSON ici) -- seul le rayon simple, suffisant pour l'affichage "Livraison possible
+            // * dans un rayon de Xkm" du cahier ; une carte du polygone resterait à faire séparément.
+            'deliveryZones' => array_map(
+                static fn (DeliveryZone $z) => ['radiusKm' => $z->getRadiusKm(), 'rules' => $z->getRules()],
+                $producer->getDeliveryZones()->toArray()
+            ),
+            'openingHours' => array_map(
+                static fn (OpeningHour $h) => [
+                    'weekday' => $h->getWeekday(),
+                    'opensAt' => $h->getOpensAt()?->format('H:i'),
+                    'closesAt' => $h->getClosesAt()?->format('H:i'),
+                    'isClosed' => $h->isClosed(),
+                ],
+                $producer->getOpeningHours()->toArray()
+            ),
+            // * Cahier fonctionnel, fiche producteur publique : "Badges : vérifié, bio, local, HVE,
+            // * AOP/AOC ou labels locaux". Seuls les labels réellement vérifiés (verifiedAt posé par
+            // * VerificationDocumentCrudController) et pas expirés sont affichés -- un label
+            // * simplement revendiqué mais pas encore validé ne doit pas apparaître comme un badge.
+            'labels' => array_values(array_filter(array_map(
+                static function (ProducerLabel $l) {
+                    if ($l->getVerifiedAt() === null) {
+                        return null;
+                    }
+                    if ($l->getExpiresAt() !== null && $l->getExpiresAt() < new \DateTimeImmutable()) {
+                        return null;
+                    }
+
+                    return ['code' => $l->getLabel()->getCode(), 'name' => $l->getLabel()->getName()];
+                },
+                $producer->getLabels()->toArray()
+            ))),
         ]);
     }
 

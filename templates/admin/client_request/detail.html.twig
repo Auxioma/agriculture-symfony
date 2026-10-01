@@ -1,0 +1,111 @@
+{# Maquette Figma non consultée pour cette page (voir TODO.md) : informations de la demande, raison d'un éventuel
+   signalement, demandes liées. Styles : assets/styles/admin.css. #}
+{% extends '@EasyAdmin/layout.html.twig' %}
+{% import 'admin/matching/_request_signals.html.twig' as signals %}
+
+{# detailUrls : table identifiant => URL (Twig ne peut pas appeler une closure passée en variable comme une fonction)
+   -- voir ClientRequestCrudController::detail(), même pattern que TicketCrudController::attachmentUrls(). #}
+{% macro requestSummary(request, statusLabels, statusVariants, detailUrls) %}
+    <div>
+        <a href="{{ detailUrls[request.id.toRfc4122] }}">{{ request.customProduct ?: (request.product ? request.product.name : (request.category ? request.category.name : 'Produit non précisé')) }}</a>
+        <span class="badge badge-{{ statusVariants[request.status.value] ?? 'secondary' }}">{{ statusLabels[request.status.value] ?? request.status.value }}</span>
+        <br><span class="tm-hint">{{ request.createdAt|date('d/m/Y à H:i') }}{% if request.city %} · {{ request.city }}{% endif %}</span>
+    </div>
+{% endmacro %}
+
+{% block content_title %}{{ clientRequest.customProduct ?: (clientRequest.product ? clientRequest.product.name : 'Demande sans produit précisé') }}{% endblock %}
+
+{% block content_subtitle %}
+    <p class="tm-subtitle">Envoyée le {{ clientRequest.createdAt|date('d/m/Y à H:i') }}</p>
+{% endblock %}
+
+{% block main %}
+    {% import _self as this %}
+
+    <section class="tm-panel-block">
+        <dl class="tm-ticket-summary">
+            <div>
+                <dt>Client</dt>
+                <dd>{{ clientRequest.client.email }}</dd>
+            </div>
+            <div>
+                <dt>Statut</dt>
+                <dd><span class="badge badge-{{ statusVariant }}">{{ statusLabel }}</span></dd>
+            </div>
+            <div>
+                <dt>Produit</dt>
+                <dd>{{ clientRequest.customProduct ?: (clientRequest.product ? clientRequest.product.name : (clientRequest.category ? clientRequest.category.name : '—')) }}</dd>
+            </div>
+            <div>
+                <dt>Lieu</dt>
+                <dd>{{ clientRequest.city ?: '—' }}{% if clientRequest.country %}, {{ clientRequest.country.name }}{% endif %}</dd>
+            </div>
+        </dl>
+        {% if clientRequest.message %}
+            <p class="tm-hint" style="margin-top: 12px;">Message :</p>
+            <p class="tm-message-body">{{ clientRequest.message }}</p>
+        {% endif %}
+    </section>
+
+    <section class="tm-panel-block">
+        <h2 class="tm-section-title">Signalement</h2>
+        {% if signals is empty %}
+            <p class="tm-hint">Aucun signal de doublon ou de spam sur cette demande.</p>
+        {% else %}
+            <p>{{ signals.badges(signals) }}</p>
+        {% endif %}
+
+        {% if originals is not empty %}
+            <p class="tm-hint" style="margin-top: 12px;">Cette demande recopie {{ originals|length > 1 ? 'les demandes suivantes' : 'la demande suivante' }} :</p>
+            <ul class="tm-related-requests">
+                {% for original in originals %}
+                    <li>{{ this.requestSummary(original, statusLabels, statusVariants, detailUrls) }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+
+        {% if canMarkSpam or canMarkDuplicate %}
+            <div class="tm-ticket-actions">
+                {% if canMarkSpam %}
+                    <form method="post" action="{{ qualityActionUrl }}">
+                        <input type="hidden" name="operation" value="mark_spam">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('client_request_quality_action') }}">
+                        <button type="submit" class="tm-btn tm-btn-danger">Marquer comme spam</button>
+                    </form>
+                {% endif %}
+                {% if canMarkDuplicate %}
+                    <form method="post" action="{{ qualityActionUrl }}">
+                        <input type="hidden" name="operation" value="mark_duplicate">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('client_request_quality_action') }}">
+                        <button type="submit" class="tm-btn tm-btn-danger">Marquer comme doublon</button>
+                    </form>
+                {% endif %}
+            </div>
+            <p class="tm-hint" style="margin-top: 8px;">Marquer annule la demande et journalise la décision.</p>
+        {% endif %}
+    </section>
+
+    <section class="tm-panel-block">
+        <h2 class="tm-section-title">Autres demandes de ce client</h2>
+        {% if related is empty %}
+            <p class="tm-hint">Aucune autre demande de ce client.</p>
+        {% else %}
+            <ul class="tm-related-requests">
+                {% for r in related %}
+                    <li>{{ this.requestSummary(r, statusLabels, statusVariants, detailUrls) }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </section>
+
+    <div class="tm-actions tm-actions-start">
+        <a href="{{ indexUrl }}" class="tm-btn">Retour à la liste</a>
+        <a href="{{ editUrl }}" class="tm-btn">Modifier la demande</a>
+    </div>
+
+    {# DELETE (bouton d'action standard EasyAdmin) reste actif sur ce module (cahier fonctionnel : "suppression") :
+       ce gabarit remplace crud/detail.html.twig en entier, qui inclut normalement cette modale de confirmation --
+       sans elle, le clic sur "Supprimer" resterait sans effet et testDeletingRequestCascadesToReplyAndConversation
+       (ClientRequestCrudControllerTest) échouerait, faute de #action-confirmation-form. #}
+    {{ include('@EasyAdmin/crud/includes/_action_confirmation_modal.html.twig', with_context: false) }}
+{% endblock %}

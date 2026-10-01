@@ -2,16 +2,19 @@
 
 /**
  * Document justificatif d'un producteur (ex. Kbis, certificat Bio), référencé notamment par
- * ProducerLabel::$document comme preuve d'un label. $status/$reviewedBy/$reviewedAt portent la validation
- * admin, $expiresAt la durée de validité (le trigger trg_verification_documents_audit journalise aussi
- * les changements sur cette table dans audit.audit_logs, voir la note sur AuditLog). Aucun contrôleur
- * n'existe encore pour cette entité -- pas d'écran dédié de validation des documents dans le back-office.
+ * ProducerLabel::$document comme preuve d'un label. Uploadé via
+ * ProducerVerificationController::uploadDocument() (statut Pending par défaut), validé ensuite via
+ * VerificationDocumentCrudController (back-office) qui pose $reviewedBy/$reviewedAt et, si le
+ * document est lié à un label, vérifie aussi ce label. $expiresAt porte la durée de validité (le
+ * trigger trg_verification_documents_audit journalise aussi les changements sur cette table dans
+ * audit.audit_logs, voir la note sur AuditLog).
  */
 
 namespace App\Entity\Trust;
 
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerProfile;
+use App\Enum\VerificationDocumentStatus;
 use App\Repository\Trust\VerificationDocumentRepository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
@@ -36,8 +39,8 @@ class VerificationDocument
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $fileUrl = null;
 
-    #[ORM\Column(length: 255)]
-    private string $status;
+    #[ORM\Column(enumType: VerificationDocumentStatus::class)]
+    private VerificationDocumentStatus $status;
 
     #[ORM\ManyToOne]
     private ?User $reviewedBy = null;
@@ -51,6 +54,7 @@ class VerificationDocument
     public function __construct()
     {
         $this->id = Uuid::v4();
+        $this->status = VerificationDocumentStatus::Pending;
     }
 
     public function getId(): Uuid
@@ -94,12 +98,12 @@ class VerificationDocument
         return $this;
     }
 
-    public function getStatus(): string
+    public function getStatus(): VerificationDocumentStatus
     {
         return $this->status;
     }
 
-    public function setStatus(string $status): static
+    public function setStatus(VerificationDocumentStatus $status): static
     {
         $this->status = $status;
 

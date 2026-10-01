@@ -6,23 +6,39 @@ use App\Entity\Producer\ProducerProfile;
 use App\Enum\VerificationStatus;
 use App\Service\Notification\NotificationService;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FieldCollection;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FilterCollection;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
+use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\EntityDto;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\SearchDto;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\BooleanField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
+use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
+use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 use App\Service\Audit\AuditLogger;
 
+// * RBAC (cahier DevOps, "Autorisation : RBAC côté Symfony" ; cahier fonctionnel 22.2, "Le support accède
+// * uniquement aux éléments nécessaires") : la validation d'un producteur est une décision d'admin, pas un
+// * geste de support -- ROLE_ADMIN exclut ROLE_SUPPORT seul (role_hierarchy va dans l'autre sens, voir
+// * security.yaml). Un ROLE_SUPPORT qui visite /admin/producer-profile reçoit un 403.
+#[IsGranted('ROLE_ADMIN')]
 class ProducerProfileCrudController extends AbstractCrudController
 {
+    use StatusBadgeFieldTrait;
+    use EagerAssociationJoinTrait;
 
     public function __construct(private readonly AuditLogger $auditLogger)
     {
@@ -38,7 +54,21 @@ class ProducerProfileCrudController extends AbstractCrudController
         return $crud
             ->setEntityLabelInSingular('Producteur')
             ->setEntityLabelInPlural('Producteurs')
+            ->setPageTitle(Crud::PAGE_INDEX, 'Validation des producteurs')
             ->setDefaultSort(['farmName' => 'ASC']);
+    }
+
+    // * owner force sinon une requête par ligne (voir le commentaire équivalent sur
+    // * ClientRequestCrudController::createIndexQueryBuilder()) ; entity elle-même (ProducerProfile) a sa
+    // * propre association eager forcée (settings, voir EagerAssociationJoinTrait) qui se déclencherait sinon
+    // * une fois par ligne même sans jointure explicite -- entity est ici aussi le producteur "racine".
+    public function createIndexQueryBuilder(SearchDto $searchDto, EntityDto $entityDto, FieldCollection $fields, FilterCollection $filters): QueryBuilder
+    {
+        $qb = parent::createIndexQueryBuilder($searchDto, $entityDto, $fields, $filters)
+            ->leftJoin('entity.owner', 'owner')->addSelect('owner');
+        $qb = $this->joinUserEagerly($qb, 'owner');
+
+        return $this->joinProducerEagerly($qb, 'entity');
     }
 
     // * verificationStatus n'est PAS éditable ici (hideOnForm) les transitions passent uniquement par les
@@ -46,17 +76,39 @@ class ProducerProfileCrudController extends AbstractCrudController
     // * toujours la notification associée, un simple dropdown éditable permettrait de le contourner.
     public function configureFields(string $pageName): iterable
     {
-        yield IdField::new('id')->hideOnForm();
-        yield TextField::new('farmName');
+        yield IdField::new('id')->hideOnForm()->hideOnIndex();
+        yield TextField::new('farmName')->setLabel('Exploitation');
         yield AssociationField::new('owner')
+            ->setLabel('Contact')
             ->formatValue(fn ($value, $entity) => $entity?->getOwner()?->getEmail())
             ->hideOnForm();
-        yield AssociationField::new('country')->hideOnForm();
-        yield TextField::new('city')->hideOnForm();
-        yield ChoiceField::new('verificationStatus')->hideOnForm();
-        yield BooleanField::new('isActive')->hideOnForm();
-        yield AssociationField::new('labels')->onlyOnDetail();
-        yield AssociationField::new('verificationDocuments')->onlyOnDetail();
+        yield AssociationField::new('country')->setLabel('Pays')->hideOnForm();
+        yield TextField::new('city')->setLabel('Localisation')->hideOnForm();
+        yield $this->statusBadgeField('verificationStatus', 'Statut', $pageName, [
+            VerificationStatus::Draft->value => 'Brouillon',
+            VerificationStatus::Pending->value => 'En attente',
+            VerificationStatus::Verified->value => 'Validé',
+            VerificationStatus::Rejected->value => 'Refusé',
+            VerificationStatus::Suspended->value => 'Suspendu',
+        ], [
+            VerificationStatus::Draft->value => 'secondary',
+            VerificationStatus::Pending->value => 'warning',
+            VerificationStatus::Verified->value => 'success',
+            VerificationStatus::Rejected->value => 'danger',
+            VerificationStatus::Suspended->value => 'warning',
+        ])->hideOnForm();
+        yield BooleanField::new('isActive')->setLabel('Actif')->hideOnForm();
+        yield AssociationField::new('labels')->setLabel('Labels')->onlyOnDetail();
+        yield AssociationField::new('verificationDocuments')->setLabel('Documents')->onlyOnDetail();
+    }
+
+    // * Puces "En attente/Validés/Refusés" (layout.html.twig, tm_filter_chips) au lieu du bouton "+ Filtres".
+    // * TextFilter + setFormType(TextType::class) : par défaut EasyAdmin imbrique la valeur soumise sous
+    // * "comparison"/"value", ici on la garde plate ("filters[verificationStatus]=pending") pour rester
+    // * lisible par tm_filter_chips, comme RoleFilter sur UserCrudController.
+    public function configureFilters(Filters $filters): Filters
+    {
+        return $filters->add(TextFilter::new('verificationStatus')->setFormType(TextType::class));
     }
 
     public function configureActions(Actions $actions): Actions

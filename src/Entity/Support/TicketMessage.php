@@ -1,10 +1,10 @@
 <?php
 
 /**
- * Message d'échange dans un Ticket de support (entre l'utilisateur et l'agent support), géré via
- * TicketCrudController -- même remarque que Ticket : pas encore de route API dédiée hors back-office.
- * $sender identifie qui a écrit le message (utilisateur ou agent), à ne pas confondre avec $idUser sur
- * Ticket (le propriétaire du ticket, fixe pour toute sa durée de vie).
+ * Message d'échange dans un Ticket de support (entre l'utilisateur et l'agent support), posé côté
+ * utilisateur via TicketController (API) et côté agent via TicketCrudController (back-office). $sender
+ * identifie qui a écrit le message (utilisateur ou agent), à ne pas confondre avec $idUser sur Ticket
+ * (le propriétaire du ticket, fixe pour toute sa durée de vie).
  */
 
 namespace App\Entity\Support;

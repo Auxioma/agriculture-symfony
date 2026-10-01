@@ -1,0 +1,7 @@
+{# Un champ virtuel sans formatValue reçoit un template EasyAdmin natif par défaut ('crud/field/text') ; ce
+   template affiche field.formattedValue, qui vaut null au moment de la construction du champ (avant que
+   configureResponseParameters() n'ait la moindre chance de le peupler) -- EasyAdmin bascule alors
+   définitivement le champ sur son propre template "Aucun(e)" (CommonPostConfigurator::updateFieldTemplate()),
+   qui ignore ensuite toute valeur posée après coup. Un template CUSTOM (celui-ci) évite ce bascule : field.value
+   est lu directement, comme dans request_signals.html.twig/report_status.html.twig. #}
+{{ field.value ?? '—' }}

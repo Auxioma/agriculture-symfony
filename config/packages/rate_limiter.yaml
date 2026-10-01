@@ -6,3 +6,12 @@ framework:
             policy: 'sliding_window'
             limit: 3
             interval: '15 minutes'
+        # ? cahier_des_charges_devops_trouvemoi_agri.pdf, sécurité "Authentification" : "protection brute force".
+        # ? Code 2FA (TOTP ou secours) des comptes du back-office : 5 essais par 15 minutes PAR COMPTE, sans tenir compte
+        # ? de l'IP. Le login_throttling du firewall admin (security.yaml) est par compte+IP et laisserait passer une
+        # ? attaque répartie sur plusieurs IP : un code à 6 chiffres se devine vite sans plafond global.
+        # ? Utilisé par TwoFactorAttemptThrottleListener.
+        admin_2fa_code_attempts:
+            policy: 'sliding_window'
+            limit: 5
+            interval: '15 minutes'

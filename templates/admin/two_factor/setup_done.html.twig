@@ -1,0 +1,26 @@
+{% extends '@EasyAdmin/layout.html.twig' %}
+
+{% block content_title %}Double authentification activée{% endblock %}
+
+{% block content_subtitle %}
+    <p class="tm-subtitle">Conservez ces codes de secours dans un endroit sûr</p>
+{% endblock %}
+
+{% block main %}
+    <section class="tm-panel-block">
+        <div class="alert alert-danger" role="alert">
+            Ces codes ne seront plus jamais affichés. Chacun ne peut être utilisé qu'une seule fois, pour vous
+            connecter si vous perdez l'accès à votre application d'authentification.
+        </div>
+
+        <ul>
+            {% for code in backup_codes %}
+                <li><code>{{ code }}</code></li>
+            {% endfor %}
+        </ul>
+
+        <div class="tm-actions tm-actions-start">
+            <a href="{{ path('admin') }}" class="tm-btn tm-btn-primary">J'ai noté mes codes, continuer</a>
+        </div>
+    </section>
+{% endblock %}

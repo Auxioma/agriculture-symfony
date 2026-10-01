@@ -1,0 +1,6 @@
+{# Champ dont la valeur brute ne doit jamais atteindre le HTML, même masquée à l'écran -- AuditLogCrudController::
+   ipAddress (RGPD, cahier DevOps : minimiser les données personnelles affichées). Le template texte par défaut
+   d'EasyAdmin (text.html.twig) pose "field.value" (brut, non masqué) dans l'attribut title, visible au survol
+   même quand field.formattedValue affiche une version masquée -- constaté en testant ("82.14.12.34" restait
+   lisible malgré l'affichage "82.14.xx.xx"). Pas d'attribut title ici, uniquement la valeur déjà formatée. #}
+<span>{{ field.formattedValue }}</span>

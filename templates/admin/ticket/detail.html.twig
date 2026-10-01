@@ -1,0 +1,176 @@
+{# Maquette Figma "Admin · Détail ticket" : informations du ticket puis fil de messages. Styles : assets/styles/admin.css. #}
+{% extends '@EasyAdmin/layout.html.twig' %}
+
+{% macro person(user) %}{{ (user.firstName ~ ' ' ~ user.lastName)|trim ?: user.email }}{% endmacro %}
+
+{% block content_title %}{{ ticket.subject ?: 'Ticket sans sujet' }}{% endblock %}
+
+{% block content_subtitle %}
+    <p class="tm-subtitle">Ouvert le {{ ticket.createdAt|date('d/m/Y à H:i') }}</p>
+{% endblock %}
+
+{% block main %}
+    {% import _self as ui %}
+
+    <section class="tm-panel-block">
+        <dl class="tm-ticket-summary">
+            <div>
+                <dt>Demandeur</dt>
+                <dd>{{ ui.person(requester) }}<br><span class="tm-hint">{{ requester.email }}</span></dd>
+            </div>
+            <div>
+                <dt>Statut</dt>
+                <dd><span class="badge badge-{{ statusVariant }}">{{ statusLabel }}</span></dd>
+            </div>
+            <div>
+                <dt>Priorité</dt>
+                <dd>{% if priorityLabel %}<span class="badge badge-{{ priorityVariant }}">{{ priorityLabel }}</span>{% else %}<span class="tm-hint">Non définie</span>{% endif %}</dd>
+            </div>
+            <div>
+                <dt>Assigné à</dt>
+                <dd>{% if ticket.assignedTo %}{{ ui.person(ticket.assignedTo) }}{% else %}<span class="tm-hint">Personne</span>{% endif %}</dd>
+            </div>
+        </dl>
+        {% if ticket.closedAt %}
+            <p class="tm-hint">Clos le {{ ticket.closedAt|date('d/m/Y à H:i') }}</p>
+        {% endif %}
+
+        {# Actions rapides : chaque bouton ne s'affiche que s'il est valable pour le statut actuel (TicketCrudController::
+           quickAction() revérifie tout côté serveur). Un formulaire par action, même jeton CSRF. #}
+        {% if canResolve or canReopen or canAssignToMe or canChangePriority %}
+            <div class="tm-ticket-actions">
+                {% if canResolve %}
+                    <form method="post" action="{{ quickActionUrl }}">
+                        <input type="hidden" name="operation" value="resolve">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('ticket_quick_action') }}">
+                        <button type="submit" class="tm-btn tm-btn-primary">Marquer comme résolu</button>
+                    </form>
+                {% endif %}
+                {% if canReopen %}
+                    <form method="post" action="{{ quickActionUrl }}">
+                        <input type="hidden" name="operation" value="reopen">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('ticket_quick_action') }}">
+                        <button type="submit" class="tm-btn tm-btn-primary">Rouvrir le ticket</button>
+                    </form>
+                {% endif %}
+                {% if canAssignToMe %}
+                    <form method="post" action="{{ quickActionUrl }}">
+                        <input type="hidden" name="operation" value="assign_me">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('ticket_quick_action') }}">
+                        <button type="submit" class="tm-btn">Me l'assigner</button>
+                    </form>
+                {% endif %}
+                {% if canChangePriority %}
+                    <form method="post" action="{{ quickActionUrl }}" class="tm-ticket-priority">
+                        <input type="hidden" name="operation" value="priority">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('ticket_quick_action') }}">
+                        <label for="ticket-priority" class="tm-hint">Priorité</label>
+                        <select class="form-select" name="priority" id="ticket-priority">
+                            {% for value, label in priorityChoices %}
+                                <option value="{{ value }}"{{ value == ticket.priority ? ' selected' : '' }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="tm-btn">Appliquer</button>
+                    </form>
+                {% endif %}
+            </div>
+        {% endif %}
+    </section>
+
+    <section class="tm-panel-block">
+        <h2 class="tm-section-title">Conversation</h2>
+
+        {% if messages is empty %}
+            <p class="tm-hint">Aucun message sur ce ticket.</p>
+        {% endif %}
+
+        <ol class="tm-thread">
+            {% for message in messages %}
+                {# Le propriétaire du ticket est le demandeur ; toute autre personne qui écrit est l'équipe support
+                   (voir Ticket::$idUser et TicketMessage::$sender). #}
+                {% set isRequester = message.sender is same as(requester) %}
+                <li class="tm-message {{ isRequester ? 'tm-message-requester' : 'tm-message-agent' }}">
+                    <div class="tm-message-meta">
+                        <strong>{% if message.sender %}{{ ui.person(message.sender) }}{% else %}Compte supprimé{% endif %}</strong>
+                        <span class="tm-badge {{ isRequester ? 'badge-secondary' : 'badge-success' }}">{{ isRequester ? 'Demandeur' : 'Support' }}</span>
+                        <span class="tm-hint">{{ message.createdAt|date('d/m/Y à H:i') }}</span>
+                    </div>
+                    {% if message.content %}
+                        <p class="tm-message-body">{{ message.content }}</p>
+                    {% endif %}
+                    {% if message.attachments is not empty %}
+                        <ul class="tm-message-attachments">
+                            {% for attachment in message.attachments %}
+                                <li><a href="{{ attachmentUrls[attachment.id.toRfc4122] }}">{{ attachment.fileName ?: 'Pièce jointe' }}</a>
+                                    {% if attachment.fileSize %}<span class="tm-hint">({{ (attachment.fileSize / 1024)|round }} Ko)</span>{% endif %}</li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ol>
+    </section>
+
+    <section class="tm-panel-block">
+        <h2 class="tm-section-title">Répondre</h2>
+        {% if canReply %}
+            <form method="post" action="{{ replyUrl }}" id="ticket-reply-form" enctype="multipart/form-data">
+                {% if replyTemplates is not empty %}
+                    {# Insère le texte du modèle à l'endroit du curseur, modifiable avant l'envoi (script en bas de page). #}
+                    <div class="tm-field">
+                        <label for="ticket-reply-template">Insérer un modèle de réponse</label>
+                        <select class="form-select" id="ticket-reply-template">
+                            <option value="">Choisir un modèle…</option>
+                            {% for template in replyTemplates %}
+                                <option value="{{ loop.index0 }}" data-content="{{ template.content }}">{{ template.title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                {% endif %}
+                <div class="tm-field">
+                    <label for="ticket-reply-content">Votre réponse au demandeur</label>
+                    <textarea class="form-control" name="content" id="ticket-reply-content" rows="6" maxlength="{{ maxReplyLength }}"></textarea>
+                </div>
+                {# Un seul fichier par réponse, comme côté demandeur (mêmes types et même plafond : TicketAttachmentUploader). #}
+                <div class="tm-field">
+                    <label for="ticket-reply-attachment">Pièce jointe (facultative)</label>
+                    <input type="file" name="attachment" id="ticket-reply-attachment" accept="image/jpeg,image/png,image/webp,application/pdf">
+                    <span class="tm-hint">jpeg, png, webp ou pdf, 10 Mo maximum. Un texte ou un fichier suffit.</span>
+                </div>
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('ticket_reply') }}">
+                <div class="tm-actions tm-actions-start">
+                    <button type="submit" class="tm-btn tm-btn-primary">Envoyer la réponse</button>
+                </div>
+            </form>
+        {% else %}
+            <p class="tm-hint">Ce ticket est fermé : il n'accepte plus de message. Le demandeur peut en ouvrir un nouveau.</p>
+        {% endif %}
+    </section>
+
+    <div class="tm-actions tm-actions-start">
+        <a href="{{ indexUrl }}" class="tm-btn">Retour à la liste</a>
+        <a href="{{ editUrl }}" class="tm-btn">Modifier le ticket</a>
+    </div>
+{% endblock %}
+
+{% block body_javascript %}
+    {{ parent() }}
+    <script>
+        (function () {
+            var select = document.getElementById('ticket-reply-template');
+            var area = document.getElementById('ticket-reply-content');
+            if (!select || !area) {
+                return;
+            }
+            select.addEventListener('change', function () {
+                var option = select.options[select.selectedIndex];
+                var text = option ? option.getAttribute('data-content') : '';
+                if (text) {
+                    area.setRangeText(text, area.selectionStart, area.selectionEnd, 'end');
+                    area.focus();
+                }
+                select.value = '';
+            });
+        })();
+    </script>
+{% endblock %}

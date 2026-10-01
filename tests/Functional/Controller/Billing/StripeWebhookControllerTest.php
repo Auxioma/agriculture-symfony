@@ -2,6 +2,7 @@
 
 namespace App\Tests\Functional\Controller\Billing;
 
+use App\Entity\Billing\Coupon;
 use App\Entity\Billing\PlanPrice;
 use App\Entity\Billing\SubscriptionPlan;
 use App\Enum\BillingCycle;
@@ -85,6 +86,66 @@ final class StripeWebhookControllerTest extends ApiTestCase
         // * Vérifie que la date vient bien de items.data[0].current_period_start (et pas d'un epoch-zéro
         // * silencieux si le code lisait encore le mauvais champ) : à quelques secondes près de $now.
         self::assertEqualsWithDelta($now, (new \DateTimeImmutable($row['current_period_start']))->getTimestamp(), 5);
+    }
+
+    // * Cahier fonctionnel "coupons abonnement" -- coupon_id (posé par
+    // * SubscriptionController::checkout() dans subscription_data.metadata) doit produire une
+    // * CouponRedemption une fois l'abonnement Stripe réellement créé, pas avant.
+    public function testWebhookCreatesCouponRedemptionWhenCouponIdInMetadata(): void
+    {
+        $country = $this->makeCountry();
+        $producer = $this->makeProducerProfile($this->makeUser(), $country);
+
+        $plan = new SubscriptionPlan();
+        $plan->setCode('plan-'.bin2hex(random_bytes(6)));
+        $plan->setName('Basic');
+        $plan->setIsActive(true);
+        $this->em->persist($plan);
+
+        $planPrice = new PlanPrice();
+        $planPrice->setPlan($plan);
+        $planPrice->setBillingCycle(BillingCycle::Monthly);
+        $planPrice->setProviderPriceId('price_test_coupon_webhook');
+        $planPrice->setIsActive(true);
+        $this->em->persist($planPrice);
+
+        $coupon = new Coupon();
+        $coupon->setCode('WEBHOOK10');
+        $coupon->setProviderCouponId('coupon_test_webhook');
+        $this->em->persist($coupon);
+
+        $this->em->flush();
+
+        $now = time();
+        $payload = json_encode([
+            'id' => 'evt_test_'.bin2hex(random_bytes(6)),
+            'type' => 'customer.subscription.created',
+            'data' => [
+                'object' => [
+                    'id' => 'sub_test_'.bin2hex(random_bytes(6)),
+                    'metadata' => ['producer_id' => $producer->getId()->toRfc4122(), 'coupon_id' => $coupon->getId()->toRfc4122()],
+                    'items' => ['data' => [[
+                        'price' => ['id' => 'price_test_coupon_webhook'],
+                        'current_period_start' => $now,
+                        'current_period_end' => $now + 2592000,
+                    ]]],
+                ],
+            ],
+        ]);
+
+        $this->client->request('POST', '/api/webhooks/stripe', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_STRIPE_SIGNATURE' => WebhookSignature::generateSignatureHeader($payload, self::WEBHOOK_SECRET),
+        ], content: $payload);
+
+        self::assertResponseIsSuccessful();
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT producer_id FROM billing.coupon_redemptions WHERE coupon_id = :couponId',
+            ['couponId' => $coupon->getId()->toRfc4122()]
+        );
+        self::assertNotFalse($row);
+        self::assertSame($producer->getId()->toRfc4122(), $row['producer_id']);
     }
 
     // * Reproduit exactement ce qui s'est produit lors d'un test manuel réel : invoice.paid arrivé une

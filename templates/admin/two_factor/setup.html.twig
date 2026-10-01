@@ -1,0 +1,42 @@
+{% extends '@EasyAdmin/layout.html.twig' %}
+
+{% block content_title %}Double authentification{% endblock %}
+
+{% block content_subtitle %}
+    <p class="tm-subtitle">Sécurisez votre compte avec une application d'authentification (Google Authenticator, Authy, etc.)</p>
+{% endblock %}
+
+{% block main %}
+    <section class="tm-panel-block">
+        {% if error %}
+            <div class="alert alert-danger" role="alert">{{ error }}</div>
+        {% endif %}
+
+        <div class="tm-grid-2">
+            <div>
+                <h2 class="tm-section-title">1. Scannez ce QR code</h2>
+                <p class="tm-hint">Ouvrez votre application d'authentification et scannez ce code.</p>
+                <img src="{{ qr_code_data_uri }}" alt="QR code de configuration de la double authentification" width="220" height="220">
+
+                <p class="tm-hint">Impossible de scanner ? Entrez cette clé manuellement :</p>
+                <code>{{ secret }}</code>
+            </div>
+
+            <div>
+                <h2 class="tm-section-title">2. Confirmez avec un code</h2>
+                <p class="tm-hint">Saisissez le code à 6 chiffres affiché par votre application pour activer la double authentification.</p>
+
+                <form method="post">
+                    <div class="tm-field">
+                        <label for="code">Code de vérification</label>
+                        <input type="text" name="code" id="code" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" required autofocus>
+                    </div>
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token('admin_2fa_setup') }}">
+                    <div class="tm-actions tm-actions-start">
+                        <button type="submit" class="tm-btn tm-btn-primary">Activer la double authentification</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </section>
+{% endblock %}
