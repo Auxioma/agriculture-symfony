@@ -42,6 +42,15 @@ class UserFixtures extends Fixture
         $admin->setStatus(UserStatus::Active);
         $manager->persist($admin);
 
+        $testAdmin = new User();
+        $testAdmin->setEmail('test@test.com');
+        $testAdmin->setPasswordHash($this->passwordHasher->hashPassword($testAdmin, '003310'));
+        $testAdmin->setRoles([User::ROLE_ADMIN]);
+        $testAdmin->setFirstName('Admin');
+        $testAdmin->setLastName('Test');
+        $testAdmin->setStatus(UserStatus::Active);
+        $manager->persist($testAdmin);
+
         for ($i = 0; $i < self::CLIENT_COUNT; ++$i) {
             $client = new User();
             $client->setEmail($faker->unique()->safeEmail());
