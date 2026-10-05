@@ -1,10 +1,11 @@
 <?php
 
 /**
- * Articles de FAQ publics (cahier fonctionnel, "FAQ rassurante" de l'accueil). FaqArticle existait deja
- * dans le schema mais aucune fixture ni controleur ne l'exploitait -- voir FaqController pour la lecture
- * publique (GET /api/faq). Contenu reel base sur les points deja confirmes du cahier (gratuite cote
- * client, pas de commission, verification producteur), pas du lorem ipsum.
+ * Articles de FAQ publics (page "Questions fréquentes" du front et bloc FAQ de l'accueil, voir FaqController
+ * pour la lecture publique GET /api/faq). La catégorie sert de colonne sur la page FAQ (Clients / Producteurs),
+ * les positions donnent l'ordre. Contenu repris du figma de la page FAQ, les réponses non visibles dessus sont
+ * écrites d'après le cahier des charges fonctionnel (paiement hors plateforme, annulation, matching) et le
+ * comportement réel du back (annulation d'abonnement en fin de période).
  */
 
 namespace App\DataFixtures;
@@ -17,27 +18,42 @@ class FaqFixtures extends Fixture
 {
     private const ARTICLES = [
         [
-            'Déposer une demande est-il vraiment gratuit ?',
-            "Oui, déposer une demande est entièrement gratuit pour les clients. Seuls les producteurs paient un abonnement pour recevoir et répondre aux demandes qualifiées.",
+            'Clients',
+            'Est-ce gratuit pour les clients ?',
+            'Oui, déposer une demande et échanger avec les producteurs est entièrement gratuit pour les clients.',
         ],
         [
-            'Comment savoir si un producteur est fiable ?',
-            'Chaque producteur vérifié affiche un badge après validation de son profil par notre équipe, et vous pouvez consulter les avis laissés par d\'autres clients.',
+            'Clients',
+            'Comment se passe le paiement ?',
+            'Le paiement des produits se fait directement entre vous et le producteur, hors plateforme : TrouveMoi Agri ne gère ni panier ni paiement des produits agricoles.',
         ],
         [
-            'La plateforme prend-elle une commission sur mes achats ?',
-            "Non, TrouveMoi Agri ne prélève aucune commission sur les ventes. Le prix et le paiement se négocient directement entre vous et le producteur.",
+            'Clients',
+            'Puis-je annuler une demande ?',
+            'Oui, vous pouvez annuler une demande depuis votre espace « Mes demandes ». Vous pouvez aussi l\'archiver ou la dupliquer.',
         ],
         [
-            "Puis-je échanger avec le producteur avant de m'engager ?",
-            'Oui, une messagerie intégrée vous permet de discuter directement avec le producteur dès que votre demande a été envoyée.',
+            'Producteurs',
+            'Combien coûte l\'abonnement ?',
+            'À partir de 9€/mois selon votre plan, sans commission sur vos ventes. Voir tous les tarifs.',
+        ],
+        [
+            'Producteurs',
+            'Puis-je annuler à tout moment ?',
+            'Oui, l\'annulation est simple et se fait depuis votre espace abonnement. Elle prend effet à la fin de la période déjà payée.',
+        ],
+        [
+            'Producteurs',
+            'Comment recevoir plus de demandes ?',
+            'Complétez votre profil (produits, disponibilités, photos, labels) et répondez vite : les demandes sont proposées selon la pertinence des produits, la proximité, la qualité du profil et la réactivité.',
         ],
     ];
 
     public function load(ObjectManager $manager): void
     {
-        foreach (self::ARTICLES as $position => [$question, $answer]) {
+        foreach (self::ARTICLES as $position => [$category, $question, $answer]) {
             $article = new FaqArticle();
+            $article->setCategory($category);
             $article->setLocale('fr');
             $article->setQuestion($question);
             $article->setAnswer($answer);

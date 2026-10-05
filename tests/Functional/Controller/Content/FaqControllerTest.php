@@ -42,6 +42,21 @@ final class FaqControllerTest extends ApiTestCase
         self::assertNotContains('Question EN active', $questions, 'Autre locale, ne doit pas apparaître.');
     }
 
+    public function testListFaqArticlesExposesCategoryForTheFrontColumns(): void
+    {
+        $this->makeFaqArticle('fr', true, 'Question client', 1)->setCategory('Clients');
+        $this->makeFaqArticle('fr', true, 'Question sans catégorie', 2);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/faq');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $byQuestion = array_column($data, 'category', 'question');
+        self::assertSame('Clients', $byQuestion['Question client']);
+        self::assertNull($byQuestion['Question sans catégorie']);
+    }
+
     public function testListFaqArticlesOrdersByPosition(): void
     {
         $this->makeFaqArticle('fr', true, 'Deuxième question', 2);

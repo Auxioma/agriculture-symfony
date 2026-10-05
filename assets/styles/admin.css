@@ -745,6 +745,53 @@ textarea.form-control {
     border-color: var(--tm-green);
 }
 
+/* Choix en boutons à bascule (ChoiceField expanded + addCssClass('field-toggle-buttons'), ex. catégorie de la FAQ) :
+   le radio reste là pour le clavier et la soumission mais il est masqué, c'est son label qui fait le bouton. */
+.field-toggle-buttons .form-widget > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.field-toggle-buttons .form-check {
+    position: relative;
+    margin: 0;
+    padding: 0;
+}
+
+.field-toggle-buttons .form-check-input {
+    position: absolute;
+    margin: 0;
+    opacity: 0;
+}
+
+.field-toggle-buttons .form-check-label {
+    margin: 0;
+    padding: 8px 18px;
+    border: 1px solid var(--tm-grey-400);
+    border-radius: 8px;
+    background: var(--tm-white);
+    color: var(--tm-grey-700);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.field-toggle-buttons .form-check-label:hover {
+    background: var(--tm-green-soft);
+}
+
+.field-toggle-buttons .form-check-input:checked + .form-check-label {
+    border-color: var(--tm-green);
+    background: var(--tm-green);
+    color: var(--tm-white);
+}
+
+.field-toggle-buttons .form-check-input:focus-visible + .form-check-label {
+    outline: 3px solid rgba(66, 117, 12, 0.35);
+    outline-offset: 2px;
+}
+
 .tm-btn:focus-visible,
 .btn:focus-visible,
 .ea-sidebar-item-link:focus-visible {

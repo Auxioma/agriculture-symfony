@@ -12,6 +12,7 @@ use App\Entity\Content\FaqArticle;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Field\BooleanField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
@@ -39,7 +40,13 @@ class FaqArticleCrudController extends AbstractCrudController
         yield IdField::new('id')->hideOnForm()->hideOnIndex();
         yield TextField::new('question')->setLabel('Question');
         yield TextareaField::new('answer')->setLabel('Réponse')->hideOnIndex();
-        yield TextField::new('category')->setLabel('Catégorie')->hideOnIndex();
+        yield ChoiceField::new('category')
+            ->setLabel('Catégorie')
+            ->setChoices(['Clients' => 'Clients', 'Producteurs' => 'Producteurs', 'Autre' => 'Autre'])
+            ->renderExpanded()
+            ->setRequired(true)
+            ->addCssClass('field-toggle-buttons')
+            ->setHelp('Colonne de la page FAQ dans laquelle la question s\'affiche.');
         yield TextField::new('locale')->setLabel('Langue')->setHelp('Code langue ISO, ex. "fr".');
         yield IntegerField::new('position')->setHelp('Ordre d\'affichage, 0 en premier.');
         yield BooleanField::new('isActive')->setLabel('Affichée sur le site');

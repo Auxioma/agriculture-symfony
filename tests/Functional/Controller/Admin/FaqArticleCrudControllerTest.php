@@ -46,6 +46,7 @@ final class FaqArticleCrudControllerTest extends ApiTestCase
 
         $values[$rootKey]['question'] = 'Question créée depuis l\'admin ?';
         $values[$rootKey]['answer'] = 'Oui, elle apparaît sur le site.';
+        $values[$rootKey]['category'] = 'Producteurs';
         $values[$rootKey]['locale'] = 'fr';
         $values[$rootKey]['position'] = '1';
         $values[$rootKey]['isActive'] = '1';
@@ -55,6 +56,6 @@ final class FaqArticleCrudControllerTest extends ApiTestCase
 
         $this->client->request('GET', '/api/faq');
         $data = json_decode($this->client->getResponse()->getContent(), true);
-        self::assertContains('Question créée depuis l\'admin ?', array_column($data, 'question'));
+        self::assertSame('Producteurs', array_column($data, 'category', 'question')['Question créée depuis l\'admin ?'] ?? null);
     }
 }
