@@ -35,10 +35,10 @@ final class ProducerRequestController extends AbstractController
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
         }
 
-        $matches = $em->getRepository(RequestMatch::class)->findBy(
-            ['producer' => $producer],
-            ['score' => 'DESC']
-        );
+        $matches = $em->getRepository(RequestMatch::class)->createAvailableQueryBuilder($producer)
+            ->orderBy('m.score', 'DESC')
+            ->getQuery()
+            ->getResult();
 
         return $this->json(array_map(
             static fn (RequestMatch $m) => [

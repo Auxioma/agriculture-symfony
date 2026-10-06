@@ -19,6 +19,9 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
+/**
+ * @extends AbstractCrudController<FaqArticle>
+ */
 #[IsGranted('ROLE_ADMIN')]
 class FaqArticleCrudController extends AbstractCrudController
 {

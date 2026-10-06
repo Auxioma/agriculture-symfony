@@ -13,6 +13,7 @@ use App\Entity\Messaging\MessageRead;
 use App\Entity\Trust\Report;
 use App\Enum\ConversationStatus;
 use App\Enum\RequestStatus;
+use App\Service\Messaging\UnreadMessageCounter;
 use App\Service\Notification\NotificationService;
 use Doctrine\ORM\EntityManagerInterface;
 use League\Flysystem\FilesystemOperator;
@@ -36,14 +37,14 @@ final class ConversationController extends AbstractController
     private const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
 
     #[Route('/api/conversations', methods: ['GET'])]
-    public function listConversations(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    public function listConversations(#[CurrentUser] User $user, EntityManagerInterface $em, UnreadMessageCounter $unreadCounter): JsonResponse
     {
         $producer = $user->getProducerProfile();
         $conversations = $producer !== null
             ? $em->getRepository(Conversation::class)->findBy(['producer' => $producer], ['lastMessageAt' => 'DESC'])
             : $em->getRepository(Conversation::class)->findBy(['client' => $user], ['lastMessageAt' => 'DESC']);
 
-        $unreadCounts = $this->countUnreadMessages($conversations, $user, $em);
+        $unreadCounts = $unreadCounter->countByConversation($conversations, $user);
 
         return $this->json(array_map(
             static fn (Conversation $c) => [
@@ -55,44 +56,6 @@ final class ConversationController extends AbstractController
             ],
             $conversations
         ));
-    }
-
-    /**
-     * Nombre de messages non envoyés par $user et jamais marqués lus par lui, groupés par conversation --
-     * une seule requête pour toutes les conversations de la liste plutôt qu'une par conversation.
-     *
-     * @param Conversation[] $conversations
-     *
-     * @return array<string, int> id de conversation (RFC4122) => nombre de messages non lus
-     */
-    private function countUnreadMessages(array $conversations, User $user, EntityManagerInterface $em): array
-    {
-        if ($conversations === []) {
-            return [];
-        }
-
-        $rows = $em->createQueryBuilder()
-            ->select('IDENTITY(m.conversation) AS conversationId', 'COUNT(m.id) AS unreadCount')
-            ->from(Message::class, 'm')
-            ->leftJoin(MessageRead::class, 'mr', 'WITH', 'mr.message = m AND mr.idUser = :user')
-            ->where('m.conversation IN (:conversations)')
-            // * Un message système (sender null) reste "non lu" tant que personne ne l'a consulté, comme
-            // * un message humain -- d'où le OR IS NULL plutôt qu'un simple != qui l'exclurait (NULL != x
-            // * n'est jamais vrai en SQL).
-            ->andWhere('m.sender IS NULL OR m.sender != :user')
-            ->andWhere('mr.message IS NULL')
-            ->groupBy('m.conversation')
-            ->setParameter('user', $user)
-            ->setParameter('conversations', $conversations)
-            ->getQuery()
-            ->getResult();
-
-        $counts = [];
-        foreach ($rows as $row) {
-            $counts[$row['conversationId']] = (int) $row['unreadCount'];
-        }
-
-        return $counts;
     }
 
     #[Route('/api/conversations/{id}', methods: ['GET'])]
