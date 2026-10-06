@@ -20,6 +20,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 class UserFixtures extends Fixture
 {
     public const ADMIN_EMAIL = 'admin@trouvemoi.local';
+    public const PRODUCER_DEMO_EMAIL = 'agri@test.com';
     public const CLIENT_COUNT = 6;
     public const PRODUCER_OWNER_COUNT = 6;
     public const CLIENT_REFERENCE_PREFIX = 'user-client-';
@@ -66,8 +67,9 @@ class UserFixtures extends Fixture
 
         for ($i = 0; $i < self::PRODUCER_OWNER_COUNT; ++$i) {
             $owner = new User();
-            $owner->setEmail($faker->unique()->safeEmail());
-            $owner->setPasswordHash($this->passwordHasher->hashPassword($owner, 'ProducerDemo123!'));
+            // * Le premier producteur est le compte de démo du dashboard producteur (agri@test.com / 003310).
+            $owner->setEmail(0 === $i ? self::PRODUCER_DEMO_EMAIL : $faker->unique()->safeEmail());
+            $owner->setPasswordHash($this->passwordHasher->hashPassword($owner, 0 === $i ? '003310' : 'ProducerDemo123!'));
             $owner->setRoles([User::ROLE_PRODUCER]);
             $owner->setFirstName($faker->firstName());
             $owner->setLastName($faker->lastName());

@@ -28,6 +28,9 @@ class SubscriptionPlanFixtures extends Fixture implements DependentFixtureInterf
             ->setCode('standard')->setName('Standard')
             ->setDescription('Accès aux demandes clients et à la messagerie.')
             ->setFeatures(['reply_to_requests' => true, 'max_products' => 20])
+            // * Quota affiché sur le dashboard producteur (ProducerDashboardController) ; valeur de démo, à valider
+            // * avec le client. Premium : pas de clé = illimité.
+            ->setLimits(['requests_per_month' => 30])
             ->setIsActive(true)->setPosition(1);
         $manager->persist($standard);
 
