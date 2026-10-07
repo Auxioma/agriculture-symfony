@@ -8,6 +8,7 @@ use App\Entity\Messaging\Conversation;
 use App\Entity\Messaging\Message;
 use App\Entity\Producer\ProducerProfile;
 use App\Enum\MatchStatus;
+use App\Enum\NeedType;
 use App\Enum\RequestStatus;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
@@ -96,7 +97,29 @@ final class ProducerDashboardControllerTest extends ApiTestCase
 
         // * La liste dédiée applique la même définition de "disponible".
         $this->client->request('GET', '/api/producer/requests/available', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
-        self::assertCount(3, json_decode($this->client->getResponse()->getContent(), true));
+        $list = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertCount(3, $list);
+        self::assertArrayHasKey('highVolume', $list[0]);
+    }
+
+    public function testRequestsExposeClientTypeNewAndHighVolumeFlags(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $big = $this->makeMatch($producer, urgency: 0)->getRequest();
+        $big->setNeedType(NeedType::Professional);
+        $big->setQuantity('60');
+        $plain = $this->makeMatch($producer, urgency: 0)->getRequest();
+        $plain->setQuantity('5');
+        $this->em->flush();
+
+        $items = array_column($this->getDashboard($token)['requests'], null, 'requestId');
+
+        self::assertSame('professional', $items[$big->getId()->toRfc4122()]['clientType']);
+        self::assertTrue($items[$big->getId()->toRfc4122()]['highVolume']);
+        self::assertSame('individual', $items[$plain->getId()->toRfc4122()]['clientType']);
+        self::assertFalse($items[$plain->getId()->toRfc4122()]['highVolume']);
+        // * Correspondance qui vient d'être créée = nouvelle.
+        self::assertTrue($items[$plain->getId()->toRfc4122()]['isNew']);
     }
 
     public function testDashboardCountsUnreadMessagesSentByClientsOnly(): void

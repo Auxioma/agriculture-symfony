@@ -32,7 +32,7 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
     private const REQUESTS = [
         ['Tomates bio', '5', 'kg', '12', 'Lyon', 2, '4', 'Bonjour, je cherche des tomates bio pour samedi.', 2],
         ['Miel de fleurs', '2', 'unite', null, 'Avignon', 1, '9', 'souhaite une réponse rapide', 2],
-        ['Pommes Gala', '20', 'kg', '2', 'Vienne', 0, '15', 'Pour une cantine scolaire, livraison possible ?', 0],
+        ['Pommes Gala', '60', 'kg', '2', 'Vienne', 0, '15', 'Pour une cantine scolaire, livraison possible ?', 0],
         ['Oeufs fermiers', '30', 'unite', null, 'Villeurbanne', 0, '6', 'Plutôt des oeufs de plein air.', 0],
         ['Carottes', '10', 'kg', '1.5', 'Lyon', 0, '3', 'Pour des jus, calibre indifférent.', 0],
         ['Fromage de chèvre', '4', 'unite', '8', 'Saint-Étienne', 0, '55', 'Si possible fermier au lait cru.', 0],
@@ -55,7 +55,8 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
             $request = new ClientRequest();
             $request->setClient($client);
             $request->setCustomProduct($product);
-            $request->setNeedType(NeedType::OneShot);
+            // * une cantine = un client professionnel
+            $request->setNeedType('Pommes Gala' === $product ? NeedType::Professional : NeedType::OneShot);
             $request->setQuantity($quantity);
             $request->setUnit($manager->getRepository(Unit::class)->findOneBy(['code' => $unitCode]));
             $request->setBudgetMax($budget);

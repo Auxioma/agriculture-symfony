@@ -7,6 +7,7 @@ use App\Entity\Identity\User;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
 use App\Entity\Producer\ProducerProfile;
+use App\Service\Matching\AvailableRequestPresenter;
 use App\Service\Messaging\UnreadMessageCounter;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -38,6 +39,7 @@ final class ProducerDashboardController extends AbstractController
         #[CurrentUser] User $user,
         EntityManagerInterface $em,
         UnreadMessageCounter $unreadCounter,
+        AvailableRequestPresenter $presenter,
     ): JsonResponse {
         $producer = $user->getProducerProfile();
         if ($producer === null) {
@@ -60,7 +62,7 @@ final class ProducerDashboardController extends AbstractController
             'availableRequests' => \count($available),
             'urgentRequests' => \count($urgent),
             'unreadMessages' => $unreadMessages,
-            'requests' => array_map($this->requestItem(...), \array_slice($available, 0, self::REQUESTS_LIST_SIZE)),
+            'requests' => array_map($presenter->present(...),\array_slice($available, 0, self::REQUESTS_LIST_SIZE)),
             'subscription' => $this->subscriptionSummary($producer, $em),
             'profile' => $profile,
         ]);
@@ -76,27 +78,6 @@ final class ProducerDashboardController extends AbstractController
             ->addOrderBy('m.createdAt', 'DESC')
             ->getQuery()
             ->getResult();
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function requestItem(RequestMatch $match): array
-    {
-        $request = $match->getRequest();
-
-        return [
-            'requestId' => $request->getId()->toRfc4122(),
-            'product' => $request->getProduct()?->getName() ?? $request->getCustomProduct(),
-            'quantity' => $request->getQuantity() !== null ? (float) $request->getQuantity() : null,
-            'unit' => $request->getUnit()?->getCode(),
-            'budgetMax' => $request->getBudgetMax() !== null ? (float) $request->getBudgetMax() : null,
-            'currency' => $request->getCurrency()?->getSymbol() ?? $request->getCurrency()?->getCode(),
-            'city' => $request->getCity(),
-            'distanceKm' => $match->getDistanceKm() !== null ? (float) $match->getDistanceKm() : null,
-            'message' => $request->getMessage(),
-            'urgent' => $request->getUrgencyLevel() > 0,
-        ];
     }
 
     /**

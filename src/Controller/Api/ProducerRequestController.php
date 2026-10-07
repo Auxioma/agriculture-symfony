@@ -11,6 +11,7 @@ use App\Entity\Matching\ProducerReply;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
 use App\Enum\ReplyStatus;
+use App\Service\Matching\AvailableRequestPresenter;
 use App\Service\Notification\NotificationService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -28,7 +29,7 @@ final class ProducerRequestController extends AbstractController
      * Liste des demandes matching accessibles au producteur.
      */
     #[Route('/api/producer/requests/available', methods: ['GET'])]
-    public function listAvailableRequests(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    public function listAvailableRequests(#[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter): JsonResponse
     {
         $producer = $user->getProducerProfile();
         if ($producer === null) {
@@ -37,19 +38,17 @@ final class ProducerRequestController extends AbstractController
 
         $matches = $em->getRepository(RequestMatch::class)->createAvailableQueryBuilder($producer)
             ->orderBy('m.score', 'DESC')
+            ->addOrderBy('m.createdAt', 'DESC')
             ->getQuery()
             ->getResult();
 
         return $this->json(array_map(
             static fn (RequestMatch $m) => [
                 'matchId' => $m->getId()->toRfc4122(),
-                'requestId' => $m->getRequest()->getId()->toRfc4122(),
                 'score' => $m->getScore(),
-                'distanceKm' => $m->getDistanceKm(),
                 'status' => $m->getStatus()->value,
                 'needType' => $m->getRequest()->getNeedType()->value,
-                'customProduct' => $m->getRequest()->getCustomProduct(),
-            ],
+            ] + $presenter->present($m),
             $matches
         ));
     }
