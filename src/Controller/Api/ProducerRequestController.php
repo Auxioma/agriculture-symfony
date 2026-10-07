@@ -54,6 +54,64 @@ final class ProducerRequestController extends AbstractController
     }
 
     /**
+     * Toutes les demandes reçues par le producteur, la plus récente d'abord (cahier : "Demandes reçues", à côté de
+     * "Demandes disponibles"). status : "new" = encore à traiter (même définition que les disponibles), "treated" =
+     * réponse envoyée ou refus (un brouillon ne compte pas), "closed" = plus ouverte (expirée, annulée...).
+     */
+    #[Route('/api/producer/requests/received', methods: ['GET'])]
+    public function listReceivedRequests(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    {
+        $producer = $user->getProducerProfile();
+        if ($producer === null) {
+            return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
+        }
+
+        $repository = $em->getRepository(RequestMatch::class);
+        $newIds = array_flip(array_map(
+            static fn (RequestMatch $m) => $m->getId()->toRfc4122(),
+            $repository->createAvailableQueryBuilder($producer)->getQuery()->getResult()
+        ));
+        $replies = [];
+        foreach ($em->getRepository(ProducerReply::class)->findBy(['producer' => $producer], ['createdAt' => 'ASC']) as $reply) {
+            if ($reply->getStatus() !== ReplyStatus::Draft) {
+                $replies[$reply->getRequest()->getId()->toRfc4122()] = $reply;
+            }
+        }
+
+        $matches = $repository->createQueryBuilder('m')
+            ->select('m', 'r', 'c')
+            ->join('m.request', 'r')
+            ->join('r.client', 'c')
+            ->where('m.producer = :producer')
+            ->orderBy('m.createdAt', 'DESC')
+            ->setParameter('producer', $producer)
+            ->getQuery()
+            ->getResult();
+
+        return $this->json(array_map(function (RequestMatch $m) use ($newIds, $replies) {
+            $request = $m->getRequest();
+            $client = $request->getClient();
+            $reply = $replies[$request->getId()->toRfc4122()] ?? null;
+            $lastName = $client->getLastName();
+            $quantity = $request->getQuantity();
+
+            return [
+                'requestId' => $request->getId()->toRfc4122(),
+                // * "Camille R." : seule l'initiale du nom, le producteur n'a pas besoin de plus à ce stade.
+                'clientName' => trim(($client->getFirstName() ?? '').($lastName ? ' '.mb_substr($lastName, 0, 1).'.' : '')) ?: 'Client',
+                'product' => $request->getProduct()?->getName() ?? $request->getCustomProduct(),
+                'quantity' => $quantity !== null ? (float) $quantity : null,
+                'unit' => $request->getUnit()?->getCode(),
+                'urgent' => $request->getUrgencyLevel() > 0,
+                'status' => $reply !== null ? 'treated' : (isset($newIds[$m->getId()->toRfc4122()]) ? 'new' : 'closed'),
+                'receivedAt' => $m->getCreatedAt()->format(DATE_ATOM),
+                'respondedAt' => $reply?->getCreatedAt()->format(DATE_ATOM),
+                'declined' => $reply?->getStatus() === ReplyStatus::Declined,
+            ];
+        }, $matches));
+    }
+
+    /**
      * Détail d'une demande client spécifique.
      */
     #[Route('/api/producer/requests/{id}', methods: ['GET'])]

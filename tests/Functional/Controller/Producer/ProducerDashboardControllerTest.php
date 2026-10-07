@@ -3,19 +3,22 @@
 namespace App\Tests\Functional\Controller\Producer;
 
 use App\Entity\Identity\User;
+use App\Entity\Matching\ProducerReply;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
 use App\Entity\Messaging\Message;
 use App\Entity\Producer\ProducerProfile;
 use App\Enum\MatchStatus;
 use App\Enum\NeedType;
+use App\Enum\ReplyStatus;
 use App\Enum\RequestStatus;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
 /**
  * Teste GET /api/producer/dashboard (cahier fonctionnel, dashboard producteur : "Demandes disponibles,
- * demandes urgentes, messages non lus, abonnement, quota, profil complété").
+ * demandes urgentes, messages non lus, abonnement, quota, profil complété") et les listes de demandes qui
+ * partagent ses règles : disponibles (/available) et reçues (/received).
  */
 final class ProducerDashboardControllerTest extends ApiTestCase
 {
@@ -120,6 +123,59 @@ final class ProducerDashboardControllerTest extends ApiTestCase
         self::assertFalse($items[$plain->getId()->toRfc4122()]['highVolume']);
         // * Correspondance qui vient d'être créée = nouvelle.
         self::assertTrue($items[$plain->getId()->toRfc4122()]['isNew']);
+    }
+
+    private function reply(RequestMatch $match, ReplyStatus $status): void
+    {
+        $reply = new ProducerReply();
+        $reply->setRequest($match->getRequest());
+        $reply->setProducer($match->getProducer());
+        $reply->setStatus($status);
+        $this->em->persist($reply);
+    }
+
+    public function testReceivedRequestsTellNewTreatedAndClosedApart(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $new = $this->makeMatch($producer, urgency: 0);
+        $new->getRequest()->getClient()->setFirstName('Camille')->setLastName('Roux');
+        $draft = $this->makeMatch($producer, urgency: 0);
+        $this->reply($draft, ReplyStatus::Draft);
+        $sent = $this->makeMatch($producer, urgency: 0);
+        $this->reply($sent, ReplyStatus::Sent);
+        $declined = $this->makeMatch($producer, urgency: 0);
+        $this->reply($declined, ReplyStatus::Declined);
+        $closed = $this->makeMatch($producer, urgency: 0, requestStatus: RequestStatus::Cancelled);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producer/requests/received', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        self::assertResponseIsSuccessful();
+        $items = array_column(json_decode($this->client->getResponse()->getContent(), true), null, 'requestId');
+        $item = static fn (RequestMatch $m) => $items[$m->getRequest()->getId()->toRfc4122()];
+
+        self::assertSame('new', $item($new)['status']);
+        self::assertSame('Camille R.', $item($new)['clientName']);
+        self::assertSame('Client', $item($draft)['clientName']);
+        // * Un brouillon n'est pas une réponse : la demande reste à traiter.
+        self::assertSame('new', $item($draft)['status']);
+        self::assertSame('treated', $item($sent)['status']);
+        self::assertNotNull($item($sent)['respondedAt']);
+        self::assertFalse($item($sent)['declined']);
+        self::assertTrue($item($declined)['declined']);
+        self::assertSame('closed', $item($closed)['status']);
+        // * Les demandes traitées ne sont plus "disponibles" : seules la nouvelle et le brouillon le restent.
+        self::assertSame(2, $this->getDashboard($token)['availableRequests']);
+    }
+
+    public function testReceivedRequestsRejectsAccountWithoutProducerProfile(): void
+    {
+        $client = $this->makeUserWithPassword('client', 'motdepasse123');
+        $this->em->flush();
+        $token = $this->login($client->getEmail());
+
+        $this->client->request('GET', '/api/producer/requests/received', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseStatusCodeSame(403);
     }
 
     public function testDashboardCountsUnreadMessagesSentByClientsOnly(): void

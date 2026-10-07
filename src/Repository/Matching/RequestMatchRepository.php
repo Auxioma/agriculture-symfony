@@ -10,9 +10,11 @@
 
 namespace App\Repository\Matching;
 
+use App\Entity\Matching\ProducerReply;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Producer\ProducerProfile;
 use App\Enum\MatchStatus;
+use App\Enum\ReplyStatus;
 use App\Enum\RequestStatus;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\ORM\QueryBuilder;
@@ -35,8 +37,9 @@ class RequestMatchRepository extends ServiceEntityRepository
         parent::__construct($registry, RequestMatch::class);
     }
 
-    // * "Disponible" = correspondance encore proposée ou débloquée, sur une demande encore ouverte. L'appelant
-    // * ajoute son tri (alias m = correspondance, r = demande).
+    // * "Disponible" = correspondance encore proposée ou débloquée, sur une demande encore ouverte et à laquelle le
+    // * producteur n'a pas encore répondu (réponse envoyée ou refus : répondre ne change pas le statut de la
+    // * correspondance, d'où la sous-requête). L'appelant ajoute son tri (alias m = correspondance, r = demande).
     public function createAvailableQueryBuilder(ProducerProfile $producer): QueryBuilder
     {
         return $this->createQueryBuilder('m')
@@ -45,6 +48,8 @@ class RequestMatchRepository extends ServiceEntityRepository
             ->where('m.producer = :producer')
             ->andWhere('m.status IN (:matchStatuses)')
             ->andWhere('r.status IN (:requestStatuses)')
+            ->andWhere('NOT EXISTS (SELECT pr.id FROM '.ProducerReply::class.' pr WHERE pr.request = r AND pr.producer = m.producer AND pr.status <> :draft)')
+            ->setParameter('draft', ReplyStatus::Draft->value)
             ->setParameter('producer', $producer)
             ->setParameter('matchStatuses', [MatchStatus::Proposed->value, MatchStatus::Unlocked->value])
             ->setParameter('requestStatuses', array_map(static fn (RequestStatus $s) => $s->value, self::OPEN_REQUEST_STATUSES));

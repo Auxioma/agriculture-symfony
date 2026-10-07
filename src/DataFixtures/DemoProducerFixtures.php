@@ -3,9 +3,11 @@
 /**
  * Données de démo du compte producteur agri@test.com (Ferme Dupont, voir UserFixtures/ProducerFixtures) pour le
  * dashboard producteur : 6 demandes ouvertes dont 2 urgentes (les 2 de la maquette), et des messages non lus
- * sur ces 2 demandes urgentes. Tout passe par des requêtes sur le dépôt (aucun getReference) pour pouvoir aussi
- * être lancée seule sur une base de dev déjà remplie, sans la vider : elle ne fait rien si le producteur a déjà
- * des correspondances. Les clients de démo ne peuvent pas se connecter (pas de vrai mot de passe).
+ * sur ces 2 demandes urgentes, puis 2 demandes déjà traitées (une répondue, une refusée) pour la page "Demandes
+ * reçues". Tout passe par des requêtes sur le dépôt (aucun getReference) pour pouvoir aussi être lancée seule
+ * sur une base de dev déjà remplie, sans la vider : chaque partie ne fait rien si le producteur a déjà des
+ * correspondances (ouvertes) ou des réponses (traitées). Les clients de démo ne peuvent pas se connecter (pas de
+ * vrai mot de passe).
  */
 
 namespace App\DataFixtures;
@@ -15,11 +17,13 @@ use App\Entity\Catalog\Currency;
 use App\Entity\Catalog\Unit;
 use App\Entity\Identity\User;
 use App\Entity\Matching\ClientRequest;
+use App\Entity\Matching\ProducerReply;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
 use App\Entity\Messaging\Message;
 use App\Entity\Producer\ProducerProfile;
 use App\Enum\NeedType;
+use App\Enum\ReplyStatus;
 use App\Enum\RequestStatus;
 use App\Enum\UserStatus;
 use Doctrine\Bundle\FixturesBundle\Fixture;
@@ -38,11 +42,34 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
         ['Fromage de chèvre', '4', 'unite', '8', 'Saint-Étienne', 0, '55', 'Si possible fermier au lait cru.', 0],
     ];
 
+    // * [produit, quantité, unité, ville, distance km, reçue il y a (jours), réponse du producteur]
+    private const TREATED_REQUESTS = [
+        ['Haricots verts', '8', 'kg', 'Lyon', '5', 3, ReplyStatus::Sent],
+        ['Courgettes', '15', 'kg', 'Vienne', '14', 6, ReplyStatus::Declined],
+    ];
+
+    // * [prénom, nom] des clients de démo, dans l'ordre de création (les 6 premiers pour les demandes ouvertes)
+    private const CLIENT_NAMES = [
+        ['Camille', 'Roux'], ['Lucas', 'Martin'], ['Sarah', 'Klein'], ['Julien', 'Bernard'],
+        ['Emma', 'Petit'], ['Hugo', 'Durand'], ['Léa', 'Moreau'], ['Noah', 'Simon'],
+    ];
+
     public function load(ObjectManager $manager): void
     {
         $owner = $manager->getRepository(User::class)->findOneBy(['email' => UserFixtures::PRODUCER_DEMO_EMAIL]);
         $producer = $owner?->getProducerProfile();
-        if (null === $producer || $manager->getRepository(RequestMatch::class)->count(['producer' => $producer]) > 0) {
+        if (null === $producer) {
+            return;
+        }
+
+        $this->openRequests($manager, $producer);
+        $this->treatedRequests($manager, $producer);
+        $manager->flush();
+    }
+
+    private function openRequests(ObjectManager $manager, ProducerProfile $producer): void
+    {
+        if ($manager->getRepository(RequestMatch::class)->count(['producer' => $producer]) > 0) {
             return;
         }
 
@@ -80,8 +107,53 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
                 $this->conversation($manager, $request, $client, $producer, $unread);
             }
         }
+    }
 
-        $manager->flush();
+    private function treatedRequests(ObjectManager $manager, ProducerProfile $producer): void
+    {
+        if ($manager->getRepository(ProducerReply::class)->count(['producer' => $producer]) > 0) {
+            return;
+        }
+
+        $country = $manager->getRepository(Country::class)->findOneBy(['code' => 'FR']);
+
+        foreach (self::TREATED_REQUESTS as $i => [$product, $quantity, $unitCode, $city, $distance, $daysAgo, $replyStatus]) {
+            $received = new \DateTimeImmutable("-$daysAgo days");
+
+            $request = new ClientRequest();
+            $request->setClient($this->demoClient($manager, \count(self::REQUESTS) + $i));
+            $request->setCustomProduct($product);
+            $request->setNeedType(NeedType::OneShot);
+            $request->setQuantity($quantity);
+            $request->setUnit($manager->getRepository(Unit::class)->findOneBy(['code' => $unitCode]));
+            $request->setCountry($country);
+            $request->setCity($city);
+            $request->setStatus(RequestStatus::RepliesReceived);
+            $request->setExpiresAt(new \DateTimeImmutable('+30 days'));
+            $manager->persist($request);
+
+            $match = new RequestMatch();
+            $match->setRequest($request);
+            $match->setProducer($producer);
+            $match->setScore('0.80');
+            $match->setDistanceKm($distance);
+            $this->backdate($match, $received);
+            $manager->persist($match);
+
+            $reply = new ProducerReply();
+            $reply->setRequest($request);
+            $reply->setProducer($producer);
+            $reply->setStatus($replyStatus);
+            $reply->setReplyText(ReplyStatus::Sent === $replyStatus ? 'Bonjour, j’en ai de disponible, je vous appelle.' : null);
+            $this->backdate($reply, $received->modify('+2 hours'));
+            $manager->persist($reply);
+        }
+    }
+
+    // * createdAt n'a pas de setter (posé à la création) : on antidate par réflexion pour des dates variées.
+    private function backdate(object $entity, \DateTimeImmutable $date): void
+    {
+        (new \ReflectionProperty($entity, 'createdAt'))->setValue($entity, $date);
     }
 
     private function demoClient(ObjectManager $manager, int $index): User
@@ -96,8 +168,9 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
         $client->setEmail($email);
         $client->setPasswordHash('!compte-de-demo-sans-connexion');
         $client->setRoles([User::ROLE_CLIENT]);
-        $client->setFirstName('Client');
-        $client->setLastName('Démo '.($index + 1));
+        [$firstName, $lastName] = self::CLIENT_NAMES[$index];
+        $client->setFirstName($firstName);
+        $client->setLastName($lastName);
         $client->setStatus(UserStatus::Active);
         $manager->persist($client);
 
