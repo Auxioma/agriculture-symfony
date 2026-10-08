@@ -139,9 +139,24 @@ final class ProducerRequestController extends AbstractController
             ->setParameter('draft', ReplyStatus::Draft->value)
             ->getQuery()
             ->getOneOrNullResult();
+        $draft = $em->getRepository(ProducerReply::class)->findOneBy(
+            ['request' => $clientRequest, 'producer' => $producer, 'status' => ReplyStatus::Draft],
+            ['createdAt' => 'DESC']
+        );
         $postalCode = (string) $clientRequest->getPostalCode();
 
         return $this->json($presenter->present($match) + [
+            // * brouillon de réponse en cours (page "Répondre à la demande"), null s'il n'y en a pas
+            'draft' => $draft === null ? null : [
+                'replyText' => $draft->getReplyText(),
+                'priceAmount' => $draft->getPriceAmount() !== null ? (float) $draft->getPriceAmount() : null,
+                'priceUnitId' => $draft->getPriceUnit()?->getId()->toRfc4122(),
+                'availableQuantity' => $draft->getAvailableQuantity() !== null ? (float) $draft->getAvailableQuantity() : null,
+                'availabilityDate' => $draft->getAvailabilityDate()?->format(DATE_ATOM),
+                'validUntil' => $draft->getValidUntil()?->format(DATE_ATOM),
+                'pickupConditions' => $draft->getPickupConditions(),
+                'deliveryConditions' => $draft->getDeliveryConditions(),
+            ],
             'id' => $clientRequest->getId()->toRfc4122(),
             'needType' => $clientRequest->getNeedType()->value,
             'matchScore' => $match->getScore(),
@@ -168,7 +183,7 @@ final class ProducerRequestController extends AbstractController
     }
 
     /**
-     * Répondre à une demande (message et/ou devis chiffé).
+     * Répondre à une demande (message et/ou devis chiffré), ou enregistrer un brouillon (draft : true).
      */
     #[Route('/api/producer/requests/{id}/reply', methods: ['POST'])]
     public function replyToRequest(
@@ -184,66 +199,86 @@ final class ProducerRequestController extends AbstractController
         }
         [$clientRequest, $producer] = $result;
 
-        if ($requestDto->replyText === null && $requestDto->priceAmount === null) {
-            return $this->json(['error' => 'replyText ou priceAmount est requis.'], 422);
+        // * Une demande déjà traitée (réponse envoyée ou refus) ne reçoit pas de seconde réponse ; un brouillon
+        // * existant est repris et mis à jour plutôt que dupliqué.
+        $draft = null;
+        foreach ($em->getRepository(ProducerReply::class)->findBy(['request' => $clientRequest, 'producer' => $producer], ['createdAt' => 'DESC']) as $previous) {
+            if ($previous->getStatus() !== ReplyStatus::Draft) {
+                return $this->json(['error' => 'Cette demande est déjà traitée.'], 409);
+            }
+            $draft ??= $previous;
         }
 
-        // Vérification des droits d'abonnement producteur (feature 'reply_to_requests')
-        $hasFeature = $em->getConnection()->fetchOne(
-            "SELECT billing.producer_has_feature(:pid, 'reply_to_requests')",
-            ['pid' => $producer->getId()->toRfc4122()]
-        );
-        if (!$hasFeature) {
-            return $this->json(['error' => "Votre abonnement ne vous permet pas de répondre aux demandes."], 403);
+        if (!$requestDto->draft) {
+            if ($requestDto->replyText === null && $requestDto->priceAmount === null) {
+                return $this->json(['error' => 'replyText ou priceAmount est requis.'], 422);
+            }
+
+            // Vérification des droits d'abonnement producteur (feature 'reply_to_requests')
+            $hasFeature = $em->getConnection()->fetchOne(
+                "SELECT billing.producer_has_feature(:pid, 'reply_to_requests')",
+                ['pid' => $producer->getId()->toRfc4122()]
+            );
+            if (!$hasFeature) {
+                return $this->json(['error' => "Votre abonnement ne vous permet pas de répondre aux demandes."], 403);
+            }
         }
 
-        $reply = new ProducerReply();
+        if ($requestDto->availableQuantity !== null && (!is_numeric($requestDto->availableQuantity) || (float) $requestDto->availableQuantity < 0)) {
+            return $this->json(['error' => 'availableQuantity doit être un nombre positif.'], 422);
+        }
+        $unit = $requestDto->priceUnitId !== null ? $em->find(Unit::class, $requestDto->priceUnitId) : null;
+        if ($requestDto->priceUnitId !== null && $unit === null) {
+            return $this->json(['error' => 'Unité inconnue.'], 422);
+        }
+        $currency = $requestDto->currencyCode !== null ? $em->find(Currency::class, strtoupper($requestDto->currencyCode)) : null;
+        if ($requestDto->currencyCode !== null && $currency === null) {
+            return $this->json(['error' => 'Devise inconnue.'], 422);
+        }
+
+        // * Envoyer remplace le brouillon par une nouvelle réponse : "Répondu le..." doit afficher la date d'envoi, pas
+        // * celle du brouillon. Enregistrer un brouillon met à jour le précédent.
+        $reply = $requestDto->draft ? ($draft ?? new ProducerReply()) : new ProducerReply();
+        if (!$requestDto->draft && $draft !== null) {
+            $em->remove($draft);
+        }
         $reply->setRequest($clientRequest);
         $reply->setProducer($producer);
         $reply->setReplyText($requestDto->replyText);
         $reply->setPriceAmount($requestDto->priceAmount);
+        $reply->setPriceUnit($unit);
+        $reply->setCurrency($currency);
+        $reply->setAvailableQuantity($requestDto->availableQuantity);
         $reply->setAvailabilityDate($requestDto->availabilityDate);
         $reply->setValidUntil($requestDto->validUntil);
         $reply->setConditions($requestDto->conditions);
-        $reply->setStatus(ReplyStatus::Sent);
+        $reply->setPickupConditions($requestDto->pickupConditions);
+        $reply->setDeliveryConditions($requestDto->deliveryConditions);
+        $reply->setStatus($requestDto->draft ? ReplyStatus::Draft : ReplyStatus::Sent);
 
-        if ($requestDto->priceUnitId !== null) {
-            $unit = $em->find(Unit::class, $requestDto->priceUnitId);
-            if ($unit === null) {
-                return $this->json(['error' => 'Unité inconnue.'], 422);
+        if (!$requestDto->draft) {
+            // Création implicite de la conversation au premier message/devis
+            $conversation = $em->getRepository(Conversation::class)->findOneBy(['request' => $clientRequest, 'producer' => $producer]);
+            if ($conversation === null) {
+                $conversation = new Conversation();
+                $conversation->setRequest($clientRequest);
+                $conversation->setProducer($producer);
+                $conversation->setClient($clientRequest->getClient());
+                $em->persist($conversation);
             }
-            $reply->setPriceUnit($unit);
-        }
 
-        if ($requestDto->currencyCode !== null) {
-            $currency = $em->find(Currency::class, strtoupper($requestDto->currencyCode));
-            if ($currency === null) {
-                return $this->json(['error' => 'Devise inconnue.'], 422);
-            }
-            $reply->setCurrency($currency);
+            $notificationService->notify(
+                $clientRequest->getClient(),
+                $requestDto->priceAmount !== null ? 'quote_received' : 'producer_replied',
+                $requestDto->priceAmount !== null ? 'Devis reçu' : 'Un producteur a répondu',
+                'Vous avez une nouvelle réponse à votre demande.'
+            );
         }
-
-        // Création implicite de la conversation au premier message/devis
-        $conversation = $em->getRepository(Conversation::class)->findOneBy(['request' => $clientRequest, 'producer' => $producer]);
-        if ($conversation === null) {
-            $conversation = new Conversation();
-            $conversation->setRequest($clientRequest);
-            $conversation->setProducer($producer);
-            $conversation->setClient($clientRequest->getClient());
-            $em->persist($conversation);
-        }
-
-        $notificationService->notify(
-            $clientRequest->getClient(),
-            $requestDto->priceAmount !== null ? 'quote_received' : 'producer_replied',
-            $requestDto->priceAmount !== null ? 'Devis reçu' : 'Un producteur a répondu',
-            'Vous avez une nouvelle réponse à votre demande.'
-        );
 
         $em->persist($reply);
         $em->flush();
 
-        return $this->json(['id' => $reply->getId()->toRfc4122()], 201);
+        return $this->json(['id' => $reply->getId()->toRfc4122(), 'status' => $reply->getStatus()->value], 201);
     }
 
     /**

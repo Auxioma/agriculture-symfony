@@ -8,6 +8,7 @@ use App\Entity\Catalog\Label;
 use App\Entity\Catalog\LabelTranslation;
 use App\Entity\Catalog\Product;
 use App\Entity\Catalog\ProductTranslation;
+use App\Entity\Catalog\Unit;
 use App\Service\Platform\PlatformSettings;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -63,6 +64,16 @@ final class CatalogController extends AbstractController
             'seoTitle' => $t?->getSeoTitle(),
             'seoDescription' => $t?->getSeoDescription(),
         ];
+    }
+
+    // * Unités de mesure (kg, unité...) : pour les formulaires qui en demandent une (réponse d'un producteur, demande client).
+    #[Route('/api/units', methods: ['GET'])]
+    public function listUnits(EntityManagerInterface $em): JsonResponse
+    {
+        return $this->json(array_map(
+            static fn (Unit $u) => ['id' => $u->getId()->toRfc4122(), 'code' => $u->getCode(), 'label' => $u->getLabel()],
+            $em->getRepository(Unit::class)->findBy([], ['code' => 'ASC'])
+        ));
     }
 
     #[Route('/api/products', methods: ['GET'])]

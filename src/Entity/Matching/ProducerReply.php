@@ -59,6 +59,17 @@ class ProducerReply
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $conditions = null;
 
+    // * Cahier fonctionnel 8.1 ("Quantité disponible", "Conditions de retrait", "Conditions de livraison") : ces trois
+    // * champs ne sont pas dans le MPD, ajoutés par la migration Version20261008100000.
+    #[ORM\Column(type: Types::DECIMAL, precision: 14, scale: 3, nullable: true)]
+    private ?string $availableQuantity = null;
+
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $pickupConditions = null;
+
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $deliveryConditions = null;
+
     #[ORM\Column(enumType: ReplyStatus::class)]
     private ReplyStatus $status = ReplyStatus::Draft;
 
@@ -187,6 +198,42 @@ class ProducerReply
     public function setConditions(?string $conditions): static
     {
         $this->conditions = $conditions;
+
+        return $this;
+    }
+
+    public function getAvailableQuantity(): ?string
+    {
+        return $this->availableQuantity;
+    }
+
+    public function setAvailableQuantity(?string $availableQuantity): static
+    {
+        $this->availableQuantity = $availableQuantity;
+
+        return $this;
+    }
+
+    public function getPickupConditions(): ?string
+    {
+        return $this->pickupConditions;
+    }
+
+    public function setPickupConditions(?string $pickupConditions): static
+    {
+        $this->pickupConditions = $pickupConditions;
+
+        return $this;
+    }
+
+    public function getDeliveryConditions(): ?string
+    {
+        return $this->deliveryConditions;
+    }
+
+    public function setDeliveryConditions(?string $deliveryConditions): static
+    {
+        $this->deliveryConditions = $deliveryConditions;
 
         return $this;
     }
