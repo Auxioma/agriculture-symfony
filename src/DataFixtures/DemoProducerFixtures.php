@@ -3,11 +3,11 @@
 /**
  * Données de démo du compte producteur agri@test.com (Ferme Dupont, voir UserFixtures/ProducerFixtures) pour le
  * dashboard producteur : 6 demandes ouvertes dont 2 urgentes (les 2 de la maquette), et des messages non lus
- * sur ces 2 demandes urgentes, puis 2 demandes déjà traitées (une répondue, une refusée) pour la page "Demandes
- * reçues". Tout passe par des requêtes sur le dépôt (aucun getReference) pour pouvoir aussi être lancée seule
- * sur une base de dev déjà remplie, sans la vider : chaque partie ne fait rien si le producteur a déjà des
- * correspondances (ouvertes) ou des réponses (traitées). Les clients de démo ne peuvent pas se connecter (pas de
- * vrai mot de passe).
+ * sur ces 2 demandes urgentes, puis 6 demandes déjà traitées (un refus et 5 devis de statuts variés) pour les
+ * pages "Demandes reçues" et "Mes devis". Tout passe par des requêtes sur le dépôt (aucun getReference) pour
+ * pouvoir aussi être lancée seule sur une base de dev déjà remplie, sans la vider : les demandes ouvertes ne sont
+ * créées que si le producteur n'a aucune correspondance, les traitées une par une (seules celles qui manquent sont
+ * ajoutées).
  */
 
 namespace App\DataFixtures;
@@ -43,16 +43,23 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
         ['Fromage de chèvre', '4', 'unite', '8', 'Saint-Étienne', 0, '55', 'Si possible fermier au lait cru.', 0],
     ];
 
-    // * [produit, quantité, unité, ville, distance km, reçue il y a (jours), réponse du producteur]
+    // * [produit, quantité, unité, ville, distance km, reçue il y a (jours), réponse du producteur, prix de son devis]
+    // * Sans prix = refus poli (pas un devis) ; avec prix, le statut (vue, acceptée, refusée, expirée) est en réalité
+    // * posé côté client (cahier 8.2) : on le fixe ici pour que la page "Mes devis" montre chaque badge.
     private const TREATED_REQUESTS = [
-        ['Haricots verts', '8', 'kg', 'Lyon', '5', 3, ReplyStatus::Sent],
-        ['Courgettes', '15', 'kg', 'Vienne', '14', 6, ReplyStatus::Declined],
+        ['Haricots verts', '8', 'kg', 'Lyon', '5', 3, ReplyStatus::Sent, '3.5'],
+        ['Courgettes', '15', 'kg', 'Vienne', '14', 6, ReplyStatus::Declined, null],
+        ['Poireaux', '12', 'kg', 'Bron', '8', 8, ReplyStatus::Seen, '2.2'],
+        ['Radis', '30', 'unite', 'Lyon', '3', 10, ReplyStatus::Accepted, '1.5'],
+        ['Fraises', '6', 'kg', 'Vienne', '14', 14, ReplyStatus::Declined, '9'],
+        ['Salades', '20', 'unite', 'Villeurbanne', '6', 25, ReplyStatus::Expired, '0.9'],
     ];
 
     // * [prénom, nom] des clients de démo, dans l'ordre de création (les 6 premiers pour les demandes ouvertes)
     private const CLIENT_NAMES = [
         ['Camille', 'Roux'], ['Lucas', 'Martin'], ['Sarah', 'Klein'], ['Julien', 'Bernard'],
         ['Emma', 'Petit'], ['Hugo', 'Durand'], ['Léa', 'Moreau'], ['Noah', 'Simon'],
+        ['Marc', 'Dubois'], ['Inès', 'Garcia'], ['Paul', 'Lefèvre'], ['Chloé', 'Faure'],
     ];
 
     public function load(ObjectManager $manager): void
@@ -122,17 +129,19 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
 
     private function treatedRequests(ObjectManager $manager, ProducerProfile $producer): void
     {
-        if ($manager->getRepository(ProducerReply::class)->count(['producer' => $producer]) > 0) {
-            return;
-        }
-
         $country = $manager->getRepository(Country::class)->findOneBy(['code' => 'FR']);
+        $euro = $manager->getRepository(Currency::class)->findOneBy(['code' => 'EUR']);
 
-        foreach (self::TREATED_REQUESTS as $i => [$product, $quantity, $unitCode, $city, $distance, $daysAgo, $replyStatus]) {
+        foreach (self::TREATED_REQUESTS as $i => [$product, $quantity, $unitCode, $city, $distance, $daysAgo, $replyStatus, $price]) {
             $received = new \DateTimeImmutable("-$daysAgo days");
+            $client = $this->demoClient($manager, \count(self::REQUESTS) + $i);
+            // * ligne par ligne : relancer la fixture sur une base déjà remplie n'ajoute que les demandes manquantes
+            if (null !== $manager->getRepository(ClientRequest::class)->findOneBy(['client' => $client, 'customProduct' => $product])) {
+                continue;
+            }
 
             $request = new ClientRequest();
-            $request->setClient($this->demoClient($manager, \count(self::REQUESTS) + $i));
+            $request->setClient($client);
             $request->setCustomProduct($product);
             $request->setNeedType(NeedType::OneShot);
             $request->setQuantity($quantity);
@@ -156,6 +165,11 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
             $reply->setProducer($producer);
             $reply->setStatus($replyStatus);
             $reply->setReplyText(ReplyStatus::Sent === $replyStatus ? 'Bonjour, j’en ai de disponible, je vous appelle.' : null);
+            if (null !== $price) {
+                $reply->setPriceAmount($price);
+                $reply->setPriceUnit($request->getUnit());
+                $reply->setCurrency($euro);
+            }
             $this->backdate($reply, $received->modify('+2 hours'));
             $manager->persist($reply);
         }

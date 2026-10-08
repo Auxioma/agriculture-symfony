@@ -126,13 +126,58 @@ final class ProducerDashboardControllerTest extends ApiTestCase
         self::assertTrue($items[$plain->getId()->toRfc4122()]['isNew']);
     }
 
-    private function reply(RequestMatch $match, ReplyStatus $status): void
+    // * $sentAgo : date d'envoi (createdAt n'a pas de setter, on l'antidate par réflexion)
+    private function reply(RequestMatch $match, ReplyStatus $status, ?string $price = null, string $sentAgo = 'now'): ProducerReply
     {
         $reply = new ProducerReply();
         $reply->setRequest($match->getRequest());
         $reply->setProducer($match->getProducer());
         $reply->setStatus($status);
+        $reply->setPriceAmount($price);
+        (new \ReflectionProperty($reply, 'createdAt'))->setValue($reply, new \DateTimeImmutable($sentAgo));
         $this->em->persist($reply);
+
+        return $reply;
+    }
+
+    public function testQuotesListsOnlyPricedSentRepliesOfTheProducerNewestFirst(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $old = $this->makeMatch($producer, urgency: 0);
+        $this->reply($old, ReplyStatus::Accepted, '8', '-3 days');
+        $recent = $this->makeMatch($producer, urgency: 0);
+        $this->reply($recent, ReplyStatus::Sent, '12.5', '-1 day');
+        // * pas des devis : un brouillon, un refus poli (sans prix), une réponse sans prix
+        $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Draft, '9');
+        $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Declined);
+        $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Sent);
+        // * le devis d'un autre producteur n'apparaît pas
+        $other = $this->makeProducerProfile($this->makeUser('other-producer'), $producer->getCountry());
+        $this->reply($this->makeMatch($other, urgency: 0), ReplyStatus::Sent, '5');
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producer/quotes', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+
+        self::assertSame(['sent', 'accepted'], array_column($data, 'status'));
+        self::assertSame(
+            [$recent->getRequest()->getId()->toRfc4122(), $old->getRequest()->getId()->toRfc4122()],
+            array_column($data, 'requestId')
+        );
+        self::assertEquals(12.5, $data[0]['priceAmount']);
+        self::assertSame('Client', $data[0]['clientName']);
+        self::assertArrayHasKey('sentAt', $data[0]);
+    }
+
+    public function testQuotesRejectsAccountWithoutProducerProfile(): void
+    {
+        $client = $this->makeUserWithPassword('client', 'motdepasse123');
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producer/quotes', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$this->login($client->getEmail())]);
+
+        self::assertResponseStatusCodeSame(403);
     }
 
     public function testReceivedRequestsTellNewTreatedAndClosedApart(): void
