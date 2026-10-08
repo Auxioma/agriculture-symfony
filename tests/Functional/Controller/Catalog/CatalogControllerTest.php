@@ -6,6 +6,7 @@ use App\Entity\Catalog\CategoryTranslation;
 use App\Entity\Catalog\Label;
 use App\Entity\Catalog\LabelTranslation;
 use App\Entity\Catalog\ProductTranslation;
+use App\Entity\Catalog\Unit;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
@@ -34,6 +35,19 @@ final class CatalogControllerTest extends ApiTestCase
         $names = array_column($data, 'name');
         self::assertContains('Fruits', $names);
         self::assertNotContains('Brouillon', $names);
+    }
+
+    public function testListUnitsIsPublic(): void
+    {
+        $unit = (new Unit())->setCode('kg')->setLabel('Kilogramme');
+        $this->em->persist($unit);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/units');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame([['id' => $unit->getId()->toRfc4122(), 'code' => 'kg', 'label' => 'Kilogramme']], $data);
     }
 
     public function testListCategoriesReturnsTranslatedFieldsForRequestedLocale(): void

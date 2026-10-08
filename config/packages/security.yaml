@@ -92,7 +92,7 @@ security:
         # * écrans que Support ne doit pas voir sont bloqués individuellement par #[IsGranted('ROLE_ADMIN')].
         - { path: ^/admin, roles: ROLE_SUPPORT }
         - { path: ^/api/auth/(login|register-client|register-producer|forgot-password|reset-password), roles: PUBLIC_ACCESS }
-        - { path: ^/api/(categories|products|labels), roles: PUBLIC_ACCESS }
+        - { path: ^/api/(categories|products|labels|units), roles: PUBLIC_ACCESS }
         - { path: ^/api/legal, roles: PUBLIC_ACCESS }
         - { path: ^/api/faq, roles: PUBLIC_ACCESS }
         - { path: ^/api/health, roles: PUBLIC_ACCESS }

@@ -212,6 +212,33 @@ final class ProducerDashboardControllerTest extends ApiTestCase
         self::assertNotNull($data['respondedAt']);
     }
 
+    public function testRequestDetailReturnsTheCurrentDraftAndKeepsTheRequestNew(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $request = $this->makeMatch($producer, urgency: 0)->getRequest();
+        $this->em->flush();
+        $url = '/api/producer/requests/'.$request->getId()->toRfc4122();
+        $auth = ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token];
+
+        $this->client->request('GET', $url, server: $auth);
+        self::assertNull(json_decode($this->client->getResponse()->getContent(), true)['draft']);
+
+        $this->client->request('POST', $url.'/reply', server: $auth, content: json_encode([
+            'draft' => true,
+            'priceAmount' => '12.5',
+            'availableQuantity' => '20',
+            'pickupConditions' => 'Retrait à la ferme',
+        ]));
+        $this->client->request('GET', $url, server: $auth);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+
+        self::assertSame(12.5, $data['draft']['priceAmount']);
+        self::assertEquals(20, $data['draft']['availableQuantity']);
+        self::assertSame('Retrait à la ferme', $data['draft']['pickupConditions']);
+        // * un brouillon n'est pas une réponse : la demande reste à traiter
+        self::assertSame('new', $data['status']);
+    }
+
     public function testRequestDetailOfACancelledRequestIsClosed(): void
     {
         [$token, $producer] = $this->loginAsProducer();

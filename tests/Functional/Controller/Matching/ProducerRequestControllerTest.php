@@ -226,6 +226,92 @@ final class ProducerRequestControllerTest extends ApiTestCase
         self::assertNotFalse($row);
     }
 
+    public function testReplyToRequestStoresQuantityAndSeparateConditions(): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $this->em->flush();
+
+        // * cahier fonctionnel 8.1 : quantité disponible, conditions de retrait et de livraison séparées
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$producerToken,
+        ], content: json_encode([
+            'priceAmount' => '12',
+            'availableQuantity' => '20',
+            'pickupConditions' => 'Retrait à la ferme',
+            'deliveryConditions' => 'Non proposée',
+            'validUntil' => '2026-09-30',
+        ]));
+        self::assertResponseStatusCodeSame(201);
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT available_quantity, pickup_conditions, delivery_conditions, valid_until FROM matching.producer_replies WHERE request_id = :id',
+            ['id' => $requestId]
+        );
+        self::assertEquals(20, $row['available_quantity']);
+        self::assertSame('Retrait à la ferme', $row['pickup_conditions']);
+        self::assertSame('Non proposée', $row['delivery_conditions']);
+        self::assertSame('2026-09-30', $row['valid_until']);
+    }
+
+    public function testReplyToRequestRejectsNegativeAvailableQuantity(): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$producerToken,
+        ], content: json_encode(['replyText' => 'Oui', 'availableQuantity' => '-5']));
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testDraftIsSavedWithoutSubscriptionNorConversationAndUpdatedInPlace(): void
+    {
+        [$requestId, $producerToken] = $this->setUpMatchedRequestAndProducer();
+        $auth = ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$producerToken];
+        // * Pas d'abonnement : on peut préparer un brouillon (rien d'obligatoire), pas envoyer.
+
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: $auth, content: json_encode(['draft' => true, 'replyText' => 'Premier jet']));
+        self::assertResponseStatusCodeSame(201);
+        $first = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame('draft', $first['status']);
+
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: $auth, content: json_encode(['draft' => true, 'priceAmount' => '9']));
+        $second = json_decode($this->client->getResponse()->getContent(), true);
+
+        self::assertSame($first['id'], $second['id']);
+        $rows = $this->em->getConnection()->fetchAllAssociative('SELECT reply_text, price_amount FROM matching.producer_replies WHERE request_id = :id', ['id' => $requestId]);
+        self::assertCount(1, $rows);
+        // * le second enregistrement remplace le premier : le texte du premier jet n'est plus là
+        self::assertNull($rows[0]['reply_text']);
+        self::assertEquals(9, $rows[0]['price_amount']);
+        self::assertFalse($this->em->getConnection()->fetchOne('SELECT 1 FROM messaging.conversations WHERE request_id = :id', ['id' => $requestId]));
+    }
+
+    public function testSendingReplacesTheDraftAndTheRequestCannotBeAnsweredTwice(): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $this->em->flush();
+        $auth = ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$producerToken];
+
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: $auth, content: json_encode(['draft' => true, 'replyText' => 'Brouillon']));
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: $auth, content: json_encode(['replyText' => 'Version finale']));
+        self::assertResponseStatusCodeSame(201);
+
+        $rows = $this->em->getConnection()->fetchAllAssociative('SELECT status, reply_text FROM matching.producer_replies WHERE request_id = :id', ['id' => $requestId]);
+        self::assertSame([['status' => 'sent', 'reply_text' => 'Version finale']], $rows);
+
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: $auth, content: json_encode(['replyText' => 'Encore']));
+        self::assertResponseStatusCodeSame(409);
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: $auth, content: json_encode(['draft' => true]));
+        self::assertResponseStatusCodeSame(409);
+    }
+
     public function testReplyToRequestRejectsProducerWithoutFeature(): void
     {
         [$requestId, $producerToken] = $this->setUpMatchedRequestAndProducer();
