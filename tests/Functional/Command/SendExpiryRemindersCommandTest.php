@@ -62,6 +62,38 @@ final class SendExpiryRemindersCommandTest extends ApiTestCase
         self::assertNotFalse($producerNotification);
     }
 
+    // * Un brouillon n'est pas une réponse envoyée, et un refus ne laisse rien à "attendre" : ni l'un ni l'autre ne doit
+    // * recevoir "Une demande à laquelle vous avez répondu arrive bientôt à expiration".
+    public function testDoesNotNotifyProducerWithOnlyADraftOrADeclinedReply(): void
+    {
+        $country = $this->makeCountry();
+        $product = $this->makeProduct($this->makeCategory());
+        $request = $this->makeClientRequest($this->makeUser('client'), $product);
+        $request->setExpiresAt(new \DateTimeImmutable('+1 day'));
+
+        $owners = [];
+        foreach ([ReplyStatus::Draft, ReplyStatus::Declined] as $status) {
+            $owners[] = $owner = $this->makeUser('producer');
+            $reply = new ProducerReply();
+            $reply->setRequest($request);
+            $reply->setProducer($this->makeProducerProfile($owner, $country));
+            $reply->setStatus($status);
+            $this->em->persist($reply);
+        }
+        $this->em->flush();
+
+        $this->executeReminderCommand();
+
+        foreach ($owners as $owner) {
+            self::assertSame(0, (int) $this->em->getConnection()->fetchOne(
+                "SELECT count(*) FROM notification.notifications WHERE user_id = :id AND type = 'request_expiring_soon'",
+                ['id' => $owner->getId()->toRfc4122()]
+            ));
+        }
+        // * seul le client est prévenu
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne("SELECT count(*) FROM notification.notifications WHERE type = 'request_expiring_soon'"));
+    }
+
     public function testDoesNotNotifyProducerWhoNeverReplied(): void
     {
         $category = $this->makeCategory();

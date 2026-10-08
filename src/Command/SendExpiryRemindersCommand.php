@@ -6,6 +6,7 @@ use App\Entity\Billing\Subscription;
 use App\Entity\Identity\User;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\ProducerReply;
+use App\Enum\ReplyStatus;
 use App\Enum\RequestStatus;
 use App\Enum\SubscriptionStatus;
 use App\Service\Notification\NotificationService;
@@ -44,6 +45,8 @@ final class SendExpiryRemindersCommand extends Command
     private const ACTIVE_REQUEST_STATUSES = [
         RequestStatus::Sent, RequestStatus::WaitingReplies, RequestStatus::RepliesReceived, RequestStatus::ConversationOpen,
     ];
+    // * Réponses qui engagent le producteur : ni brouillon (Draft), ni refus (Declined), ni réponse expirée ou archivée.
+    private const ENGAGED_REPLY_STATUSES = [ReplyStatus::Sent, ReplyStatus::Seen, ReplyStatus::Accepted];
 
     public function __construct(
         private readonly EntityManagerInterface $em,
@@ -94,10 +97,13 @@ final class SendExpiryRemindersCommand extends Command
                 ++$count;
             }
 
-            // * Le producteur n'est concerné que s'il s'est déjà engagé (une réponse envoyée) -- sinon la
-            // * demande ne lui dit encore rien.
+            // * Le producteur n'est concerné que s'il s'est déjà engagé (une réponse envoyée, pas un brouillon ni un
+            // * refus) -- sinon la demande ne lui dit encore rien.
             $notifiedProducers = [];
             foreach ($this->em->getRepository(ProducerReply::class)->findBy(['request' => $request]) as $reply) {
+                if (!\in_array($reply->getStatus(), self::ENGAGED_REPLY_STATUSES, true)) {
+                    continue;
+                }
                 $producer = $reply->getProducer();
                 $producerId = $producer->getId()->toRfc4122();
                 if (isset($notifiedProducers[$producerId])) {
