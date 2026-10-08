@@ -8,6 +8,7 @@ use App\Entity\Producer\ProducerLabel;
 use App\Entity\Producer\ProducerProfile;
 use App\Entity\Trust\Review;
 use App\Enum\ReviewStatus;
+use App\Service\Validation\UuidFormat;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -21,25 +22,86 @@ use Symfony\Component\Routing\Attribute\Route;
  */
 final class ProducerController extends AbstractController
 {
+    // * Bornes des paramètres publics : évitent des requêtes SQL démesurées (trop de sous-requêtes EXISTS,
+    // * rayon couvrant la planète, LIMIT énorme).
+    private const MAX_LABELS_FILTER = 10;
+    private const MAX_RADIUS_KM = 500;
+    private const MAX_FEATURED = 50;
+    // * Fenêtre des tris « popularité » et « réactivité » : métriques des 30 derniers jours.
+    private const METRICS_WINDOW_DAYS = 30;
+
     #[Route('/api/producers', methods: ['GET'])]
     public function listProducers(Request $request, EntityManagerInterface $em): JsonResponse
     {
+        if (($error = $this->validateListQuery($request)) !== null) {
+            return $this->badRequest($error);
+        }
+
         $conditions = ['pp.is_active = true'];
         $params = [];
 
+        // * Les filtres qui portent sur UN MÊME produit du producteur (produit demandé, catégorie, de saison) sont
+        // * réunis dans un seul EXISTS. Séparés, « Fruits » + « de saison » accepterait un producteur qui a un
+        // * fruit hors saison ET un légume de saison, ce qui serait faux.
+        $productConditions = [];
+
         if (($productId = $request->query->get('productId')) !== null) {
-            $conditions[] = 'EXISTS (SELECT 1 FROM producer.producer_products prp WHERE prp.producer_id = pp.id AND prp.product_id = :productId AND prp.is_active = true)';
+            $productConditions[] = 'prp.product_id = :productId';
             $params['productId'] = $productId;
         }
 
         if (($categoryId = $request->query->get('categoryId')) !== null) {
-            $conditions[] = 'EXISTS (SELECT 1 FROM producer.producer_products prp JOIN catalog.products prod ON prod.id = prp.product_id WHERE prp.producer_id = pp.id AND prod.category_id = :categoryId AND prp.is_active = true)';
+            // * Inclut les sous-catégories, à n'importe quelle profondeur.
+            $productConditions[] = <<<'SQL'
+                prod.category_id IN (
+                    WITH RECURSIVE category_tree (id) AS (
+                        SELECT id FROM catalog.categories WHERE id = :categoryId
+                        UNION
+                        SELECT c.id
+                        FROM catalog.categories c
+                        JOIN category_tree t ON c.parent_id = t.id
+                        WHERE c.is_active = true
+                    )
+                    SELECT id FROM category_tree
+                )
+            SQL;
             $params['categoryId'] = $categoryId;
         }
 
-        if (($labelCode = $request->query->get('label')) !== null) {
-            $conditions[] = 'EXISTS (SELECT 1 FROM producer.producer_labels pl JOIN catalog.labels l ON l.id = pl.label_id WHERE pl.producer_id = pp.id AND l.code = :labelCode)';
-            $params['labelCode'] = $labelCode;
+        if (filter_var($request->query->get('seasonal'), FILTER_VALIDATE_BOOLEAN)) {
+            // * Produit de saison = le mois en cours est compris entre le mois de début et de fin de saison.
+            // * Une saison peut chevaucher deux années (début 11, fin 2 : novembre à février) : dans ce cas le mois
+            // * doit être >= début OU <= fin. Produit sans dates de saison : jamais « de saison » (comme le front).
+            $productConditions[] = <<<'SQL'
+                prod.season_start_month IS NOT NULL
+                AND prod.season_end_month IS NOT NULL
+                AND (
+                    (prod.season_start_month <= prod.season_end_month
+                        AND CAST(:month AS integer) BETWEEN prod.season_start_month AND prod.season_end_month)
+                    OR (prod.season_start_month > prod.season_end_month
+                        AND (CAST(:month AS integer) >= prod.season_start_month OR CAST(:month AS integer) <= prod.season_end_month))
+                )
+            SQL;
+            // * Fuseau explicite : sinon le mois dépend de la configuration du serveur (UTC la nuit du 31 au 1er).
+            $params['month'] = (int) (new \DateTimeImmutable('now', new \DateTimeZone('Europe/Paris')))->format('n');
+        }
+
+        if ($productConditions !== []) {
+            $conditions[] = 'EXISTS (SELECT 1 FROM producer.producer_products prp'
+                .' JOIN catalog.products prod ON prod.id = prp.product_id'
+                .' WHERE prp.producer_id = pp.id AND prp.is_active = true AND '.implode(' AND ', $productConditions).')';
+        }
+
+        $labelCodes = array_values(array_filter(explode(',', (string) $request->query->get('labels', ''))));
+        foreach ($labelCodes as $i => $code) {
+            $conditions[] = "
+                EXISTS (SELECT 1 FROM producer.producer_labels pl
+                    JOIN catalog.labels l ON l.id = pl.label_id
+                    WHERE pl.producer_id = pp.id AND l.code = :label$i
+                    AND pl.verified_at IS NOT NULL AND (pl.expires_at IS NULL OR pl.expires_at > now()))
+
+            ";
+            $params["label$i"] = $code;
         }
 
         if (($pickup = $request->query->get('pickupAvailable')) !== null) {
@@ -54,6 +116,11 @@ final class ProducerController extends AbstractController
             $conditions[] = "pp.verification_status = 'verified'";
         }
 
+        if (($minRating = $request->query->get('minRating')) !== null) {
+            $conditions[] = 'reviews.average_rating >= :minRating';
+            $params['minRating'] = (float) $minRating;
+        }
+
         $latitude = $request->query->get('latitude');
         $longitude = $request->query->get('longitude');
         $hasLocation = $latitude !== null && $longitude !== null;
@@ -64,21 +131,64 @@ final class ProducerController extends AbstractController
             $params['radiusMeters'] = $radiusKm * 1000;
         }
 
-        // * Cahier fonctionnel : tri par distance (seulement si une position est fournie) ou par nom --
-        // * "pertinence", "popularité" et "réactivité" demanderaient des métriques pas encore branchées à cette route.
+        // * Cahier fonctionnel : tris de la liste. La valeur reçue sert uniquement de CLÉ dans cette liste blanche,
+        // * jamais de morceau de SQL ; une valeur inconnue retombe sur "relevance".
+        // *  - relevance      : producteurs vérifiés d'abord, puis mieux notés, puis plus d'avis, puis nom.
+        // *  - distance       : seulement si une position est fournie (sinon "relevance").
+        // *  - popularity     : vues du profil sur les 30 derniers jours (analytics.producer_daily_metrics).
+        // *  - responsiveness : taux de réponse moyen sur 30 jours (même table).
+        // *  - newest         : compte propriétaire le plus récent (identity.users.created_at : producer_profiles
+        // *                     n'a pas de date de création).
         $sort = $request->query->get('sort');
-        $orderBy = ($sort === 'distance' && $hasLocation) ? 'distance_km ASC NULLS LAST' : 'pp.farm_name ASC';
+        $orderByBySort = [
+            'relevance' => "(pp.verification_status = 'verified') DESC, reviews.average_rating DESC NULLS LAST, reviews.review_count DESC NULLS LAST, pp.farm_name ASC",
+            'distance' => 'distance_km ASC NULLS LAST, pp.farm_name ASC',
+            'popularity' => 'metrics.profile_views DESC NULLS LAST, pp.farm_name ASC',
+            'responsiveness' => 'metrics.response_rate DESC NULLS LAST, pp.farm_name ASC',
+            'newest' => 'owner.created_at DESC, pp.farm_name ASC',
+        ];
+        if (!is_string($sort) || !isset($orderByBySort[$sort]) || ($sort === 'distance' && !$hasLocation)) {
+            $sort = 'relevance';
+        }
+        $orderBy = $orderByBySort[$sort];
+
+        // * Jointure sur les métriques seulement pour les tris qui en ont besoin (inutile sinon).
+        $metricsJoin = in_array($sort, ['popularity', 'responsiveness'], true)
+            ? 'LEFT JOIN (
+                SELECT producer_id, SUM(profile_views) AS profile_views, AVG(response_rate) AS response_rate
+                FROM analytics.producer_daily_metrics
+                WHERE metric_date >= CURRENT_DATE - '.self::METRICS_WINDOW_DAYS.'
+                GROUP BY producer_id
+            ) metrics ON metrics.producer_id = pp.id'
+            : '';
+        // * Jointure sur le compte propriétaire seulement pour le tri « newest » : c'est lui qui porte created_at.
+        $ownerJoin = $sort === 'newest' ? 'JOIN identity.users owner ON owner.id = pp.owner_user_id' : '';
         $distanceSelect = $hasLocation ? 'ST_Distance(pp.location, ST_GeographyFromText(:point)) / 1000.0' : 'NULL';
 
         $sql = "
             SELECT pp.id, pp.farm_name, pp.slug, pp.city, pp.country_code, pp.verification_status,
-                $distanceSelect AS distance_km
+                $distanceSelect AS distance_km,
+                reviews.average_rating, reviews.review_count,
+                (
+                    SELECT pm.file_url FROM producer.producer_media pm
+                    WHERE pm.producer_id = pp.id AND pm.is_public = true
+                    ORDER BY pm.position ASC NULLS LAST LIMIT 1
+                ) AS photo_url
             FROM producer.producer_profiles pp
+            LEFT JOIN (
+                SELECT producer_id, AVG(rating)::numeric(10,2) AS average_rating, COUNT(*) AS review_count
+                FROM trust.reviews
+                WHERE status = 'published' AND rating IS NOT NULL
+                GROUP BY producer_id
+            ) reviews ON reviews.producer_id = pp.id
+            $metricsJoin
+            $ownerJoin
             WHERE ".implode(' AND ', $conditions)."
             ORDER BY $orderBy
         ";
 
         $rows = $em->getConnection()->fetchAllAssociative($sql, $params);
+        $labelsByProducerId = $this->findVerifiedLabelsByProducerId($em, array_column($rows, 'id'));
 
         return $this->json(array_map(
             static fn (array $row) => [
@@ -89,9 +199,68 @@ final class ProducerController extends AbstractController
                 'countryCode' => $row['country_code'],
                 'verificationStatus' => $row['verification_status'],
                 'distanceKm' => $row['distance_km'] !== null ? round((float) $row['distance_km'], 2) : null,
+                'photoUrl' => $row['photo_url'],
+                'averageRating' => $row['average_rating'] !== null ? round((float) $row['average_rating'], 1) : null,
+                'reviewCount' => (int) ($row['review_count'] ?? 0),
+                'labels' => $labelsByProducerId[$row['id']] ?? [],
             ],
             $rows
         ));
+    }
+
+    /** Message d'erreur (HTTP 400) si un paramètre de listProducers est invalide, sinon null. */
+    private function validateListQuery(Request $request): ?string
+    {
+        foreach (['productId', 'categoryId'] as $name) {
+            $value = $request->query->get($name);
+            if ($value !== null && !UuidFormat::isValid($value)) {
+                return sprintf('Paramètre "%s" invalide : un UUID est attendu.', $name);
+            }
+        }
+
+        $minRating = $request->query->get('minRating');
+        if ($minRating !== null && (!is_numeric($minRating) || (float) $minRating < 0 || (float) $minRating > 5)) {
+            return 'Paramètre "minRating" invalide : un nombre entre 0 et 5 est attendu.';
+        }
+
+        $labelCodes = array_filter(explode(',', (string) $request->query->get('labels', '')));
+        if (count($labelCodes) > self::MAX_LABELS_FILTER) {
+            return sprintf('Trop de labels : %d maximum.', self::MAX_LABELS_FILTER);
+        }
+
+        return $this->validateLocation($request);
+    }
+
+    /** Valide latitude/longitude (fournies ensemble) et radiusKm ; sans position, le rayon est ignoré. */
+    private function validateLocation(Request $request): ?string
+    {
+        $latitude = $request->query->get('latitude');
+        $longitude = $request->query->get('longitude');
+
+        if (($latitude === null) !== ($longitude === null)) {
+            return 'Les paramètres "latitude" et "longitude" doivent être fournis ensemble.';
+        }
+
+        if ($latitude !== null) {
+            if (!is_numeric($latitude) || (float) $latitude < -90 || (float) $latitude > 90) {
+                return 'Paramètre "latitude" invalide : un nombre entre -90 et 90 est attendu.';
+            }
+            if (!is_numeric($longitude) || (float) $longitude < -180 || (float) $longitude > 180) {
+                return 'Paramètre "longitude" invalide : un nombre entre -180 et 180 est attendu.';
+            }
+        }
+
+        $radiusKm = $request->query->get('radiusKm');
+        if ($radiusKm !== null && (!is_numeric($radiusKm) || (float) $radiusKm <= 0 || (float) $radiusKm > self::MAX_RADIUS_KM)) {
+            return sprintf('Paramètre "radiusKm" invalide : un nombre entre 0 et %d est attendu.', self::MAX_RADIUS_KM);
+        }
+
+        return null;
+    }
+
+    private function badRequest(string $message): JsonResponse
+    {
+        return $this->json(['error' => $message], 400);
     }
 
     // * filter_var/FILTER_VALIDATE_BOOLEAN sur un paramètre de query string ("true"/"false"/"1"/"0") pour
@@ -114,7 +283,11 @@ final class ProducerController extends AbstractController
         // * (int) cast avant interpolation dans le SQL plus bas : LIMIT ne peut pas être un paramètre lié
         // * nommé classique (Postgres n'infère pas son type via le protocole étendu), donc on caste nous-même
         // * plutôt que de risquer une valeur non numérique dans la requête.
-        $limit = max(1, (int) ($request->query->get('limit') ?? 3));
+        $limit = min(self::MAX_FEATURED, max(1, (int) ($request->query->get('limit') ?? 3)));
+
+        if (($error = $this->validateLocation($request)) !== null) {
+            return $this->badRequest($error);
+        }
 
         $latitude = $request->query->get('latitude');
         $longitude = $request->query->get('longitude');
@@ -211,7 +384,7 @@ final class ProducerController extends AbstractController
     #[Route('/api/producers/{id}', methods: ['GET'])]
     public function getProducer(string $id, EntityManagerInterface $em): JsonResponse
     {
-        $producer = $em->find(ProducerProfile::class, $id);
+        $producer = UuidFormat::isValid($id) ? $em->find(ProducerProfile::class, $id) : null;
         // * Un producteur désactivé n'est pas listé, et son lien direct ne doit pas non plus être consultable.
         if ($producer === null || !$producer->isActive()) {
             return $this->json(['error' => 'Producteur introuvable.'], 404);
@@ -283,7 +456,7 @@ final class ProducerController extends AbstractController
     #[Route('/api/producers/{id}/reviews', methods: ['GET'])]
     public function listProducerReviews(string $id, EntityManagerInterface $em): JsonResponse
     {
-        $producer = $em->find(ProducerProfile::class, $id);
+        $producer = UuidFormat::isValid($id) ? $em->find(ProducerProfile::class, $id) : null;
         if ($producer === null || !$producer->isActive()) {
             return $this->json(['error' => 'Producteur introuvable.'], 404);
         }
