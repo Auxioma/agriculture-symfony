@@ -8,6 +8,7 @@ use App\Entity\Catalog\Unit;
 use App\Entity\Identity\User;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\ProducerReply;
+use App\Entity\Matching\RequestAttachment;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
 use App\Enum\ReplyStatus;
@@ -59,7 +60,7 @@ final class ProducerRequestController extends AbstractController
      * réponse envoyée ou refus (un brouillon ne compte pas), "closed" = plus ouverte (expirée, annulée...).
      */
     #[Route('/api/producer/requests/received', methods: ['GET'])]
-    public function listReceivedRequests(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    public function listReceivedRequests(#[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter): JsonResponse
     {
         $producer = $user->getProducerProfile();
         if ($producer === null) {
@@ -88,22 +89,19 @@ final class ProducerRequestController extends AbstractController
             ->getQuery()
             ->getResult();
 
-        return $this->json(array_map(function (RequestMatch $m) use ($newIds, $replies) {
+        return $this->json(array_map(function (RequestMatch $m) use ($newIds, $replies, $presenter) {
             $request = $m->getRequest();
-            $client = $request->getClient();
             $reply = $replies[$request->getId()->toRfc4122()] ?? null;
-            $lastName = $client->getLastName();
             $quantity = $request->getQuantity();
 
             return [
                 'requestId' => $request->getId()->toRfc4122(),
-                // * "Camille R." : seule l'initiale du nom, le producteur n'a pas besoin de plus à ce stade.
-                'clientName' => trim(($client->getFirstName() ?? '').($lastName ? ' '.mb_substr($lastName, 0, 1).'.' : '')) ?: 'Client',
+                'clientName' => $presenter->clientName($request->getClient()),
                 'product' => $request->getProduct()?->getName() ?? $request->getCustomProduct(),
                 'quantity' => $quantity !== null ? (float) $quantity : null,
                 'unit' => $request->getUnit()?->getCode(),
                 'urgent' => $request->getUrgencyLevel() > 0,
-                'status' => $reply !== null ? 'treated' : (isset($newIds[$m->getId()->toRfc4122()]) ? 'new' : 'closed'),
+                'status' => $this->requestStatus($reply, isset($newIds[$m->getId()->toRfc4122()])),
                 'receivedAt' => $m->getCreatedAt()->format(DATE_ATOM),
                 'respondedAt' => $reply?->getCreatedAt()->format(DATE_ATOM),
                 'declined' => $reply?->getStatus() === ReplyStatus::Declined,
@@ -112,26 +110,61 @@ final class ProducerRequestController extends AbstractController
     }
 
     /**
-     * Détail d'une demande client spécifique.
+     * Détail d'une demande client (cahier : "Informations client, besoin, localisation, pièces jointes"), avec les
+     * champs de la liste des demandes plus la date souhaitée, le département (France), retrait/livraison et les
+     * pièces jointes. status/respondedAt/declined : comme pour la liste des demandes reçues.
      */
     #[Route('/api/producer/requests/{id}', methods: ['GET'])]
-    public function getRequestDetailForProducer(string $id, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    public function getRequestDetailForProducer(string $id, #[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter): JsonResponse
     {
         $result = $this->findMatchedRequest($id, $user, $em);
         if ($result instanceof JsonResponse) {
             return $result;
         }
-        [$clientRequest, , $match] = $result;
+        [$clientRequest, $producer, $match] = $result;
 
-        return $this->json([
+        $isNew = $em->getRepository(RequestMatch::class)->createAvailableQueryBuilder($producer)
+            ->andWhere('m = :match')
+            ->setParameter('match', $match)
+            ->getQuery()
+            ->getOneOrNullResult() !== null;
+        $reply = $em->getRepository(ProducerReply::class)->createQueryBuilder('pr')
+            ->where('pr.request = :request')
+            ->andWhere('pr.producer = :producer')
+            ->andWhere('pr.status <> :draft')
+            ->orderBy('pr.createdAt', 'DESC')
+            ->setMaxResults(1)
+            ->setParameter('request', $clientRequest)
+            ->setParameter('producer', $producer)
+            ->setParameter('draft', ReplyStatus::Draft->value)
+            ->getQuery()
+            ->getOneOrNullResult();
+        $postalCode = (string) $clientRequest->getPostalCode();
+
+        return $this->json($presenter->present($match) + [
             'id' => $clientRequest->getId()->toRfc4122(),
             'needType' => $clientRequest->getNeedType()->value,
-            'customProduct' => $clientRequest->getCustomProduct(),
-            'message' => $clientRequest->getMessage(),
-            'city' => $clientRequest->getCity(),
-            'quantity' => $clientRequest->getQuantity(),
             'matchScore' => $match->getScore(),
+            'desiredDate' => $clientRequest->getDesiredDate()?->format(DATE_ATOM),
+            'department' => $clientRequest->getCountry()?->getCode() === 'FR' && strlen($postalCode) >= 2
+                ? substr($postalCode, 0, preg_match('/^9[78]/', $postalCode) ? 3 : 2)
+                : null,
+            'pickupWanted' => $clientRequest->isPickupWanted(),
+            'deliveryWanted' => $clientRequest->isDeliveryWanted(),
+            'attachments' => array_map(
+                static fn (RequestAttachment $a) => ['fileName' => $a->getFileName(), 'fileUrl' => $a->getFileUrl()],
+                $clientRequest->getAttachments()->toArray()
+            ),
+            'status' => $this->requestStatus($reply, $isNew),
+            'respondedAt' => $reply?->getCreatedAt()->format(DATE_ATOM),
+            'declined' => $reply?->getStatus() === ReplyStatus::Declined,
         ]);
+    }
+
+    // * new = encore à traiter, treated = réponse envoyée ou refus, closed = plus ouverte (expirée, annulée...)
+    private function requestStatus(?ProducerReply $reply, bool $isNew): string
+    {
+        return $reply !== null ? 'treated' : ($isNew ? 'new' : 'closed');
     }
 
     /**

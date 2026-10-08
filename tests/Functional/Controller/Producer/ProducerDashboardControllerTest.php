@@ -4,6 +4,7 @@ namespace App\Tests\Functional\Controller\Producer;
 
 use App\Entity\Identity\User;
 use App\Entity\Matching\ProducerReply;
+use App\Entity\Matching\RequestAttachment;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
 use App\Entity\Messaging\Message;
@@ -18,7 +19,7 @@ use App\Tests\Fixtures\EntityFactoryTrait;
 /**
  * Teste GET /api/producer/dashboard (cahier fonctionnel, dashboard producteur : "Demandes disponibles,
  * demandes urgentes, messages non lus, abonnement, quota, profil complété") et les listes de demandes qui
- * partagent ses règles : disponibles (/available) et reçues (/received).
+ * partagent ses règles : disponibles (/available), reçues (/received) et le détail d'une demande.
  */
 final class ProducerDashboardControllerTest extends ApiTestCase
 {
@@ -165,6 +166,61 @@ final class ProducerDashboardControllerTest extends ApiTestCase
         self::assertSame('closed', $item($closed)['status']);
         // * Les demandes traitées ne sont plus "disponibles" : seules la nouvelle et le brouillon le restent.
         self::assertSame(2, $this->getDashboard($token)['availableRequests']);
+    }
+
+    public function testRequestDetailExposesFieldsAttachmentsAndStatus(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $match = $this->makeMatch($producer, urgency: 2);
+        $request = $match->getRequest();
+        $request->setDesiredDate(new \DateTimeImmutable('2026-08-23'));
+        $request->setCountry($producer->getCountry());
+        $request->setPostalCode('69003');
+        $request->setPickupWanted(true);
+        $attachment = new RequestAttachment();
+        $attachment->setRequest($request);
+        $attachment->setFileName('photo-parcelle.jpg');
+        $attachment->setFileUrl('https://files.test/photo-parcelle.jpg');
+        $this->em->persist($attachment);
+        $request->getAttachments()->add($attachment);
+        $this->em->flush();
+        $url = '/api/producer/requests/'.$request->getId()->toRfc4122();
+        $auth = ['HTTP_AUTHORIZATION' => 'Bearer '.$token];
+
+        $this->client->request('GET', $url, server: $auth);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+
+        self::assertSame('Client', $data['clientName']);
+        self::assertTrue($data['urgent']);
+        self::assertSame('69', $data['department']);
+        self::assertStringStartsWith('2026-08-23', $data['desiredDate']);
+        self::assertTrue($data['pickupWanted']);
+        self::assertFalse($data['deliveryWanted']);
+        self::assertSame([['fileName' => 'photo-parcelle.jpg', 'fileUrl' => 'https://files.test/photo-parcelle.jpg']], $data['attachments']);
+        self::assertSame('new', $data['status']);
+        self::assertNull($data['respondedAt']);
+
+        // * Une fois refusée, la demande est traitée (et le refus se voit). Le client HTTP a vidé l'EntityManager :
+        // * on recharge la correspondance avant d'y rattacher le refus.
+        $this->reply($this->em->find(RequestMatch::class, $match->getId()), ReplyStatus::Declined);
+        $this->em->flush();
+        $this->client->request('GET', $url, server: $auth);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+
+        self::assertSame('treated', $data['status']);
+        self::assertTrue($data['declined']);
+        self::assertNotNull($data['respondedAt']);
+    }
+
+    public function testRequestDetailOfACancelledRequestIsClosed(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $request = $this->makeMatch($producer, urgency: 0, requestStatus: RequestStatus::Cancelled)->getRequest();
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producer/requests/'.$request->getId()->toRfc4122(), server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertSame('closed', json_decode($this->client->getResponse()->getContent(), true)['status']);
     }
 
     public function testReceivedRequestsRejectsAccountWithoutProducerProfile(): void

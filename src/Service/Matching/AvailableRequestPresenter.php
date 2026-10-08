@@ -2,6 +2,7 @@
 
 namespace App\Service\Matching;
 
+use App\Entity\Identity\User;
 use App\Entity\Matching\RequestMatch;
 use App\Enum\NeedType;
 
@@ -17,6 +18,16 @@ final class AvailableRequestPresenter
     private const HIGH_VOLUME_FROM = 50;
 
     /**
+     * "Camille R." : seule l'initiale du nom, le producteur n'a pas besoin de plus à ce stade.
+     */
+    public function clientName(User $client): string
+    {
+        $lastName = $client->getLastName();
+
+        return trim(($client->getFirstName() ?? '').($lastName ? ' '.mb_substr($lastName, 0, 1).'.' : '')) ?: 'Client';
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function present(RequestMatch $match): array
@@ -26,6 +37,7 @@ final class AvailableRequestPresenter
 
         return [
             'requestId' => $request->getId()->toRfc4122(),
+            'clientName' => $this->clientName($request->getClient()),
             'product' => $request->getProduct()?->getName() ?? $request->getCustomProduct(),
             'quantity' => $quantity,
             'unit' => $request->getUnit()?->getCode(),

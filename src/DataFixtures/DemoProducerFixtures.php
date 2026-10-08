@@ -18,6 +18,7 @@ use App\Entity\Catalog\Unit;
 use App\Entity\Identity\User;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\ProducerReply;
+use App\Entity\Matching\RequestAttachment;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
 use App\Entity\Messaging\Message;
@@ -94,6 +95,16 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
             $request->setMessage($message);
             $request->setStatus(RequestStatus::Sent);
             $request->setExpiresAt(new \DateTimeImmutable('+30 days'));
+            if (0 === $i) {
+                // * la plus complète (celle de la maquette du détail) : date, code postal, retrait, pièce jointe
+                $request->setDesiredDate(new \DateTimeImmutable('+16 days'));
+                $request->setPostalCode('69003');
+                $request->setPickupWanted(true);
+                $attachment = new RequestAttachment();
+                $attachment->setRequest($request);
+                $attachment->setFileName('photo-parcelle.jpg');
+                $manager->persist($attachment);
+            }
             $manager->persist($request);
 
             $match = new RequestMatch();
