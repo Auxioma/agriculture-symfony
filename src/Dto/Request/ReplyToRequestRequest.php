@@ -9,7 +9,7 @@ namespace App\Dto\Request;
  * ! requis" n'est pas exprimée en attribut de validation, elle est vérifiée à la main en tout début de
  * ! ProducerRequestController::replyToRequest() (avant même la vérification des droits d'abonnement).
  *
- * draft = true : "Enregistrer le brouillon" (cahier 8 : "Sauvegarder un brouillon"), la réponse reste préparée mais
+ * draft = true : "Enregistrer le brouillon" (cahier fonctionnel : "Sauvegarder un brouillon"), la réponse reste préparée mais
  * non envoyée, sans notification ni conversation, et rien n'est obligatoire.
  */
 final readonly class ReplyToRequestRequest

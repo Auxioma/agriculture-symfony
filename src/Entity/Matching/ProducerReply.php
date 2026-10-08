@@ -59,7 +59,7 @@ class ProducerReply
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $conditions = null;
 
-    // * Cahier fonctionnel 8.1 ("Quantité disponible", "Conditions de retrait", "Conditions de livraison") : ces trois
+    // * Cahier fonctionnel, "Champs d'une réponse" ("Quantité disponible", "Conditions de retrait", "Conditions de livraison") : ces trois
     // * champs ne sont pas dans le MPD, ajoutés par la migration Version20261008100000.
     #[ORM\Column(type: Types::DECIMAL, precision: 14, scale: 3, nullable: true)]
     private ?string $availableQuantity = null;

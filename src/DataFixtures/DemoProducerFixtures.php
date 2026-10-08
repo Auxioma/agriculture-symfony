@@ -18,6 +18,7 @@ use App\Entity\Catalog\Unit;
 use App\Entity\Identity\User;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\ProducerReply;
+use App\Entity\Matching\ReplyAttachment;
 use App\Entity\Matching\RequestAttachment;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
@@ -45,7 +46,7 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
 
     // * [produit, quantité, unité, ville, distance km, reçue il y a (jours), réponse du producteur, prix de son devis]
     // * Sans prix = refus poli (pas un devis) ; avec prix, le statut (vue, acceptée, refusée, expirée) est en réalité
-    // * posé côté client (cahier 8.2) : on le fixe ici pour que la page "Mes devis" montre chaque badge.
+    // * posé côté client (cahier fonctionnel, statuts d'une réponse) : on le fixe ici pour que la page "Mes devis" montre chaque badge.
     private const TREATED_REQUESTS = [
         ['Haricots verts', '8', 'kg', 'Lyon', '5', 3, ReplyStatus::Sent, '3.5'],
         ['Courgettes', '15', 'kg', 'Vienne', '14', 6, ReplyStatus::Declined, null],
@@ -165,12 +166,25 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
             $reply->setProducer($producer);
             $reply->setStatus($replyStatus);
             $reply->setReplyText(ReplyStatus::Sent === $replyStatus ? 'Bonjour, j’en ai de disponible, je vous appelle.' : null);
+            $sentAt = $received->modify('+2 hours');
             if (null !== $price) {
                 $reply->setPriceAmount($price);
                 $reply->setPriceUnit($request->getUnit());
                 $reply->setCurrency($euro);
+                // * de quoi remplir la page "Détail du devis" : quantité, date, validité de 7 jours, conditions,
+                // * message et une pièce jointe (sans fichier réel : aucun envoi de fichier n'existe encore)
+                $reply->setAvailableQuantity($quantity);
+                $reply->setAvailabilityDate($sentAt->modify('+5 days'));
+                $reply->setValidUntil($sentAt->modify('+7 days'));
+                $reply->setPickupConditions('À la ferme');
+                $reply->setDeliveryConditions('Possible < 15 km');
+                $reply->setReplyText('Parfait, je peux vous proposer ce produit, retrait à la ferme uniquement.');
+                $attachment = new ReplyAttachment();
+                $attachment->setFileName('devis-'.str_replace(' ', '-', strtolower($product)).'.pdf');
+                $reply->addAttachment($attachment);
+                $manager->persist($attachment);
             }
-            $this->backdate($reply, $received->modify('+2 hours'));
+            $this->backdate($reply, $sentAt);
             $manager->persist($reply);
         }
     }
