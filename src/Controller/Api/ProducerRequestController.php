@@ -3,6 +3,7 @@
 namespace App\Controller\Api;
 
 use App\Dto\Request\ReplyToRequestRequest;
+use App\Dto\Request\ReportClientRequestRequest;
 use App\Entity\Catalog\Currency;
 use App\Entity\Catalog\Unit;
 use App\Entity\Identity\User;
@@ -11,10 +12,13 @@ use App\Entity\Matching\ProducerReply;
 use App\Entity\Matching\RequestAttachment;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
+use App\Entity\Trust\Report;
 use App\Enum\ReplyStatus;
+use App\Enum\ReportStatus;
 use App\Service\Matching\AvailableRequestPresenter;
 use App\Service\Notification\NotificationService;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bridge\Doctrine\Types\UuidType;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
@@ -26,6 +30,9 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
  */
 final class ProducerRequestController extends AbstractController
 {
+    // * valeur de Report::$targetType pour un signalement de demande (les conversations utilisent 'conversation')
+    private const REPORT_TARGET = 'client_request';
+
     /**
      * Liste des demandes matching accessibles au producteur.
      */
@@ -302,6 +309,54 @@ final class ProducerRequestController extends AbstractController
         $em->flush();
 
         return $this->json(['id' => $reply->getId()->toRfc4122()], 201);
+    }
+
+    /**
+     * Signaler une demande (page "Signaler cette demande", cahier : "Archiver ou signaler une demande"). Crée un
+     * Report ouvert pour la modération, rien d'autre : la demande garde son statut et le producteur peut continuer à
+     * échanger avec le client pendant l'examen (l'équipe décide ensuite). Un même producteur ne peut pas signaler deux
+     * fois une demande tant que son premier signalement n'est pas traité.
+     */
+    #[Route('/api/producer/requests/{id}/report', methods: ['POST'])]
+    public function reportRequest(
+        string $id,
+        #[MapRequestPayload] ReportClientRequestRequest $payload,
+        #[CurrentUser] User $user,
+        EntityManagerInterface $em,
+    ): JsonResponse {
+        $result = $this->findMatchedRequest($id, $user, $em);
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+        [$clientRequest] = $result;
+
+        $alreadyReported = $em->getRepository(Report::class)->createQueryBuilder('r')
+            ->select('COUNT(r.id)')
+            ->where('r.reporter = :reporter')
+            ->andWhere('r.targetType = :type')
+            ->andWhere('r.targetId = :target')
+            ->andWhere('r.status IN (:open)')
+            ->setParameter('reporter', $user)
+            ->setParameter('type', self::REPORT_TARGET)
+            ->setParameter('target', $clientRequest->getId(), UuidType::NAME)
+            ->setParameter('open', [ReportStatus::Open->value, ReportStatus::InReview->value])
+            ->getQuery()
+            ->getSingleScalarResult();
+        if ((int) $alreadyReported > 0) {
+            return $this->json(['error' => 'Vous avez déjà signalé cette demande.'], 409);
+        }
+
+        $report = new Report();
+        $report->setReporter($user);
+        $report->setTargetType(self::REPORT_TARGET);
+        $report->setTargetId($clientRequest->getId());
+        $report->setReason($payload->reason);
+        $report->setMessage($payload->message);
+
+        $em->persist($report);
+        $em->flush();
+
+        return $this->json(['id' => $report->getId()->toRfc4122()], 201);
     }
 
     /**

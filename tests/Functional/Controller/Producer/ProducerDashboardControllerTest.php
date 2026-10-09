@@ -219,6 +219,47 @@ final class ProducerDashboardControllerTest extends ApiTestCase
         self::assertSame(404, $get('pas-un-identifiant'));
     }
 
+    public function testProducerReportsAMatchedRequestOnlyOnceAndTheRequestKeepsItsStatus(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $request = $this->makeMatch($producer, urgency: 0)->getRequest();
+        $notMatched = $this->makeClientRequest($this->makeUser('stranger'), null);
+        $this->em->flush();
+        $id = $request->getId()->toRfc4122();
+        $post = function (string $requestId, array $body) use ($token): int {
+            $this->client->request('POST', '/api/producer/requests/'.$requestId.'/report', server: [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            ], content: json_encode($body));
+
+            return $this->client->getResponse()->getStatusCode();
+        };
+
+        self::assertSame(201, $post($id, ['reason' => 'circumvention', 'message' => 'Il veut payer hors plateforme']));
+        $row = $this->em->getConnection()->fetchAssociative('SELECT target_type, reason, message, status FROM trust.reports WHERE target_id = :id', ['id' => $id]);
+        self::assertSame(['target_type' => 'client_request', 'reason' => 'circumvention', 'message' => 'Il veut payer hors plateforme', 'status' => 'open'], $row);
+        // * la demande n'est ni masquée ni bloquée : la modération décidera
+        self::assertSame('sent', $this->em->getConnection()->fetchOne('SELECT status FROM matching.client_requests WHERE id = :id', ['id' => $id]));
+
+        self::assertSame(409, $post($id, ['reason' => 'fraud']));
+        self::assertSame(422, $post($id, ['reason' => 'pas-un-motif']));
+        self::assertSame(403, $post($notMatched->getId()->toRfc4122(), ['reason' => 'fraud']));
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM trust.reports'));
+    }
+
+    public function testReportRejectsAccountWithoutProducerProfile(): void
+    {
+        $client = $this->makeUserWithPassword('client', 'motdepasse123');
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/producer/requests/'.Uuid::v4()->toRfc4122().'/report', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$this->login($client->getEmail()),
+        ], content: json_encode(['reason' => 'fraud']));
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
     public function testQuotesRejectsAccountWithoutProducerProfile(): void
     {
         $client = $this->makeUserWithPassword('client', 'motdepasse123');
