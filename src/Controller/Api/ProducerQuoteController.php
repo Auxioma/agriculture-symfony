@@ -16,12 +16,13 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Uid\Uuid;
 
 /**
- * "Mes devis" du producteur (cahier fonctionnel, dashboard producteur : "Mes réponses / devis -- Historique, devis
- * envoyés, réponses vues..."). Un devis = une réponse *avec un prix* : les brouillons (pas encore envoyés) et les
- * refus polis ou les réponses sans prix n'en sont pas. La plus récente d'abord.
+ * "Mes devis" / "Mes réponses" du producteur (cahier fonctionnel, dashboard producteur : "Mes réponses -- Historique,
+ * brouillons, devis envoyés, réponses vues, relances, archives"). Toutes ses réponses, avec ou sans prix, brouillons
+ * compris, la plus récente d'abord. Seul le refus poli (refus sans prix ni message, voir declineRequest()) n'en est pas une.
  *
- * Lecture seule, côté producteur uniquement : le statut (envoyée, vue, acceptée, refusée, expirée, archivée) est
- * posé par d'autres flux, en grande partie côté client (cahier fonctionnel, statuts d'une réponse) -- cette route ne le modifie jamais.
+ * Lecture seule, côté producteur uniquement : le statut (brouillon, envoyée, vue, acceptée, refusée, expirée,
+ * archivée) est posé par d'autres flux, en grande partie côté client (cahier fonctionnel, statuts d'une réponse) --
+ * cette route ne le modifie jamais.
  */
 
 final class ProducerQuoteController extends AbstractController
@@ -43,11 +44,10 @@ final class ProducerQuoteController extends AbstractController
             ->leftJoin('pr.priceUnit', 'pu')
             ->leftJoin('pr.currency', 'cur')
             ->where('pr.producer = :producer')
-            ->andWhere('pr.priceAmount IS NOT NULL')
-            ->andWhere('pr.status <> :draft')
+            ->andWhere('NOT (pr.status = :declined AND pr.priceAmount IS NULL AND pr.replyText IS NULL)')
             ->orderBy('pr.createdAt', 'DESC')
             ->setParameter('producer', $producer)
-            ->setParameter('draft', ReplyStatus::Draft->value)
+            ->setParameter('declined', ReplyStatus::Declined->value)
             ->getQuery()
             ->getResult();
 
@@ -57,7 +57,8 @@ final class ProducerQuoteController extends AbstractController
     /**
      * Détail d'un devis (page "Détail du devis") : le résumé de la liste plus la quantité disponible, la date
      * disponible, les conditions de retrait et de livraison, le message du producteur et les pièces jointes. Un
-     * brouillon, une réponse sans prix ou le devis d'un autre producteur donnent 404 (on ne dit pas qu'ils existent).
+     * brouillon (il se rouvre depuis la page de réponse), un refus poli ou la réponse d'un autre producteur donnent 404
+     * (on ne dit pas qu'ils existent).
      */
     #[Route('/api/producer/quotes/{id}', methods: ['GET'])]
     public function getQuote(string $id, #[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter): JsonResponse
@@ -68,7 +69,7 @@ final class ProducerQuoteController extends AbstractController
         }
 
         $reply = Uuid::isValid($id) ? $em->find(ProducerReply::class, $id) : null;
-        if ($reply === null || $reply->getProducer() !== $producer || $reply->getPriceAmount() === null || $reply->getStatus() === ReplyStatus::Draft) {
+        if ($reply === null || $reply->getProducer() !== $producer || $reply->getStatus() === ReplyStatus::Draft || $this->isPoliteRefusal($reply)) {
             return $this->json(['error' => 'Devis introuvable.'], 404);
         }
 
@@ -86,6 +87,12 @@ final class ProducerQuoteController extends AbstractController
         ]);
     }
 
+    // * même définition que le filtre de listQuotes()
+    private function isPoliteRefusal(ProducerReply $reply): bool
+    {
+        return $reply->getStatus() === ReplyStatus::Declined && $reply->getPriceAmount() === null && $reply->getReplyText() === null;
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -100,7 +107,7 @@ final class ProducerQuoteController extends AbstractController
             'product' => $request->getProduct()?->getName() ?? $request->getCustomProduct(),
             'quantity' => $request->getQuantity() !== null ? (float) $request->getQuantity() : null,
             'unit' => $request->getUnit()?->getCode(),
-            'priceAmount' => (float) $reply->getPriceAmount(),
+            'priceAmount' => $reply->getPriceAmount() !== null ? (float) $reply->getPriceAmount() : null,
             'priceUnit' => $reply->getPriceUnit()?->getCode(),
             'currency' => $reply->getCurrency()?->getSymbol() ?? $reply->getCurrency()?->getCode(),
             'status' => $reply->getStatus()->value,

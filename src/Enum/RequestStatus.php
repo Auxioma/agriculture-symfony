@@ -5,9 +5,11 @@
  * (ClientRequestController::createRequest()) ; ConversationOpen posé dès le premier vrai message échangé
  * (ConversationController::sendMessage()/uploadAttachment(), uniquement depuis un statut encore actif,
  * jamais depuis un statut terminal) ; Cancelled/Archived posés par le client via les actions dédiées.
- * Reported n'est PAS posé par le signalement d'une conversation -- ça, c'est ConversationStatus::Reported,
- * sur une entité différente (Conversation). WaitingReplies, RepliesReceived, DealFound, Expired et Reported
- * existent dans le schéma mais ne sont posés par aucune route actuelle.
+ * Reported posé quand un producteur signale une demande encore en circulation
+ * (ProducerRequestController::reportRequest()) et quitté par l'admin, qui la rétablit (statut d'avant, lu dans le
+ * RequestEvent 'reported') ou l'annule (ClientRequestCrudController::reportDecision()). À ne pas confondre avec
+ * ConversationStatus::Reported, sur une autre entité (Conversation). WaitingReplies, RepliesReceived, DealFound et
+ * Expired existent dans le schéma mais ne sont posés par aucune route actuelle.
  */
 
 namespace App\Enum;

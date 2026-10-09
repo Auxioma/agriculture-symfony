@@ -25,7 +25,7 @@ use Doctrine\Persistence\ManagerRegistry;
  */
 class RequestMatchRepository extends ServiceEntityRepository
 {
-    private const OPEN_REQUEST_STATUSES = [
+    public const OPEN_REQUEST_STATUSES = [
         RequestStatus::Sent,
         RequestStatus::WaitingReplies,
         RequestStatus::RepliesReceived,

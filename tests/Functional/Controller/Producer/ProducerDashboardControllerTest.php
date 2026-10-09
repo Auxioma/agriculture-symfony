@@ -142,18 +142,23 @@ final class ProducerDashboardControllerTest extends ApiTestCase
         return $reply;
     }
 
-    public function testQuotesListsOnlyPricedSentRepliesOfTheProducerNewestFirst(): void
+    public function testQuotesListsAllRepliesOfTheProducerNewestFirstExceptPoliteRefusals(): void
     {
         [$token, $producer] = $this->loginAsProducer();
         $old = $this->makeMatch($producer, urgency: 0);
         $this->reply($old, ReplyStatus::Accepted, '8', '-3 days');
         $recent = $this->makeMatch($producer, urgency: 0);
         $this->reply($recent, ReplyStatus::Sent, '12.5', '-1 day');
-        // * pas des devis : un brouillon, un refus poli (sans prix), une réponse sans prix
-        $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Draft, '9');
-        $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Declined);
-        $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Sent);
-        // * le devis d'un autre producteur n'apparaît pas
+        // * un brouillon et une réponse sans prix (message seul) y sont, avec un prix nul
+        $draft = $this->makeMatch($producer, urgency: 0);
+        $this->reply($draft, ReplyStatus::Draft, null, '-2 days');
+        $messageOnly = $this->makeMatch($producer, urgency: 0);
+        $this->reply($messageOnly, ReplyStatus::Sent, null, '-4 days')->setReplyText('Je peux vous en fournir.');
+        // * le refus poli (refusée, sans prix ni message) n'y est pas ; un refus du client sur un devis chiffré, si
+        $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Declined, null, '-5 days');
+        $refused = $this->makeMatch($producer, urgency: 0);
+        $this->reply($refused, ReplyStatus::Declined, '3', '-6 days');
+        // * la réponse d'un autre producteur n'apparaît pas
         $other = $this->makeProducerProfile($this->makeUser('other-producer'), $producer->getCountry());
         $this->reply($this->makeMatch($other, urgency: 0), ReplyStatus::Sent, '5');
         $this->em->flush();
@@ -162,17 +167,19 @@ final class ProducerDashboardControllerTest extends ApiTestCase
         self::assertResponseIsSuccessful();
         $data = json_decode($this->client->getResponse()->getContent(), true);
 
-        self::assertSame(['sent', 'accepted'], array_column($data, 'status'));
+        self::assertSame(['sent', 'draft', 'accepted', 'sent', 'declined'], array_column($data, 'status'));
         self::assertSame(
-            [$recent->getRequest()->getId()->toRfc4122(), $old->getRequest()->getId()->toRfc4122()],
+            array_map(static fn (RequestMatch $m) => $m->getRequest()->getId()->toRfc4122(), [$recent, $draft, $old, $messageOnly, $refused]),
             array_column($data, 'requestId')
         );
         self::assertEquals(12.5, $data[0]['priceAmount']);
+        self::assertNull($data[1]['priceAmount']);
+        self::assertNull($data[3]['priceAmount']);
         self::assertSame('Client', $data[0]['clientName']);
         self::assertArrayHasKey('sentAt', $data[0]);
     }
 
-    public function testQuoteDetailExposesTheWholeQuoteButHidesWhatIsNotAQuote(): void
+    public function testQuoteDetailExposesTheWholeReplyButHidesDraftsRefusalsAndOtherProducers(): void
     {
         [$token, $producer] = $this->loginAsProducer();
         $match = $this->makeMatch($producer, urgency: 0);
@@ -188,9 +195,11 @@ final class ProducerDashboardControllerTest extends ApiTestCase
         $attachment->setFileName('devis-tomates.pdf');
         $quote->addAttachment($attachment);
         $this->em->persist($attachment);
-        // * pas des devis (404) : un brouillon, une réponse sans prix, le devis d'un autre producteur
+        // * 404 : un brouillon (il se rouvre depuis la page de réponse), un refus poli, le devis d'un autre producteur
         $draft = $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Draft, '9');
+        $refusal = $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Declined);
         $noPrice = $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Sent);
+        $noPrice->setReplyText('Je peux vous en fournir.');
         $other = $this->makeProducerProfile($this->makeUser('other-producer'), $producer->getCountry());
         $otherQuote = $this->reply($this->makeMatch($other, urgency: 0), ReplyStatus::Sent, '5');
         $this->em->flush();
@@ -212,14 +221,18 @@ final class ProducerDashboardControllerTest extends ApiTestCase
         self::assertSame('Parfait, je peux vous proposer ce produit.', $data['replyText']);
         self::assertSame([['fileName' => 'devis-tomates.pdf', 'fileUrl' => null]], $data['attachments']);
 
+        // * une réponse sans prix a sa fiche, avec un prix nul
+        self::assertSame(200, $get($noPrice->getId()->toRfc4122()));
+        self::assertNull(json_decode($this->client->getResponse()->getContent(), true)['priceAmount']);
+
         self::assertSame(404, $get($draft->getId()->toRfc4122()));
-        self::assertSame(404, $get($noPrice->getId()->toRfc4122()));
+        self::assertSame(404, $get($refusal->getId()->toRfc4122()));
         self::assertSame(404, $get($otherQuote->getId()->toRfc4122()));
         self::assertSame(404, $get(Uuid::v4()->toRfc4122()));
         self::assertSame(404, $get('pas-un-identifiant'));
     }
 
-    public function testProducerReportsAMatchedRequestOnlyOnceAndTheRequestKeepsItsStatus(): void
+    public function testProducerReportsAMatchedRequestOnlyOnce(): void
     {
         [$token, $producer] = $this->loginAsProducer();
         $request = $this->makeMatch($producer, urgency: 0)->getRequest();
@@ -238,13 +251,92 @@ final class ProducerDashboardControllerTest extends ApiTestCase
         self::assertSame(201, $post($id, ['reason' => 'circumvention', 'message' => 'Il veut payer hors plateforme']));
         $row = $this->em->getConnection()->fetchAssociative('SELECT target_type, reason, message, status FROM trust.reports WHERE target_id = :id', ['id' => $id]);
         self::assertSame(['target_type' => 'client_request', 'reason' => 'circumvention', 'message' => 'Il veut payer hors plateforme', 'status' => 'open'], $row);
-        // * la demande n'est ni masquée ni bloquée : la modération décidera
-        self::assertSame('sent', $this->em->getConnection()->fetchOne('SELECT status FROM matching.client_requests WHERE id = :id', ['id' => $id]));
+        self::assertSame('reported', $this->em->getConnection()->fetchOne('SELECT status FROM matching.client_requests WHERE id = :id', ['id' => $id]));
 
         self::assertSame(409, $post($id, ['reason' => 'fraud']));
         self::assertSame(422, $post($id, ['reason' => 'pas-un-motif']));
         self::assertSame(403, $post($notMatched->getId()->toRfc4122(), ['reason' => 'fraud']));
         self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM trust.reports'));
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     */
+    private function postJson(string $token, string $url, array $body): int
+    {
+        $this->client->request('POST', $url, server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode($body));
+
+        return $this->client->getResponse()->getStatusCode();
+    }
+
+    public function testReportingALiveRequestMakesItReportedKeepsItsPreviousStatusAndTakesItOutOfTheLists(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $request = $this->makeMatch($producer, urgency: 0, requestStatus: RequestStatus::ConversationOpen)->getRequest();
+        $this->em->flush();
+        $id = $request->getId()->toRfc4122();
+        $producerId = $producer->getOwner()->getId()->toRfc4122();
+
+        self::assertSame(201, $this->postJson($token, '/api/producer/requests/'.$id.'/report', ['reason' => 'fraud']));
+
+        $connection = $this->em->getConnection();
+        self::assertSame('reported', $connection->fetchOne('SELECT status FROM matching.client_requests WHERE id = :id', ['id' => $id]));
+
+        $event = $connection->fetchAssociative("SELECT actor_id, payload FROM matching.request_events WHERE request_id = :id AND event_type = 'reported'", ['id' => $id]);
+        self::assertNotFalse($event);
+        self::assertSame($producerId, $event['actor_id']);
+        self::assertSame('conversation_open', json_decode($event['payload'], true)['previousStatus']);
+
+        $audit = $connection->fetchAssociative("SELECT old_data, new_data FROM audit.audit_logs WHERE action = 'client_request_reported' AND record_id = :id", ['id' => $id]);
+        self::assertNotFalse($audit);
+        self::assertStringContainsString('conversation_open', $audit['old_data']);
+        self::assertStringContainsString('reported', $audit['new_data']);
+
+        $this->client->request('GET', '/api/producer/requests/available', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        $available = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame([], $available);
+
+        $this->client->request('GET', '/api/producer/requests/'.$id, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        $detail = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame('closed', $detail['status']);
+        self::assertTrue($detail['underReview']);
+    }
+
+    public function testReportingAFinishedOrAlreadyReportedRequestKeepsItsStatus(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $expired = $this->makeMatch($producer, urgency: 0, requestStatus: RequestStatus::Expired)->getRequest();
+        $reported = $this->makeMatch($producer, urgency: 0, requestStatus: RequestStatus::Reported)->getRequest();
+        $this->em->flush();
+
+        foreach ([[$expired, 'expired'], [$reported, 'reported']] as [$request, $status]) {
+            $id = $request->getId()->toRfc4122();
+            self::assertSame(201, $this->postJson($token, '/api/producer/requests/'.$id.'/report', ['reason' => 'other']));
+            self::assertSame($status, $this->em->getConnection()->fetchOne('SELECT status FROM matching.client_requests WHERE id = :id', ['id' => $id]));
+        }
+
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne("SELECT count(*) FROM matching.request_events WHERE event_type = 'reported'"));
+        self::assertSame(2, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM trust.reports'));
+    }
+
+    public function testRepliesAndDeclinesAreRefusedOnceTheRequestIsNoLongerOpen(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $reported = $this->makeMatch($producer, urgency: 0, requestStatus: RequestStatus::Reported)->getRequest();
+        $cancelled = $this->makeMatch($producer, urgency: 0, requestStatus: RequestStatus::Cancelled)->getRequest();
+        $this->em->flush();
+
+        foreach ([$reported, $cancelled] as $request) {
+            $url = '/api/producer/requests/'.$request->getId()->toRfc4122();
+            self::assertSame(409, $this->postJson($token, $url.'/reply', ['replyText' => 'Bonjour']));
+            self::assertSame(409, $this->postJson($token, $url.'/reply', ['draft' => true, 'replyText' => 'Bonjour']));
+            self::assertSame(409, $this->postJson($token, $url.'/decline', []));
+        }
+
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM matching.producer_replies'));
     }
 
     public function testReportRejectsAccountWithoutProducerProfile(): void

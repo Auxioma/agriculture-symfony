@@ -45,8 +45,9 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
     ];
 
     // * [produit, quantité, unité, ville, distance km, reçue il y a (jours), réponse du producteur, prix de son devis]
-    // * Sans prix = refus poli (pas un devis) ; avec prix, le statut (vue, acceptée, refusée, expirée) est en réalité
-    // * posé côté client (cahier fonctionnel, statuts d'une réponse) : on le fixe ici pour que la page "Mes devis" montre chaque badge.
+    // * Refusée sans prix = refus poli (n'apparaît pas dans "Mes devis") ; avec prix, le statut (vue, acceptée, refusée,
+    // * expirée, archivée) est en réalité posé côté client (cahier fonctionnel, statuts d'une réponse) : on le fixe ici
+    // * pour que la page "Mes devis" montre chaque badge.
     private const TREATED_REQUESTS = [
         ['Haricots verts', '8', 'kg', 'Lyon', '5', 3, ReplyStatus::Sent, '3.5'],
         ['Courgettes', '15', 'kg', 'Vienne', '14', 6, ReplyStatus::Declined, null],
@@ -54,6 +55,10 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
         ['Radis', '30', 'unite', 'Lyon', '3', 10, ReplyStatus::Accepted, '1.5'],
         ['Fraises', '6', 'kg', 'Vienne', '14', 14, ReplyStatus::Declined, '9'],
         ['Salades', '20', 'unite', 'Villeurbanne', '6', 25, ReplyStatus::Expired, '0.9'],
+        // * archivée, réponse sans prix (message seul) et brouillon : de quoi remplir les puces de "Mes devis"
+        ['Betteraves', '10', 'kg', 'Bron', '8', 40, ReplyStatus::Archived, '1.8'],
+        ['Navets', '6', 'kg', 'Lyon', '4', 4, ReplyStatus::Sent, null],
+        ['Endives', '12', 'kg', 'Vienne', '14', 1, ReplyStatus::Draft, null],
     ];
 
     // * [prénom, nom] des clients de démo, dans l'ordre de création (les 6 premiers pour les demandes ouvertes)
@@ -61,6 +66,7 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
         ['Camille', 'Roux'], ['Lucas', 'Martin'], ['Sarah', 'Klein'], ['Julien', 'Bernard'],
         ['Emma', 'Petit'], ['Hugo', 'Durand'], ['Léa', 'Moreau'], ['Noah', 'Simon'],
         ['Marc', 'Dubois'], ['Inès', 'Garcia'], ['Paul', 'Lefèvre'], ['Chloé', 'Faure'],
+        ['Théo', 'Girard'], ['Manon', 'Andre'], ['Nathan', 'Rousseau'],
     ];
 
     public function load(ObjectManager $manager): void
@@ -165,7 +171,7 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
             $reply->setRequest($request);
             $reply->setProducer($producer);
             $reply->setStatus($replyStatus);
-            $reply->setReplyText(ReplyStatus::Sent === $replyStatus ? 'Bonjour, j’en ai de disponible, je vous appelle.' : null);
+            $reply->setReplyText(\in_array($replyStatus, [ReplyStatus::Sent, ReplyStatus::Draft], true) ? 'Bonjour, j’en ai de disponible, je vous appelle.' : null);
             $sentAt = $received->modify('+2 hours');
             if (null !== $price) {
                 $reply->setPriceAmount($price);

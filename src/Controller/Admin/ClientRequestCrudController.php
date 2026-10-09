@@ -2,10 +2,15 @@
 
 namespace App\Controller\Admin;
 
+use App\Dto\Request\ReportClientRequestRequest;
 use App\Entity\Identity\User;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\RequestEvent;
+use App\Entity\Trust\ModerationAction;
+use App\Entity\Trust\Report;
+use App\Enum\ReportStatus;
 use App\Enum\RequestStatus;
+use App\Repository\Matching\RequestMatchRepository;
 use App\Service\Audit\AuditLogger;
 use App\Service\Matching\RequestQualityAnalyzer;
 use Doctrine\ORM\EntityManagerInterface;
@@ -74,6 +79,20 @@ class ClientRequestCrudController extends AbstractCrudController
     // * Nombre de demandes précédentes du même client montrées sur la page détail (cahier fonctionnel 13, "Demandes" :
     // * détecter des doublons/du spam suppose de voir l'historique récent du client, pas seulement la demande isolée).
     private const RELATED_REQUESTS_LIMIT = 10;
+    // * Report::$targetType des signalements de demandes (voir ProducerRequestController::reportRequest())
+    private const REPORT_TARGET = 'client_request';
+    private const REPORT_STATUS_LABELS = [
+        'open' => 'Ouvert',
+        'in_review' => 'En cours',
+        'resolved' => 'Résolu',
+        'rejected' => 'Rejeté',
+    ];
+    private const REPORT_STATUS_VARIANTS = [
+        'open' => 'danger',
+        'in_review' => 'warning',
+        'resolved' => 'success',
+        'rejected' => 'secondary',
+    ];
     // * "Marquer comme spam" n'est proposé que si l'un de ces trois signaux est présent -- "duplicate" a son propre
     // * bouton ("Marquer comme doublon"), les deux pouvant être proposés en même temps sur une même demande.
     private const SPAM_SIGNALS = [RequestQualityAnalyzer::SIGNAL_FLOOD, RequestQualityAnalyzer::SIGNAL_LINK, RequestQualityAnalyzer::SIGNAL_MASS_MESSAGE];
@@ -211,6 +230,7 @@ class ClientRequestCrudController extends AbstractCrudController
         }
 
         $isLive = \in_array($request->getStatus()->value, RequestQualityAnalyzer::LIVE_STATUSES, true);
+        $isReported = RequestStatus::Reported === $request->getStatus();
 
         return $this->render('admin/client_request/detail.html.twig', [
             'clientRequest' => $request,
@@ -228,6 +248,15 @@ class ClientRequestCrudController extends AbstractCrudController
             'canMarkSpam' => $isLive && [] !== array_intersect($signals, self::SPAM_SIGNALS),
             'canMarkDuplicate' => $isLive && \in_array(RequestQualityAnalyzer::SIGNAL_DUPLICATE, $signals, true),
             'qualityActionUrl' => $urls->setController(self::class)->setAction('qualityAction')->setEntityId($request->getId())->generateUrl(),
+            // * Signalements des producteurs (Report) : "Rétablir" / "Annuler" n'existent que tant que la demande est
+            // * "Signalée" ; reportDecision() revérifie ce statut côté serveur.
+            'reports' => $this->em->getRepository(Report::class)->findBy(['targetType' => self::REPORT_TARGET, 'targetId' => $request->getId()], ['createdAt' => 'DESC']),
+            'reasonLabels' => ReportClientRequestRequest::REASON_LABELS,
+            'reportStatusLabels' => self::REPORT_STATUS_LABELS,
+            'reportStatusVariants' => self::REPORT_STATUS_VARIANTS,
+            'canDecideReport' => $isReported,
+            'restoreStatusLabel' => $isReported ? self::STATUS_LABELS[$this->statusBeforeReport($request)->value] : null,
+            'reportDecisionUrl' => $urls->setController(self::class)->setAction('reportDecision')->setEntityId($request->getId())->generateUrl(),
             'indexUrl' => $urls->setController(self::class)->setAction(Action::INDEX)->unset('entityId')->generateUrl(),
             'editUrl' => $urls->setController(self::class)->setAction(Action::EDIT)->setEntityId($request->getId())->generateUrl(),
         ]);
@@ -313,6 +342,98 @@ class ClientRequestCrudController extends AbstractCrudController
             ['status' => RequestStatus::Cancelled->value, 'signals' => $signals],
         );
         $this->em->flush();
+    }
+
+    // * Décision de l'équipe sur une demande signalée par un producteur (cahier fonctionnel, statuts de demande :
+    // * "Signalée : fait l'objet d'un contrôle"). "restore" = signalement infondé : la demande retrouve son statut d'avant
+    // * et les signalements ouverts sont rejetés ; "cancel" = signalement fondé : la demande est annulée et les
+    // * signalements sont résolus. Un RequestEvent et une entrée d'audit gardent la décision, comme qualityAction().
+    /**
+     * @param AdminContext<ClientRequest> $context
+     */
+    #[AdminRoute(path: '/{entityId}/report-decision', name: 'report_decision', options: ['methods' => ['POST']])]
+    public function reportDecision(AdminContext $context): Response
+    {
+        /** @var ClientRequest $request */
+        $request = $context->getEntity()->getInstance();
+        $httpRequest = $context->getRequest();
+        $admin = $this->getUser();
+        if (!$admin instanceof User) {
+            throw $this->createAccessDeniedException();
+        }
+        if (!$this->isCsrfTokenValid('client_request_report_decision', (string) $httpRequest->request->get('_csrf_token'))) {
+            throw $this->createAccessDeniedException('Jeton CSRF invalide.');
+        }
+
+        $decision = (string) $httpRequest->request->get('decision');
+        if (!\in_array($decision, ['restore', 'cancel'], true)) {
+            throw new BadRequestHttpException('Décision inconnue.');
+        }
+
+        if (RequestStatus::Reported !== $request->getStatus()) {
+            $this->addFlash('danger', "Cette demande n'est pas signalée.");
+        } else {
+            $restore = 'restore' === $decision;
+            $this->applyReportDecision($request, $admin, $restore);
+            $this->addFlash('success', $restore ? 'Demande rétablie, signalements rejetés.' : 'Demande annulée, signalements résolus.');
+        }
+
+        return $this->redirect(
+            $this->container->get(AdminUrlGenerator::class)
+                ->setController(self::class)->setAction(Action::DETAIL)->setEntityId($request->getId())->generateUrl()
+        );
+    }
+
+    private function applyReportDecision(ClientRequest $request, User $admin, bool $restore): void
+    {
+        $newStatus = $restore ? $this->statusBeforeReport($request) : RequestStatus::Cancelled;
+        $reportStatus = $restore ? ReportStatus::Rejected : ReportStatus::Resolved;
+
+        $reports = $this->em->getRepository(Report::class)->findBy([
+            'targetType' => self::REPORT_TARGET,
+            'targetId' => $request->getId(),
+            'status' => [ReportStatus::Open, ReportStatus::InReview],
+        ]);
+        foreach ($reports as $report) {
+            $report->setStatus($reportStatus);
+            $report->setReviewedBy($admin);
+
+            $action = new ModerationAction();
+            $action->setReport($report);
+            $action->setAdmin($admin);
+            $action->setActionType($restore ? 'restore_request' : 'cancel_request');
+            $action->setPayload(['requestId' => $request->getId()->toRfc4122(), 'status' => $newStatus->value]);
+            $this->em->persist($action);
+        }
+
+        $request->setStatus($newStatus);
+
+        $event = new RequestEvent();
+        $event->setRequest($request);
+        $event->setActor($admin);
+        $event->setEventType($restore ? 'report_rejected' : 'report_resolved');
+        $event->setPayload(['status' => $newStatus->value, 'reports' => \count($reports)]);
+        $this->em->persist($event);
+
+        $this->auditLogger->log(
+            $restore ? 'client_request_report_rejected' : 'client_request_report_resolved',
+            'matching',
+            'client_requests',
+            $request->getId()->toRfc4122(),
+            ['status' => RequestStatus::Reported->value],
+            ['status' => $newStatus->value, 'reports' => \count($reports)],
+        );
+        $this->em->flush();
+    }
+
+    // * Statut d'avant le signalement, lu dans le dernier RequestEvent 'reported'. Une demande passée à "Signalée" sans
+    // * cet événement (donnée de démo, modification à la main) revient à "Envoyée".
+    private function statusBeforeReport(ClientRequest $request): RequestStatus
+    {
+        $event = $this->em->getRepository(RequestEvent::class)->findOneBy(['request' => $request, 'eventType' => 'reported'], ['createdAt' => 'DESC']);
+        $previous = RequestStatus::tryFrom((string) (($event?->getPayload() ?? [])['previousStatus'] ?? ''));
+
+        return null !== $previous && \in_array($previous, RequestMatchRepository::OPEN_REQUEST_STATUSES, true) ? $previous : RequestStatus::Sent;
     }
 
     public function configureActions(Actions $actions): Actions

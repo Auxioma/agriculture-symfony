@@ -7,7 +7,9 @@ use App\Entity\Identity\User;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\ProducerReply;
 use App\Entity\Messaging\Conversation;
+use App\Entity\Matching\RequestEvent;
 use App\Entity\Messaging\Message;
+use App\Entity\Trust\Report;
 use App\Enum\RequestStatus;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
@@ -568,6 +570,155 @@ final class ClientRequestCrudControllerTest extends ApiTestCase
 
         self::assertResponseStatusCodeSame(403);
         self::assertSame('sent', $this->requestStatus($spam));
+    }
+
+    /**
+     * Une demande "Signalée" par un producteur : le Report et le RequestEvent 'reported' que crée
+     * ProducerRequestController::reportRequest() (withEvent = false : demande passée à "Signalée" sans cet événement).
+     *
+     * @return array{0: ClientRequest, 1: Report}
+     */
+    private function makeReportedRequest(string $prefix, RequestStatus $previous = RequestStatus::Sent, bool $withEvent = true): array
+    {
+        $request = $this->makeClientRequest($this->makeUser($prefix), null, status: RequestStatus::Reported);
+        $reporter = $this->makeUser($prefix.'rep');
+
+        $report = new Report();
+        $report->setReporter($reporter);
+        $report->setTargetType('client_request');
+        $report->setTargetId($request->getId());
+        $report->setReason('circumvention');
+        $report->setMessage('Il veut payer hors plateforme');
+        $this->em->persist($report);
+
+        if ($withEvent) {
+            $event = new RequestEvent();
+            $event->setRequest($request);
+            $event->setActor($reporter);
+            $event->setEventType('reported');
+            $event->setPayload(['previousStatus' => $previous->value]);
+            $this->em->persist($event);
+        }
+        $this->em->flush();
+
+        return [$request, $report];
+    }
+
+    private function reportStatus(Report $report): string
+    {
+        $status = $this->em->getConnection()->fetchOne('SELECT status FROM trust.reports WHERE id = :id', ['id' => $report->getId()->toRfc4122()]);
+        self::assertNotFalse($status);
+
+        return $status;
+    }
+
+    public function testDetailOfAReportedRequestShowsProducerReportsAndBothDecisions(): void
+    {
+        $this->loginAsAdmin();
+        [$reported] = $this->makeReportedRequest('repdet', RequestStatus::RepliesReceived);
+        $clean = $this->makeClientRequest($this->makeUser('repclean'));
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->urlFor(Action::DETAIL, $reported->getId()->toRfc4122()));
+        $text = $crawler->filter('body')->text();
+        self::assertStringContainsString('Signalements de producteurs', $text);
+        self::assertStringContainsString('Coordonnées suspectes ou contournement de la plateforme', $text);
+        self::assertStringContainsString('Il veut payer hors plateforme', $text);
+        self::assertStringContainsString('repdetrep', $text);
+        self::assertStringContainsString('« Réponses reçues »', $text);
+        self::assertCount(1, $crawler->selectButton('Rétablir la demande'));
+        self::assertCount(1, $crawler->selectButton('Annuler la demande'));
+
+        $cleanCrawler = $this->client->request('GET', $this->urlFor(Action::DETAIL, $clean->getId()->toRfc4122()));
+        self::assertStringNotContainsString('Signalements de producteurs', $cleanCrawler->filter('body')->text());
+        self::assertCount(0, $cleanCrawler->selectButton('Rétablir la demande'));
+    }
+
+    public function testRestoringAReportedRequestPutsItBackAndRejectsItsReports(): void
+    {
+        $admin = $this->loginAsAdmin();
+        [$request, $report] = $this->makeReportedRequest('represtore', RequestStatus::ConversationOpen);
+
+        $crawler = $this->client->submit($this->client->request('GET', $this->urlFor(Action::DETAIL, $request->getId()->toRfc4122()))
+            ->selectButton('Rétablir la demande')->form());
+
+        self::assertSelectorTextContains('.alert', 'Demande rétablie');
+        self::assertSame('conversation_open', $this->requestStatus($request));
+        self::assertSame('rejected', $this->reportStatus($report));
+        self::assertSame($admin->getId()->toRfc4122(), $this->em->getConnection()->fetchOne('SELECT reviewed_by_id FROM trust.reports WHERE id = :id', ['id' => $report->getId()->toRfc4122()]));
+        self::assertCount(0, $crawler->selectButton('Rétablir la demande'));
+
+        $connection = $this->em->getConnection();
+        $event = $connection->fetchAssociative("SELECT actor_id FROM matching.request_events WHERE request_id = :id AND event_type = 'report_rejected'", ['id' => $request->getId()->toRfc4122()]);
+        self::assertNotFalse($event);
+        self::assertSame($admin->getId()->toRfc4122(), $event['actor_id']);
+        self::assertSame(1, (int) $connection->fetchOne("SELECT count(*) FROM trust.moderation_actions WHERE report_id = :id AND action_type = 'restore_request'", ['id' => $report->getId()->toRfc4122()]));
+        $audit = $connection->fetchAssociative("SELECT old_data, new_data FROM audit.audit_logs WHERE action = 'client_request_report_rejected' AND record_id = :id", ['id' => $request->getId()->toRfc4122()]);
+        self::assertNotFalse($audit);
+        self::assertStringContainsString('reported', $audit['old_data']);
+        self::assertStringContainsString('conversation_open', $audit['new_data']);
+    }
+
+    public function testCancellingAReportedRequestCancelsItAndResolvesItsReports(): void
+    {
+        $admin = $this->loginAsAdmin();
+        [$request, $report] = $this->makeReportedRequest('repcancel');
+
+        $this->client->submit($this->client->request('GET', $this->urlFor(Action::DETAIL, $request->getId()->toRfc4122()))
+            ->selectButton('Annuler la demande')->form());
+
+        self::assertSelectorTextContains('.alert', 'Demande annulée');
+        self::assertSame('cancelled', $this->requestStatus($request));
+        self::assertSame('resolved', $this->reportStatus($report));
+
+        $connection = $this->em->getConnection();
+        self::assertSame(1, (int) $connection->fetchOne("SELECT count(*) FROM matching.request_events WHERE request_id = :id AND event_type = 'report_resolved' AND actor_id = :admin", [
+            'id' => $request->getId()->toRfc4122(),
+            'admin' => $admin->getId()->toRfc4122(),
+        ]));
+        self::assertSame(1, (int) $connection->fetchOne("SELECT count(*) FROM audit.audit_logs WHERE action = 'client_request_report_resolved' AND record_id = :id", ['id' => $request->getId()->toRfc4122()]));
+    }
+
+    public function testRestoringWithoutAReportedEventFallsBackToSent(): void
+    {
+        $this->loginAsAdmin();
+        [$request] = $this->makeReportedRequest('repnoevent', withEvent: false);
+
+        $this->client->submit($this->client->request('GET', $this->urlFor(Action::DETAIL, $request->getId()->toRfc4122()))
+            ->selectButton('Rétablir la demande')->form());
+
+        self::assertSame('sent', $this->requestStatus($request));
+    }
+
+    public function testReportDecisionIsRejectedOnceTheRequestIsNoLongerReported(): void
+    {
+        $this->loginAsAdmin();
+        [$request, $report] = $this->makeReportedRequest('repraced');
+        $form = $this->client->request('GET', $this->urlFor(Action::DETAIL, $request->getId()->toRfc4122()))->selectButton('Annuler la demande')->form();
+
+        $this->em->getConnection()->executeStatement("UPDATE matching.client_requests SET status = 'archived' WHERE id = :id", ['id' => $request->getId()->toRfc4122()]);
+        $this->client->submit($form);
+
+        self::assertSelectorTextContains('.alert-danger', "n'est pas signalée");
+        self::assertSame('archived', $this->requestStatus($request));
+        self::assertSame('open', $this->reportStatus($report));
+    }
+
+    public function testReportDecisionWithUnknownDecisionOrInvalidCsrfTokenIsRefused(): void
+    {
+        $this->loginAsAdmin();
+        [$request, $report] = $this->makeReportedRequest('repbad');
+        $form = $this->client->request('GET', $this->urlFor(Action::DETAIL, $request->getId()->toRfc4122()))->selectButton('Annuler la demande')->form();
+        $token = $form->get('_csrf_token')->getValue();
+
+        $this->client->request('POST', $form->getUri(), ['decision' => 'delete-everything', '_csrf_token' => $token]);
+        self::assertResponseStatusCodeSame(400);
+
+        $this->client->request('POST', $form->getUri(), ['decision' => 'cancel', '_csrf_token' => 'faux']);
+        self::assertResponseStatusCodeSame(403);
+
+        self::assertSame('reported', $this->requestStatus($request));
+        self::assertSame('open', $this->reportStatus($report));
     }
 
     public function testCreatingRequestFromBackofficeIsForbidden(): void
