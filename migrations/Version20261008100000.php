@@ -8,7 +8,7 @@ use Doctrine\DBAL\Schema\Schema;
 use Doctrine\Migrations\AbstractMigration;
 
 /**
- * Réponse producteur (cahier fonctionnel 8.1, "Champs d'une réponse") : le cahier demande une quantité disponible
+ * Réponse producteur (cahier fonctionnel, "Champs d'une réponse") : le cahier demande une quantité disponible
  * et des conditions de retrait et de livraison séparées, que le MPD et la table n'avaient pas (une seule colonne
  * "conditions", conservée). Le reste du diff auto-généré par doctrine:migrations:diff (search_vector, index
  * GIN/GiST, INET) est du bruit préexistant, volontairement exclu.

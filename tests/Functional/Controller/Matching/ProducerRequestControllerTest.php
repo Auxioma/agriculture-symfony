@@ -232,7 +232,7 @@ final class ProducerRequestControllerTest extends ApiTestCase
         $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
         $this->em->flush();
 
-        // * cahier fonctionnel 8.1 : quantité disponible, conditions de retrait et de livraison séparées
+        // * cahier fonctionnel, champs d'une réponse : quantité disponible, conditions de retrait et de livraison séparées
         $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: [
             'CONTENT_TYPE' => 'application/json',
             'HTTP_AUTHORIZATION' => 'Bearer '.$producerToken,

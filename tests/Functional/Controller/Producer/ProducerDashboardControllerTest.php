@@ -4,6 +4,7 @@ namespace App\Tests\Functional\Controller\Producer;
 
 use App\Entity\Identity\User;
 use App\Entity\Matching\ProducerReply;
+use App\Entity\Matching\ReplyAttachment;
 use App\Entity\Matching\RequestAttachment;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
@@ -15,6 +16,7 @@ use App\Enum\ReplyStatus;
 use App\Enum\RequestStatus;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * Teste GET /api/producer/dashboard (cahier fonctionnel, dashboard producteur : "Demandes disponibles,
@@ -168,6 +170,53 @@ final class ProducerDashboardControllerTest extends ApiTestCase
         self::assertEquals(12.5, $data[0]['priceAmount']);
         self::assertSame('Client', $data[0]['clientName']);
         self::assertArrayHasKey('sentAt', $data[0]);
+    }
+
+    public function testQuoteDetailExposesTheWholeQuoteButHidesWhatIsNotAQuote(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $match = $this->makeMatch($producer, urgency: 0);
+        $match->getRequest()->setQuantity('20');
+        $quote = $this->reply($match, ReplyStatus::Seen, '12', '-2 days');
+        $quote->setAvailableQuantity('20');
+        $quote->setAvailabilityDate(new \DateTimeImmutable('2026-08-23'));
+        $quote->setValidUntil(new \DateTimeImmutable('+5 days'));
+        $quote->setPickupConditions('À la ferme');
+        $quote->setDeliveryConditions('Possible < 15 km');
+        $quote->setReplyText('Parfait, je peux vous proposer ce produit.');
+        $attachment = new ReplyAttachment();
+        $attachment->setFileName('devis-tomates.pdf');
+        $quote->addAttachment($attachment);
+        $this->em->persist($attachment);
+        // * pas des devis (404) : un brouillon, une réponse sans prix, le devis d'un autre producteur
+        $draft = $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Draft, '9');
+        $noPrice = $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Sent);
+        $other = $this->makeProducerProfile($this->makeUser('other-producer'), $producer->getCountry());
+        $otherQuote = $this->reply($this->makeMatch($other, urgency: 0), ReplyStatus::Sent, '5');
+        $this->em->flush();
+        $get = function (string $id) use ($token): int {
+            $this->client->request('GET', '/api/producer/quotes/'.$id, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+            return $this->client->getResponse()->getStatusCode();
+        };
+
+        self::assertSame(200, $get($quote->getId()->toRfc4122()));
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame('seen', $data['status']);
+        self::assertSame('individual', $data['clientType']);
+        self::assertEquals(12, $data['priceAmount']);
+        self::assertEquals(20, $data['availableQuantity']);
+        self::assertStringStartsWith('2026-08-23', $data['availabilityDate']);
+        self::assertSame('À la ferme', $data['pickupConditions']);
+        self::assertSame('Possible < 15 km', $data['deliveryConditions']);
+        self::assertSame('Parfait, je peux vous proposer ce produit.', $data['replyText']);
+        self::assertSame([['fileName' => 'devis-tomates.pdf', 'fileUrl' => null]], $data['attachments']);
+
+        self::assertSame(404, $get($draft->getId()->toRfc4122()));
+        self::assertSame(404, $get($noPrice->getId()->toRfc4122()));
+        self::assertSame(404, $get($otherQuote->getId()->toRfc4122()));
+        self::assertSame(404, $get(Uuid::v4()->toRfc4122()));
+        self::assertSame(404, $get('pas-un-identifiant'));
     }
 
     public function testQuotesRejectsAccountWithoutProducerProfile(): void
