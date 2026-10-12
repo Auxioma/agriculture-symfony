@@ -4,10 +4,10 @@ namespace App\Controller\Api;
 
 use App\Entity\Identity\User;
 use App\Entity\Matching\ProducerReply;
-use App\Entity\Matching\ReplyAttachment;
 use App\Enum\NeedType;
 use App\Enum\ReplyStatus;
 use App\Service\Matching\AvailableRequestPresenter;
+use App\Service\Matching\ReplyAttachmentManager;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -56,12 +56,50 @@ final class ProducerQuoteController extends AbstractController
 
     /**
      * Détail d'un devis (page "Détail du devis") : le résumé de la liste plus la quantité disponible, la date
-     * disponible, les conditions de retrait et de livraison, le message du producteur et les pièces jointes. Un
-     * brouillon (il se rouvre depuis la page de réponse), un refus poli ou la réponse d'un autre producteur donnent 404
-     * (on ne dit pas qu'ils existent).
+     * disponible, les conditions de retrait et de livraison, le message du producteur et les pièces jointes (avec une
+     * URL signée à durée limitée). Un brouillon, un refus poli ou la réponse d'un autre producteur donnent 404.
      */
     #[Route('/api/producer/quotes/{id}', methods: ['GET'])]
-    public function getQuote(string $id, #[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter): JsonResponse
+    public function getQuote(string $id, #[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter, ReplyAttachmentManager $attachments): JsonResponse
+    {
+        $reply = $this->findOwnQuote($id, $user, $em);
+        if ($reply instanceof JsonResponse) {
+            return $reply;
+        }
+
+        return $this->json($this->summary($reply, $presenter) + [
+            'clientType' => $reply->getRequest()->getNeedType() === NeedType::Professional ? 'professional' : 'individual',
+            'availableQuantity' => $reply->getAvailableQuantity() !== null ? (float) $reply->getAvailableQuantity() : null,
+            'availabilityDate' => $reply->getAvailabilityDate()?->format(DATE_ATOM),
+            'pickupConditions' => $reply->getPickupConditions(),
+            'deliveryConditions' => $reply->getDeliveryConditions(),
+            'replyText' => $reply->getReplyText(),
+            'attachments' => array_map($attachments->present(...), $reply->getAttachments()->toArray()),
+        ]);
+    }
+
+    /**
+     * Archiver un devis (cahier fonctionnel, statuts d'une réponse : "Archivée -- réponse conservée dans l'historique").
+     * Le producteur range sa propre réponse ; le statut précédent (même "acceptée") n'est pas gardé. Archiver deux fois
+     * ne change rien.
+     */
+    #[Route('/api/producer/quotes/{id}/archive', methods: ['POST'])]
+    public function archiveQuote(string $id, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    {
+        $reply = $this->findOwnQuote($id, $user, $em);
+        if ($reply instanceof JsonResponse) {
+            return $reply;
+        }
+
+        $reply->setStatus(ReplyStatus::Archived);
+        $em->flush();
+
+        return $this->json(['id' => $reply->getId()->toRfc4122(), 'status' => $reply->getStatus()->value]);
+    }
+
+    // * 404 pour un brouillon (il se rouvre depuis la page de réponse), un refus poli ou la réponse d'un autre
+    // * producteur : on ne dit pas qu'ils existent
+    private function findOwnQuote(string $id, User $user, EntityManagerInterface $em): ProducerReply|JsonResponse
     {
         $producer = $user->getProducerProfile();
         if ($producer === null) {
@@ -73,18 +111,7 @@ final class ProducerQuoteController extends AbstractController
             return $this->json(['error' => 'Devis introuvable.'], 404);
         }
 
-        return $this->json($this->summary($reply, $presenter) + [
-            'clientType' => $reply->getRequest()->getNeedType() === NeedType::Professional ? 'professional' : 'individual',
-            'availableQuantity' => $reply->getAvailableQuantity() !== null ? (float) $reply->getAvailableQuantity() : null,
-            'availabilityDate' => $reply->getAvailabilityDate()?->format(DATE_ATOM),
-            'pickupConditions' => $reply->getPickupConditions(),
-            'deliveryConditions' => $reply->getDeliveryConditions(),
-            'replyText' => $reply->getReplyText(),
-            'attachments' => array_map(
-                static fn (ReplyAttachment $a) => ['fileName' => $a->getFileName(), 'fileUrl' => $a->getFileUrl()],
-                $reply->getAttachments()->toArray()
-            ),
-        ]);
+        return $reply;
     }
 
     // * même définition que le filtre de listQuotes()

@@ -14,12 +14,14 @@ use App\Entity\Matching\RequestEvent;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
 use App\Entity\Trust\Report;
+use App\Enum\MatchStatus;
 use App\Enum\ReplyStatus;
 use App\Enum\ReportStatus;
 use App\Enum\RequestStatus;
 use App\Repository\Matching\RequestMatchRepository;
 use App\Service\Audit\AuditLogger;
 use App\Service\Matching\AvailableRequestPresenter;
+use App\Service\Matching\ReplyAttachmentManager;
 use App\Service\Notification\NotificationService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bridge\Doctrine\Types\UuidType;
@@ -112,7 +114,7 @@ final class ProducerRequestController extends AbstractController
                 'quantity' => $quantity !== null ? (float) $quantity : null,
                 'unit' => $request->getUnit()?->getCode(),
                 'urgent' => $request->getUrgencyLevel() > 0,
-                'status' => $this->requestStatus($reply, isset($newIds[$m->getId()->toRfc4122()])),
+                'status' => $this->requestStatus($reply, isset($newIds[$m->getId()->toRfc4122()]), $m),
                 'receivedAt' => $m->getCreatedAt()->format(DATE_ATOM),
                 'respondedAt' => $reply?->getCreatedAt()->format(DATE_ATOM),
                 'declined' => $reply?->getStatus() === ReplyStatus::Declined,
@@ -126,7 +128,7 @@ final class ProducerRequestController extends AbstractController
      * pièces jointes. status/respondedAt/declined : comme pour la liste des demandes reçues.
      */
     #[Route('/api/producer/requests/{id}', methods: ['GET'])]
-    public function getRequestDetailForProducer(string $id, #[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter): JsonResponse
+    public function getRequestDetailForProducer(string $id, #[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter, ReplyAttachmentManager $attachments): JsonResponse
     {
         $result = $this->findMatchedRequest($id, $user, $em);
         if ($result instanceof JsonResponse) {
@@ -159,6 +161,8 @@ final class ProducerRequestController extends AbstractController
         return $this->json($presenter->present($match) + [
             // * brouillon de réponse en cours (page "Répondre à la demande"), null s'il n'y en a pas
             'draft' => $draft === null ? null : [
+                'id' => $draft->getId()->toRfc4122(),
+                'attachments' => array_map($attachments->present(...), $draft->getAttachments()->toArray()),
                 'replyText' => $draft->getReplyText(),
                 'priceAmount' => $draft->getPriceAmount() !== null ? (float) $draft->getPriceAmount() : null,
                 'priceUnitId' => $draft->getPriceUnit()?->getId()->toRfc4122(),
@@ -181,7 +185,7 @@ final class ProducerRequestController extends AbstractController
                 static fn (RequestAttachment $a) => ['fileName' => $a->getFileName(), 'fileUrl' => $a->getFileUrl()],
                 $clientRequest->getAttachments()->toArray()
             ),
-            'status' => $this->requestStatus($reply, $isNew),
+            'status' => $this->requestStatus($reply, $isNew, $match),
             // * signalée et pas encore tranchée par l'équipe : la page dit "en cours de vérification" plutôt que "plus ouverte"
             'underReview' => RequestStatus::Reported === $clientRequest->getStatus(),
             'respondedAt' => $reply?->getCreatedAt()->format(DATE_ATOM),
@@ -189,10 +193,15 @@ final class ProducerRequestController extends AbstractController
         ]);
     }
 
-    // * new = encore à traiter, treated = réponse envoyée ou refus, closed = plus ouverte (expirée, annulée...)
-    private function requestStatus(?ProducerReply $reply, bool $isNew): string
+    // * new = encore à traiter, treated = réponse envoyée ou refus, archived = mise de côté par le producteur,
+    // * closed = plus ouverte (expirée, annulée...)
+    private function requestStatus(?ProducerReply $reply, bool $isNew, RequestMatch $match): string
     {
-        return $reply !== null ? 'treated' : ($isNew ? 'new' : 'closed');
+        if ($reply !== null) {
+            return 'treated';
+        }
+
+        return MatchStatus::Ignored === $match->getStatus() ? 'archived' : ($isNew ? 'new' : 'closed');
     }
 
     /**
@@ -210,9 +219,9 @@ final class ProducerRequestController extends AbstractController
         if ($result instanceof JsonResponse) {
             return $result;
         }
-        [$clientRequest, $producer] = $result;
+        [$clientRequest, $producer, $match] = $result;
 
-        $closed = $this->refuseIfNotOpen($clientRequest);
+        $closed = $this->refuseIfNotOpen($clientRequest, $match);
         if ($closed !== null) {
             return $closed;
         }
@@ -258,6 +267,10 @@ final class ProducerRequestController extends AbstractController
         // * celle du brouillon. Enregistrer un brouillon met à jour le précédent.
         $reply = $requestDto->draft ? ($draft ?? new ProducerReply()) : new ProducerReply();
         if (!$requestDto->draft && $draft !== null) {
+            foreach ($draft->getAttachments()->toArray() as $attachment) {
+                $draft->removeAttachment($attachment);
+                $reply->addAttachment($attachment);
+            }
             $em->remove($draft);
         }
         $reply->setRequest($clientRequest);
@@ -303,17 +316,30 @@ final class ProducerRequestController extends AbstractController
      * Refuser une demande transmise.
      */
     #[Route('/api/producer/requests/{id}/decline', methods: ['POST'])]
-    public function declineRequest(string $id, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    public function declineRequest(string $id, #[CurrentUser] User $user, EntityManagerInterface $em, ReplyAttachmentManager $attachments): JsonResponse
     {
         $result = $this->findMatchedRequest($id, $user, $em);
         if ($result instanceof JsonResponse) {
             return $result;
         }
-        [$clientRequest, $producer] = $result;
+        [$clientRequest, $producer, $match] = $result;
 
-        $closed = $this->refuseIfNotOpen($clientRequest);
+        $closed = $this->refuseIfNotOpen($clientRequest, $match);
         if ($closed !== null) {
             return $closed;
+        }
+
+        // * même règle que pour répondre : une demande déjà traitée n'est pas refusée une seconde fois ; un brouillon
+        // * en cours (et ses pièces jointes) est abandonné, sinon il resterait dans "Mes devis" pour une demande refusée
+        foreach ($em->getRepository(ProducerReply::class)->findBy(['request' => $clientRequest, 'producer' => $producer]) as $previous) {
+            if ($previous->getStatus() !== ReplyStatus::Draft) {
+                return $this->json(['error' => 'Cette demande est déjà traitée.'], 409);
+            }
+            foreach ($previous->getAttachments()->toArray() as $attachment) {
+                $attachments->delete($attachment);
+                $em->remove($attachment);
+            }
+            $em->remove($previous);
         }
 
         $reply = new ProducerReply();
@@ -325,6 +351,35 @@ final class ProducerRequestController extends AbstractController
         $em->flush();
 
         return $this->json(['id' => $reply->getId()->toRfc4122()], 201);
+    }
+
+    /**
+     * Archiver une demande (cahier : "Archiver ou signaler une demande") : le producteur la met de côté. Seule sa
+     * correspondance passe à "ignorée" (statut prévu par le MLD) : la demande du client n'est pas touchée, et elle
+     * quitte les demandes disponibles de ce producteur seulement. Une demande déjà traitée ou plus ouverte ne s'archive pas.
+     */
+    #[Route('/api/producer/requests/{id}/archive', methods: ['POST'])]
+    public function archiveRequest(string $id, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    {
+        $result = $this->findMatchedRequest($id, $user, $em);
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+        [, $producer, $match] = $result;
+
+        $isNew = $em->getRepository(RequestMatch::class)->createAvailableQueryBuilder($producer)
+            ->andWhere('m = :match')
+            ->setParameter('match', $match)
+            ->getQuery()
+            ->getOneOrNullResult() !== null;
+        if (!$isNew) {
+            return $this->json(['error' => 'Cette demande ne peut plus être archivée.'], 409);
+        }
+
+        $match->setStatus(MatchStatus::Ignored);
+        $em->flush();
+
+        return $this->json(['status' => 'archived']);
     }
 
     /**
@@ -399,9 +454,14 @@ final class ProducerRequestController extends AbstractController
         return $this->json(['id' => $report->getId()->toRfc4122()], 201);
     }
 
-    // * une demande qui n'est plus en circulation (expirée, annulée, signalée...) ne reçoit plus de réponse ni de refus
-    private function refuseIfNotOpen(ClientRequest $clientRequest): ?JsonResponse
+    // * une demande qui n'est plus en circulation (expirée, annulée, signalée...) ou que le producteur a archivée ne
+    // * reçoit plus de réponse ni de refus
+    private function refuseIfNotOpen(ClientRequest $clientRequest, RequestMatch $match): ?JsonResponse
     {
+        if (MatchStatus::Ignored === $match->getStatus()) {
+            return $this->json(['error' => 'Cette demande est archivée.'], 409);
+        }
+
         return \in_array($clientRequest->getStatus(), RequestMatchRepository::OPEN_REQUEST_STATUSES, true)
             ? null
             : $this->json(['error' => "Cette demande n'est plus ouverte."], 409);

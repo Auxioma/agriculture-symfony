@@ -219,7 +219,9 @@ final class ProducerDashboardControllerTest extends ApiTestCase
         self::assertSame('À la ferme', $data['pickupConditions']);
         self::assertSame('Possible < 15 km', $data['deliveryConditions']);
         self::assertSame('Parfait, je peux vous proposer ce produit.', $data['replyText']);
-        self::assertSame([['fileName' => 'devis-tomates.pdf', 'fileUrl' => null]], $data['attachments']);
+        self::assertCount(1, $data['attachments']);
+        self::assertSame('devis-tomates.pdf', $data['attachments'][0]['fileName']);
+        self::assertNull($data['attachments'][0]['fileUrl']);
 
         // * une réponse sans prix a sa fiche, avec un prix nul
         self::assertSame(200, $get($noPrice->getId()->toRfc4122()));
@@ -337,6 +339,74 @@ final class ProducerDashboardControllerTest extends ApiTestCase
         }
 
         self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM matching.producer_replies'));
+    }
+
+    public function testArchivingARequestPutsItAsideForThisProducerOnly(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $match = $this->makeMatch($producer, urgency: 0);
+        $treated = $this->makeMatch($producer, urgency: 0);
+        $this->reply($treated, ReplyStatus::Sent, '5');
+        $notMatched = $this->makeClientRequest($this->makeUser('stranger'), null);
+        $this->em->flush();
+        $id = $match->getRequest()->getId()->toRfc4122();
+        $url = '/api/producer/requests/'.$id;
+
+        self::assertSame(200, $this->postJson($token, $url.'/archive', []));
+
+        // * seule la correspondance du producteur est mise de côté, la demande du client reste comme elle est
+        $connection = $this->em->getConnection();
+        self::assertSame('ignored', $connection->fetchOne('SELECT status FROM matching.request_matches WHERE request_id = :id', ['id' => $id]));
+        self::assertSame('sent', $connection->fetchOne('SELECT status FROM matching.client_requests WHERE id = :id', ['id' => $id]));
+
+        $get = function (string $path) use ($token): array {
+            $this->client->request('GET', '/api/producer/requests/'.$path, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+            return json_decode($this->client->getResponse()->getContent(), true);
+        };
+        self::assertNotContains($id, array_column($get('available'), 'requestId'));
+        self::assertSame('archived', $get($id)['status']);
+        $received = array_column($get('received'), 'status', 'requestId');
+        self::assertSame('archived', $received[$id]);
+
+        // * ni réponse ni refus sur une demande archivée, et on ne l'archive pas deux fois
+        self::assertSame(409, $this->postJson($token, $url.'/reply', ['replyText' => 'Bonjour']));
+        self::assertSame(409, $this->postJson($token, $url.'/decline', []));
+        self::assertSame(409, $this->postJson($token, $url.'/archive', []));
+        // * une demande déjà traitée ne s'archive pas ; une demande qui n'est pas la sienne, non plus
+        self::assertSame(409, $this->postJson($token, '/api/producer/requests/'.$treated->getRequest()->getId()->toRfc4122().'/archive', []));
+        self::assertSame(403, $this->postJson($token, '/api/producer/requests/'.$notMatched->getId()->toRfc4122().'/archive', []));
+    }
+
+    public function testArchivingAQuoteKeepsItInTheListAsArchived(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $accepted = $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Accepted, '8');
+        $sent = $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Sent);
+        $sent->setReplyText('Je peux vous en fournir.');
+        $draft = $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Draft);
+        $refusal = $this->reply($this->makeMatch($producer, urgency: 0), ReplyStatus::Declined);
+        $other = $this->makeProducerProfile($this->makeUser('other-producer'), $producer->getCountry());
+        $otherQuote = $this->reply($this->makeMatch($other, urgency: 0), ReplyStatus::Sent, '5');
+        $this->em->flush();
+
+        foreach ([$accepted, $sent] as $quote) {
+            self::assertSame(200, $this->postJson($token, '/api/producer/quotes/'.$quote->getId()->toRfc4122().'/archive', []));
+            self::assertSame('archived', json_decode($this->client->getResponse()->getContent(), true)['status']);
+        }
+        // * archiver deux fois ne change rien
+        self::assertSame(200, $this->postJson($token, '/api/producer/quotes/'.$accepted->getId()->toRfc4122().'/archive', []));
+
+        self::assertSame(2, (int) $this->em->getConnection()->fetchOne("SELECT count(*) FROM matching.producer_replies WHERE status = 'archived'"));
+        $this->client->request('GET', '/api/producer/quotes', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        $statuses = array_column(json_decode($this->client->getResponse()->getContent(), true), 'status');
+        self::assertEqualsCanonicalizing(['archived', 'archived', 'draft'], $statuses);
+
+        // * un brouillon, un refus poli et la réponse d'un autre producteur : introuvables
+        foreach ([$draft, $refusal, $otherQuote] as $notMine) {
+            self::assertSame(404, $this->postJson($token, '/api/producer/quotes/'.$notMine->getId()->toRfc4122().'/archive', []));
+        }
+        self::assertSame(404, $this->postJson($token, '/api/producer/quotes/pas-un-identifiant/archive', []));
     }
 
     public function testReportRejectsAccountWithoutProducerProfile(): void
