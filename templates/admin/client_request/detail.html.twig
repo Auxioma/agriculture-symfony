@@ -47,6 +47,47 @@
         {% endif %}
     </section>
 
+    {# Signalements faits par des producteurs depuis le détail d'une demande (Report, target_type client_request). Les
+       boutons ne sont rendus que pour une demande "Signalée" -- ClientRequestCrudController::reportDecision() le
+       revérifie. #}
+    {% if reports is not empty or canDecideReport %}
+        <section class="tm-panel-block">
+            <h2 class="tm-section-title">Signalements de producteurs</h2>
+            {% if reports is empty %}<p class="tm-hint">Aucun signalement enregistré pour cette demande.</p>{% endif %}
+            <ul class="tm-related-requests">
+                {% for report in reports %}
+                    <li>
+                        <div>
+                            <strong>{{ reasonLabels[report.reason] ?? report.reason }}</strong>
+                            <span class="badge badge-{{ reportStatusVariants[report.status.value] ?? 'secondary' }}">{{ reportStatusLabels[report.status.value] ?? report.status.value }}</span>
+                            <br><span class="tm-hint">{{ report.createdAt|date('d/m/Y à H:i') }}{% if report.reporter %} · {{ report.reporter.email }}{% endif %}</span>
+                            {% if report.message %}<p class="tm-message-body">{{ report.message }}</p>{% endif %}
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+
+            {% if canDecideReport %}
+                <div class="tm-ticket-actions">
+                    <form method="post" action="{{ reportDecisionUrl }}">
+                        <input type="hidden" name="decision" value="restore">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('client_request_report_decision') }}">
+                        <button type="submit" class="tm-btn">Rétablir la demande</button>
+                    </form>
+                    <form method="post" action="{{ reportDecisionUrl }}">
+                        <input type="hidden" name="decision" value="cancel">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('client_request_report_decision') }}">
+                        <button type="submit" class="tm-btn tm-btn-danger">Annuler la demande</button>
+                    </form>
+                </div>
+                <p class="tm-hint" style="margin-top: 8px;">
+                    Rétablir remet la demande en « {{ restoreStatusLabel }} » et rejette les signalements ouverts. Annuler la retire
+                    de la circulation et résout les signalements. Dans les deux cas la décision est journalisée.
+                </p>
+            {% endif %}
+        </section>
+    {% endif %}
+
     <section class="tm-panel-block">
         <h2 class="tm-section-title">Signalement</h2>
         {% if signals is empty %}

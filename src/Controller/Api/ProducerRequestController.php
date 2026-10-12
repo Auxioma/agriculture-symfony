@@ -10,11 +10,15 @@ use App\Entity\Identity\User;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Matching\ProducerReply;
 use App\Entity\Matching\RequestAttachment;
+use App\Entity\Matching\RequestEvent;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
 use App\Entity\Trust\Report;
 use App\Enum\ReplyStatus;
 use App\Enum\ReportStatus;
+use App\Enum\RequestStatus;
+use App\Repository\Matching\RequestMatchRepository;
+use App\Service\Audit\AuditLogger;
 use App\Service\Matching\AvailableRequestPresenter;
 use App\Service\Notification\NotificationService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -178,6 +182,8 @@ final class ProducerRequestController extends AbstractController
                 $clientRequest->getAttachments()->toArray()
             ),
             'status' => $this->requestStatus($reply, $isNew),
+            // * signalée et pas encore tranchée par l'équipe : la page dit "en cours de vérification" plutôt que "plus ouverte"
+            'underReview' => RequestStatus::Reported === $clientRequest->getStatus(),
             'respondedAt' => $reply?->getCreatedAt()->format(DATE_ATOM),
             'declined' => $reply?->getStatus() === ReplyStatus::Declined,
         ]);
@@ -205,6 +211,11 @@ final class ProducerRequestController extends AbstractController
             return $result;
         }
         [$clientRequest, $producer] = $result;
+
+        $closed = $this->refuseIfNotOpen($clientRequest);
+        if ($closed !== null) {
+            return $closed;
+        }
 
         // * Une demande déjà traitée (réponse envoyée ou refus) ne reçoit pas de seconde réponse ; un brouillon
         // * existant est repris et mis à jour plutôt que dupliqué.
@@ -300,6 +311,11 @@ final class ProducerRequestController extends AbstractController
         }
         [$clientRequest, $producer] = $result;
 
+        $closed = $this->refuseIfNotOpen($clientRequest);
+        if ($closed !== null) {
+            return $closed;
+        }
+
         $reply = new ProducerReply();
         $reply->setRequest($clientRequest);
         $reply->setProducer($producer);
@@ -313,9 +329,12 @@ final class ProducerRequestController extends AbstractController
 
     /**
      * Signaler une demande (page "Signaler cette demande", cahier : "Archiver ou signaler une demande"). Crée un
-     * Report ouvert pour la modération, rien d'autre : la demande garde son statut et le producteur peut continuer à
-     * échanger avec le client pendant l'examen (l'équipe décide ensuite). Un même producteur ne peut pas signaler deux
-     * fois une demande tant que son premier signalement n'est pas traité.
+     * Report ouvert pour la modération et, si la demande est encore en circulation, la passe au statut "Signalée"
+     * (cahier fonctionnel, statuts de demande : "fait l'objet d'un contrôle") : elle sort des listes des producteurs
+     * jusqu'à la décision de l'équipe, qui la rétablit ou l'annule depuis l'admin. Le statut d'avant est gardé dans un
+     * RequestEvent pour pouvoir la rétablir. Une demande déjà terminée (expirée, annulée...) ou déjà signalée garde
+     * son statut : seul le Report est créé. Un même producteur ne peut pas signaler deux fois une demande
+     * tant que son premier signalement n'est pas traité.
      */
     #[Route('/api/producer/requests/{id}/report', methods: ['POST'])]
     public function reportRequest(
@@ -323,6 +342,7 @@ final class ProducerRequestController extends AbstractController
         #[MapRequestPayload] ReportClientRequestRequest $payload,
         #[CurrentUser] User $user,
         EntityManagerInterface $em,
+        AuditLogger $auditLogger,
     ): JsonResponse {
         $result = $this->findMatchedRequest($id, $user, $em);
         if ($result instanceof JsonResponse) {
@@ -352,11 +372,39 @@ final class ProducerRequestController extends AbstractController
         $report->setTargetId($clientRequest->getId());
         $report->setReason($payload->reason);
         $report->setMessage($payload->message);
-
         $em->persist($report);
+
+        $previousStatus = $clientRequest->getStatus();
+        if (\in_array($previousStatus, RequestMatchRepository::OPEN_REQUEST_STATUSES, true)) {
+            $clientRequest->setStatus(RequestStatus::Reported);
+
+            $event = new RequestEvent();
+            $event->setRequest($clientRequest);
+            $event->setActor($user);
+            $event->setEventType('reported');
+            $event->setPayload(['previousStatus' => $previousStatus->value, 'reportId' => $report->getId()->toRfc4122(), 'reason' => $payload->reason]);
+            $em->persist($event);
+
+            $auditLogger->log(
+                'client_request_reported',
+                'matching',
+                'client_requests',
+                $clientRequest->getId()->toRfc4122(),
+                ['status' => $previousStatus->value],
+                ['status' => RequestStatus::Reported->value, 'reportId' => $report->getId()->toRfc4122()],
+            );
+        }
         $em->flush();
 
         return $this->json(['id' => $report->getId()->toRfc4122()], 201);
+    }
+
+    // * une demande qui n'est plus en circulation (expirée, annulée, signalée...) ne reçoit plus de réponse ni de refus
+    private function refuseIfNotOpen(ClientRequest $clientRequest): ?JsonResponse
+    {
+        return \in_array($clientRequest->getStatus(), RequestMatchRepository::OPEN_REQUEST_STATUSES, true)
+            ? null
+            : $this->json(['error' => "Cette demande n'est plus ouverte."], 409);
     }
 
     /**
