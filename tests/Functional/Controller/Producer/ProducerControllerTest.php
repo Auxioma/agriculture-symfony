@@ -526,6 +526,159 @@ final class ProducerControllerTest extends ApiTestCase
         self::assertResponseStatusCodeSame(404);
     }
 
+    public function testGetProducerReturnsFirstPublicPhotoAsPhotoUrl(): void
+    {
+        $country = $this->makeCountry();
+        $producer = $this->makeProducerProfile($this->makeUser('with-photo'), $country, farmName: 'Ferme avec photo');
+        $this->makeProducerPhoto($producer, '/images/producers/privee.jpg', isPublic: false);
+        $this->makeProducerPhoto($producer, '/images/producers/ferme.jpg');
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122());
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        // * Une photo non publique ne doit jamais servir de photo de couverture.
+        self::assertSame('/images/producers/ferme.jpg', $data['photoUrl']);
+    }
+
+    public function testGetProducerReturnsNullPhotoUrlWithoutPublicPhoto(): void
+    {
+        $country = $this->makeCountry();
+        $producer = $this->makeProducerProfile($this->makeUser('no-photo'), $country, farmName: 'Ferme sans photo');
+        $this->makeProducerPhoto($producer, '/images/producers/privee.jpg', isPublic: false);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122());
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertArrayHasKey('photoUrl', $data);
+        self::assertNull($data['photoUrl']);
+    }
+
+    public function testGetProducerReturnsActiveProductsWithTheirSeason(): void
+    {
+        $country = $this->makeCountry();
+        $category = $this->makeCategory('Légumes');
+        $producer = $this->makeProducerProfile($this->makeUser('with-products'), $country, farmName: 'Ferme maraîchère');
+
+        $tomatoes = $this->makeProduct($category, 'Tomates');
+        $tomatoes->setIsActive(true);
+        $tomatoes->setSeasonStartMonth(6);
+        $tomatoes->setSeasonEndMonth(9);
+        $honey = $this->makeProduct($category, 'Miel');
+        $honey->setIsActive(true);
+        $stopped = $this->makeProduct($category, 'Retiré de la vente');
+        $stopped->setIsActive(true);
+        $discontinued = $this->makeProduct($category, 'Produit désactivé');
+        $discontinued->setIsActive(false);
+
+        $this->makeProducerProduct($producer, $tomatoes);
+        $this->makeProducerProduct($producer, $honey);
+        $this->makeProducerProduct($producer, $stopped, isActive: false);
+        $this->makeProducerProduct($producer, $discontinued);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122());
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        // * Triés par nom ; la ligne producteur inactive et le produit désactivé sont exclus.
+        self::assertSame(['Miel', 'Tomates'], array_column($data['products'], 'name'));
+        $tomatoesRow = $data['products'][1];
+        self::assertSame(6, $tomatoesRow['seasonStartMonth']);
+        self::assertSame(9, $tomatoesRow['seasonEndMonth']);
+        // * Saison inconnue : null (le front n'affiche alors aucune période).
+        self::assertNull($data['products'][0]['seasonStartMonth']);
+        self::assertNull($data['products'][0]['seasonEndMonth']);
+    }
+
+    public function testGetProducerReturnsEmptyProductsWhenNoneSold(): void
+    {
+        $country = $this->makeCountry();
+        $producer = $this->makeProducerProfile($this->makeUser('no-products'), $country);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122());
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame([], $data['products']);
+    }
+
+    public function testGetProducerReturnsPickupAndDeliveryFromSettings(): void
+    {
+        $country = $this->makeCountry();
+        $producer = $this->makeProducerProfile($this->makeUser('with-settings'), $country);
+        $settings = new ProducerSetting();
+        $settings->setProducer($producer);
+        $settings->setPickupEnabled(true);
+        $this->em->persist($settings);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122());
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertTrue($data['pickupAvailable']);
+        self::assertFalse($data['deliveryAvailable'], 'la livraison n\'a pas été activée');
+    }
+
+    public function testGetProducerOmitsPickupAndDeliveryWithoutSettings(): void
+    {
+        $country = $this->makeCountry();
+        $producer = $this->makeProducerProfile($this->makeUser('no-settings'), $country);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122());
+
+        // * Sans ligne producer_settings : « inconnu », pas « false » (qui s'afficherait « Non proposé »).
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertArrayNotHasKey('pickupAvailable', $data);
+        self::assertArrayNotHasKey('deliveryAvailable', $data);
+    }
+
+    public function testListProducerReviewsReturnsFirstNameAndInitialOnly(): void
+    {
+        $country = $this->makeCountry();
+        $producer = $this->makeProducerProfile($this->makeUser('reviewed'), $country);
+        $this->em->flush();
+
+        $client = $this->makeUser('named-client');
+        $client->setFirstName('Camille');
+        $client->setLastName('renaud');
+        $this->makeReview($client, $producer, $this->makeClientRequest($client), 5);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122().'/reviews');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        // * Jamais le nom complet ni l'e-mail : prénom + initiale du nom en majuscule.
+        self::assertSame('Camille R.', $data['reviews'][0]['authorName']);
+        self::assertStringNotContainsString('renaud', $this->client->getResponse()->getContent());
+        self::assertStringNotContainsString('@test.local', $this->client->getResponse()->getContent());
+    }
+
+    public function testListProducerReviewsReturnsNullAuthorNameWithoutFirstName(): void
+    {
+        $country = $this->makeCountry();
+        $producer = $this->makeProducerProfile($this->makeUser('reviewed-anon'), $country);
+        $this->em->flush();
+
+        $client = $this->makeUser('unnamed-client');
+        $this->makeReview($client, $producer, $this->makeClientRequest($client), 4);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122().'/reviews');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertNull($data['reviews'][0]['authorName']);
+    }
+
     public function testFeaturedProducersRejectsInvalidLocation(): void
     {
         $this->client->request('GET', '/api/producers/featured?latitude=999&longitude=1');

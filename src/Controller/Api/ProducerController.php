@@ -2,6 +2,7 @@
 
 namespace App\Controller\Api;
 
+use App\Entity\Identity\User;
 use App\Entity\Producer\DeliveryZone;
 use App\Entity\Producer\OpeningHour;
 use App\Entity\Producer\ProducerLabel;
@@ -51,7 +52,9 @@ final class ProducerController extends AbstractController
         }
 
         if (($categoryId = $request->query->get('categoryId')) !== null) {
-            // * Inclut les sous-catégories, à n'importe quelle profondeur.
+            // * Inclut les sous-catégories, à n'importe quelle profondeur : la page « Fruits » liste aussi les
+            // * producteurs de « Pommes » rattachée à « Fruits ». UNION (et non UNION ALL) évite une boucle
+            // * infinie si une catégorie était, par erreur, son propre ancêtre.
             $productConditions[] = <<<'SQL'
                 prod.category_id IN (
                     WITH RECURSIVE category_tree (id) AS (
@@ -64,7 +67,7 @@ final class ProducerController extends AbstractController
                     )
                     SELECT id FROM category_tree
                 )
-            SQL;
+SQL;
             $params['categoryId'] = $categoryId;
         }
 
@@ -81,7 +84,7 @@ final class ProducerController extends AbstractController
                     OR (prod.season_start_month > prod.season_end_month
                         AND (CAST(:month AS integer) >= prod.season_start_month OR CAST(:month AS integer) <= prod.season_end_month))
                 )
-            SQL;
+SQL;
             // * Fuseau explicite : sinon le mois dépend de la configuration du serveur (UTC la nuit du 31 au 1er).
             $params['month'] = (int) (new \DateTimeImmutable('now', new \DateTimeZone('Europe/Paris')))->format('n');
         }
@@ -258,6 +261,25 @@ final class ProducerController extends AbstractController
         return null;
     }
 
+    /**
+     * Nom affiché publiquement sous un avis : prénom + initiale du nom (« Camille R. »), jamais le nom complet
+     * ni l'e-mail. null si l'auteur est inconnu ou sans prénom : le front affiche alors « Client ».
+     */
+    private function publicAuthorName(?User $client): ?string
+    {
+        if ($client === null) {
+            return null;
+        }
+
+        $firstName = trim((string) $client->getFirstName());
+        $lastName = trim((string) $client->getLastName());
+        if ($firstName === '') {
+            return null;
+        }
+
+        return $lastName !== '' ? sprintf('%s %s.', $firstName, mb_strtoupper(mb_substr($lastName, 0, 1))) : $firstName;
+    }
+
     private function badRequest(string $message): JsonResponse
     {
         return $this->json(['error' => $message], 400);
@@ -403,6 +425,35 @@ final class ProducerController extends AbstractController
             ['producerId' => $producer->getId()->toRfc4122()]
         );
 
+        // * Photo de couverture : première photo publique (même règle que la liste et les producteurs à la une).
+        // * fetchOne() renvoie false s'il n'y en a aucune : "?: null" normalise en null pour le JSON.
+        $photoUrl = $em->getConnection()->fetchOne(
+            'SELECT file_url FROM producer.producer_media
+             WHERE producer_id = :producerId AND is_public = true
+             ORDER BY position ASC NULLS LAST
+             LIMIT 1',
+            ['producerId' => $producer->getId()->toRfc4122()]
+        ) ?: null;
+
+        // * Produits proposés avec leur période de disponibilité (saison du catalogue : mois de 1 à 12, null si
+        // * inconnue). Seules les lignes actives, sur des produits actifs, comme la liste et les compteurs.
+        $products = $em->getConnection()->fetchAllAssociative(
+            'SELECT DISTINCT prod.id, prod.name, prod.season_start_month, prod.season_end_month
+             FROM producer.producer_products pr
+             JOIN catalog.products prod ON prod.id = pr.product_id
+             WHERE pr.producer_id = :producerId AND pr.is_active = true AND prod.is_active = true
+             ORDER BY prod.name ASC',
+            ['producerId' => $producer->getId()->toRfc4122()]
+        );
+
+        // * Retrait / livraison : mêmes colonnes que les filtres pickupAvailable/deliveryAvailable de la liste.
+        // * Sans ligne producer_settings, le producteur n'a rien configuré : les deux clés sont absentes de la
+        // * réponse (inconnu), plutôt que « false » qui afficherait « Non proposé » à tort.
+        $settings = $em->getConnection()->fetchAssociative(
+            'SELECT pickup_enabled, delivery_enabled FROM producer.producer_settings WHERE producer_id = :producerId',
+            ['producerId' => $producer->getId()->toRfc4122()]
+        );
+
         // ! Pas de coordonnées GPS précises exposées ici : ProducerProfile::$addressVisibility est prévu pour
         // ! contrôler la précision affichée publiquement (ville seule vs adresse complète), mais cette logique
         // ! n'est pas encore implémentée. Se limiter à city/countryCode évite d'exposer une position exacte
@@ -411,6 +462,20 @@ final class ProducerController extends AbstractController
             'id' => $producer->getId()->toRfc4122(),
             'farmName' => $producer->getFarmName(),
             'slug' => $producer->getSlug(),
+            'photoUrl' => $photoUrl,
+            'products' => array_map(
+                static fn (array $row) => [
+                    'id' => $row['id'],
+                    'name' => $row['name'],
+                    'seasonStartMonth' => $row['season_start_month'] !== null ? (int) $row['season_start_month'] : null,
+                    'seasonEndMonth' => $row['season_end_month'] !== null ? (int) $row['season_end_month'] : null,
+                ],
+                $products
+            ),
+            ...($settings !== false ? [
+                'pickupAvailable' => (bool) $settings['pickup_enabled'],
+                'deliveryAvailable' => (bool) $settings['delivery_enabled'],
+            ] : []),
             'description' => $producer->getDescription(),
             'story' => $producer->getStory(),
             'city' => $producer->getCity(),
@@ -463,10 +528,18 @@ final class ProducerController extends AbstractController
 
         // * Seuls les avis Published sont exposés publiquement -- voir ReviewStatus et
         // * ReviewCrudController (modération back-office).
-        $reviews = $em->getRepository(Review::class)->findBy(
-            ['producer' => $producer, 'status' => ReviewStatus::Published],
-            ['createdAt' => 'DESC']
-        );
+        // * leftJoin + addSelect : charge les auteurs avec les avis en une seule requête (sinon Doctrine en
+        // * ferait une de plus par auteur distinct pour afficher son nom).
+        $reviews = $em->getRepository(Review::class)->createQueryBuilder('r')
+            ->leftJoin('r.client', 'c')
+            ->addSelect('c')
+            ->where('r.producer = :producer')
+            ->andWhere('r.status = :status')
+            ->setParameter('producer', $producer)
+            ->setParameter('status', ReviewStatus::Published)
+            ->orderBy('r.createdAt', 'DESC')
+            ->getQuery()
+            ->getResult();
 
         $ratings = array_filter(array_map(static fn (Review $r) => $r->getRating(), $reviews), static fn ($r) => $r !== null);
 
@@ -474,8 +547,9 @@ final class ProducerController extends AbstractController
             'averageRating' => $ratings !== [] ? round(array_sum($ratings) / count($ratings), 1) : null,
             'count' => count($reviews),
             'reviews' => array_map(
-                static fn (Review $r) => [
+                fn (Review $r) => [
                     'id' => $r->getId()->toRfc4122(),
+                    'authorName' => $this->publicAuthorName($r->getClient()),
                     'rating' => $r->getRating(),
                     'comment' => $r->getComment(),
                     'producerResponse' => $r->getProducerResponse(),
