@@ -10,6 +10,8 @@ use App\Entity\Catalog\Country;
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerProfile;
 use App\Enum\BillingCycle;
+use App\Enum\SubscriptionStatus;
+use App\Service\Payment\FakePaymentGateway;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
@@ -116,6 +118,36 @@ final class SubscriptionControllerTest extends ApiTestCase
         self::assertSame($subscription->getPlanPrice()->getPlan()->getCode(), $data['planCode']);
         self::assertSame('active', $data['status']);
         self::assertFalse($data['cancelAtPeriodEnd']);
+        // * de quoi afficher "Plan Pro, 24 €/mois, 24/30 demandes utilisées" : prix, offre, quota et demandes du mois
+        self::assertSame($subscription->getPlanPrice()->getId()->toRfc4122(), $data['planPriceId']);
+        self::assertArrayHasKey('amount', $data);
+        self::assertArrayHasKey('currencyCode', $data);
+        self::assertSame(0, $data['requestsThisMonth']);
+        self::assertNull($data['requestsQuota']);
+    }
+
+    private function gateway(): FakePaymentGateway
+    {
+        return static::getContainer()->get(FakePaymentGateway::class);
+    }
+
+    public function testGetCurrentSubscriptionReportsQuotaAndRequestsOfTheMonth(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $subscription = $this->makeActiveSubscription($producer);
+        $subscription->getPlanPrice()->getPlan()->setLimits(['requests_per_month' => 30]);
+        $request = $this->makeClientRequest($this->makeUser('client'));
+        $match = new \App\Entity\Matching\RequestMatch();
+        $match->setRequest($request);
+        $match->setProducer($producer);
+        $this->em->persist($match);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/subscription/current', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame(1, $data['requestsThisMonth']);
+        self::assertSame(30, $data['requestsQuota']);
     }
 
     public function testGetCurrentSubscriptionReturns204WhenNone(): void
@@ -186,6 +218,33 @@ final class SubscriptionControllerTest extends ApiTestCase
         self::assertSame('active', $row['status']);
     }
 
+    public function testCancelSubscriptionTellsStripeToStopAtPeriodEnd(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $this->makeActiveSubscription($producer)->setProviderSubscriptionId('sub_test_cancel');
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/subscription/cancel', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([['cancel', 'sub_test_cancel']], $this->gateway()->calls);
+    }
+
+    public function testCancelSubscriptionKeepsItActiveWhenStripeIsUnavailable(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $subscription = $this->makeActiveSubscription($producer);
+        $subscription->setProviderSubscriptionId('sub_test_cancel_down');
+        $this->em->flush();
+        $id = $subscription->getId()->toRfc4122();
+        $this->gateway()->failure = new \Stripe\Exception\InvalidArgumentException('api_key cannot be the empty string');
+
+        $this->client->request('POST', '/api/subscription/cancel', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseStatusCodeSame(502);
+        self::assertFalse((bool) $this->em->getConnection()->fetchOne('SELECT cancel_at_period_end FROM billing.subscriptions WHERE id = :id', ['id' => $id]));
+    }
+
     public function testCancelSubscriptionReturns404WhenNoActiveSubscription(): void
     {
         [$token] = $this->registerProducerAndLogin();
@@ -220,6 +279,72 @@ final class SubscriptionControllerTest extends ApiTestCase
         // * URL fixe renvoyée par FakePaymentGateway (config/services.yaml, bloc when@test) -- confirme que
         // * le contrôleur appelle bien PaymentGatewayInterface plutôt que le vrai StripeClient.
         self::assertSame('https://checkout.stripe.test/fake-session', $data['checkoutUrl']);
+        // * retour vers le front (FRONTEND_URL), sur la page "Mon abonnement"
+        [, , $successUrl, $cancelUrl] = $this->gateway()->calls[0];
+        self::assertStringEndsWith('/producer/subscription?checkout=success', $successUrl);
+        self::assertStringEndsWith('/producer/subscription?checkout=cancelled', $cancelUrl);
+    }
+
+    public function testALatePaymentSubscriptionStillCountsAsExistingAndCanBeCancelled(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $subscription = $this->makeActiveSubscription($producer, SubscriptionStatus::PastDue);
+        $subscription->setProviderSubscriptionId('sub_test_late');
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_late');
+        $this->em->flush();
+        $id = $subscription->getId()->toRfc4122();
+        $post = function (string $url, array $body = []) use ($token): int {
+            $this->client->request('POST', $url, server: [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            ], content: json_encode($body));
+
+            return $this->client->getResponse()->getStatusCode();
+        };
+        $body = ['planPriceId' => $planPrice->getId()->toRfc4122()];
+
+        // * pas de second abonnement ni de changement d'offre tant que le paiement est en retard : on met la carte à jour
+        self::assertSame(409, $post('/api/subscription/checkout', $body));
+        self::assertStringContainsString('moyen de paiement', json_decode($this->client->getResponse()->getContent(), true)['error']);
+        self::assertSame(409, $post('/api/subscription/change-plan', $body));
+        self::assertSame([], $this->gateway()->calls);
+
+        // * mais on peut toujours annuler
+        self::assertSame(200, $post('/api/subscription/cancel'));
+        self::assertTrue((bool) $this->em->getConnection()->fetchOne('SELECT cancel_at_period_end FROM billing.subscriptions WHERE id = :id', ['id' => $id]));
+        self::assertSame([['cancel', 'sub_test_late']], $this->gateway()->calls);
+    }
+
+    public function testATrialSubscriptionCountsAsExistingToo(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $this->makeActiveSubscription($producer, SubscriptionStatus::Trialing);
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_trial_checkout');
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/subscription/checkout', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => $planPrice->getId()->toRfc4122()]));
+
+        self::assertResponseStatusCodeSame(409);
+        self::assertStringContainsString('utilisez change-plan', json_decode($this->client->getResponse()->getContent(), true)['error']);
+    }
+
+    public function testCheckoutAnswers502WhenStripeIsUnavailable(): void
+    {
+        [$token] = $this->registerProducerAndLogin();
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_checkout_down');
+        $this->em->flush();
+        $this->gateway()->failure = new \Stripe\Exception\InvalidArgumentException('api_key cannot be the empty string');
+
+        $this->client->request('POST', '/api/subscription/checkout', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => $planPrice->getId()->toRfc4122()]));
+
+        self::assertResponseStatusCodeSame(502);
+        self::assertStringContainsString('indisponible', json_decode($this->client->getResponse()->getContent(), true)['error']);
     }
 
     public function testCheckoutRejectsWhenAlreadyActive(): void
@@ -378,6 +503,61 @@ final class SubscriptionControllerTest extends ApiTestCase
         ], content: json_encode(['planPriceId' => $newPlanPrice->getId()->toRfc4122()]));
 
         self::assertResponseStatusCodeSame(202);
+        // * même position que l'offre actuelle (aucune) : ni montée ni descente, donc tout de suite
+        self::assertSame('immediate', json_decode($this->client->getResponse()->getContent(), true)['effect']);
+        self::assertSame([['update_price', 'sub_test_changeplan', 'price_test_changeplan_new', false]], $this->gateway()->calls);
+    }
+
+    public function testChangePlanUpgradeIsImmediateAndDowngradeWaitsForTheNextRenewal(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $subscription = $this->makeActiveSubscription($producer);
+        $subscription->setProviderSubscriptionId('sub_test_updown');
+        $subscription->getPlanPrice()->getPlan()->setPosition(2);
+        $higher = $this->makePlanPriceWithProviderId('price_test_higher');
+        $higher->getPlan()->setPosition(3);
+        $lower = $this->makePlanPriceWithProviderId('price_test_lower');
+        $lower->getPlan()->setPosition(1);
+        $this->em->flush();
+        $periodEnd = $subscription->getCurrentPeriodEnd()->format(DATE_ATOM);
+        $post = function (PlanPrice $price) use ($token): array {
+            $this->client->request('POST', '/api/subscription/change-plan', server: [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            ], content: json_encode(['planPriceId' => $price->getId()->toRfc4122()]));
+            self::assertResponseStatusCodeSame(202);
+
+            return json_decode($this->client->getResponse()->getContent(), true);
+        };
+
+        self::assertSame(['effect' => 'immediate', 'effectiveAt' => null], $post($higher));
+        $downgrade = $post($lower);
+        self::assertSame('next_renewal', $downgrade['effect']);
+        self::assertEquals(new \DateTimeImmutable($periodEnd), new \DateTimeImmutable($downgrade['effectiveAt']));
+        self::assertSame([false, true], array_column($this->gateway()->calls, 3));
+    }
+
+    public function testChangePlanRejectsTheCurrentOfferAndAnswers502WhenStripeIsUnavailable(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $subscription = $this->makeActiveSubscription($producer);
+        $subscription->setProviderSubscriptionId('sub_test_same');
+        $subscription->getPlanPrice()->setProviderPriceId('price_test_same');
+        $other = $this->makePlanPriceWithProviderId('price_test_other');
+        $this->em->flush();
+        $post = function (PlanPrice $price) use ($token): void {
+            $this->client->request('POST', '/api/subscription/change-plan', server: [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            ], content: json_encode(['planPriceId' => $price->getId()->toRfc4122()]));
+        };
+
+        $post($subscription->getPlanPrice());
+        self::assertResponseStatusCodeSame(422);
+
+        $this->gateway()->failure = new \Stripe\Exception\InvalidArgumentException('api_key cannot be the empty string');
+        $post($other);
+        self::assertResponseStatusCodeSame(502);
     }
 
     public function testChangePlanRejectsWhenNoActiveSubscription(): void

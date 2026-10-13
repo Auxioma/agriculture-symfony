@@ -12,6 +12,8 @@
 
 namespace App\DataFixtures;
 
+use App\Entity\Billing\Invoice;
+use App\Entity\Billing\Subscription;
 use App\Entity\Catalog\Country;
 use App\Entity\Catalog\Currency;
 use App\Entity\Catalog\Unit;
@@ -24,6 +26,8 @@ use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
 use App\Entity\Messaging\Message;
 use App\Entity\Producer\ProducerProfile;
+use App\Entity\Support\Ticket;
+use App\Entity\Support\TicketMessage;
 use App\Enum\NeedType;
 use App\Enum\ReplyStatus;
 use App\Enum\RequestStatus;
@@ -79,6 +83,8 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
 
         $this->openRequests($manager, $producer);
         $this->treatedRequests($manager, $producer);
+        $this->invoices($manager, $producer);
+        $this->tickets($manager, $owner);
         $manager->flush();
     }
 
@@ -192,6 +198,52 @@ class DemoProducerFixtures extends Fixture implements DependentFixtureInterface
             }
             $this->backdate($reply, $sentAt);
             $manager->persist($reply);
+        }
+    }
+
+    // * trois factures payées, les 1er des trois derniers mois, pour la page "Mon abonnement" (sans lien : pas de vrai PDF)
+    private function invoices(ObjectManager $manager, ProducerProfile $producer): void
+    {
+        $subscription = $manager->getRepository(Subscription::class)->findOneBy(['producer' => $producer], ['createdAt' => 'DESC']);
+        if (null === $subscription || $subscription->getInvoices()->count() > 0) {
+            return;
+        }
+
+        for ($i = 1; $i <= 3; ++$i) {
+            $date = new \DateTimeImmutable("first day of -$i month 08:00:00");
+            $invoice = new Invoice();
+            $invoice->setSubscription($subscription);
+            $invoice->setAmount($subscription->getPlanPrice()->getAmount());
+            $invoice->setCurrency($subscription->getPlanPrice()->getCurrency());
+            $invoice->setStatus('paid');
+            $invoice->setPaidAt($date);
+            $this->backdate($invoice, $date);
+            $manager->persist($invoice);
+        }
+    }
+
+    // * un ticket résolu et un en cours, pour la page "Support"
+    private function tickets(ObjectManager $manager, User $owner): void
+    {
+        if (null !== $manager->getRepository(Ticket::class)->findOneBy(['idUser' => $owner])) {
+            return;
+        }
+
+        foreach ([['Problème de facturation', 'resolved', 70, 'Ma dernière facture est en double.'], ['Question sur mon profil producteur', 'in_progress', 2, 'Comment ajouter mes horaires de retrait ?']] as [$subject, $status, $daysAgo, $content]) {
+            $date = new \DateTimeImmutable("-$daysAgo days");
+            $ticket = new Ticket();
+            $ticket->setIdUser($owner);
+            $ticket->setSubject($subject);
+            $ticket->setStatus($status);
+            $this->backdate($ticket, $date);
+            $manager->persist($ticket);
+
+            $message = new TicketMessage();
+            $message->setTicket($ticket);
+            $message->setSender($owner);
+            $message->setContent($content);
+            $this->backdate($message, $date);
+            $manager->persist($message);
         }
     }
 

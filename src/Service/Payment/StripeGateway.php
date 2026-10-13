@@ -3,11 +3,21 @@
 namespace App\Service\Payment;
 
 use Stripe\StripeClient;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
-final readonly class StripeGateway implements PaymentGatewayInterface
+final class StripeGateway implements PaymentGatewayInterface
 {
-    public function __construct(private StripeClient $stripe)
+    private ?StripeClient $stripe = null;
+
+    // * Le client n'est créé qu'au premier appel : sans STRIPE_SECRET_KEY (dev), Stripe lève une exception dès le
+    // * constructeur, et elle doit arriver dans le try/catch des contrôleurs, pas pendant l'injection.
+    public function __construct(#[Autowire(env: 'STRIPE_SECRET_KEY')] private readonly string $secretKey)
     {
+    }
+
+    private function stripe(): StripeClient
+    {
+        return $this->stripe ??= new StripeClient($this->secretKey);
     }
 
     public function createCheckoutSession(string $priceId, string $customerEmail, array $metadata, string $successUrl, string $cancelUrl, ?string $couponId = null): string
@@ -30,20 +40,84 @@ final readonly class StripeGateway implements PaymentGatewayInterface
             $params['discounts'] = [['coupon' => $couponId]];
         }
 
-        $session = $this->stripe->checkout->sessions->create($params);
-
-        return $session->url;
+        return $this->stripe()->checkout->sessions->create($params)->url;
     }
 
-    public function updateSubscriptionPrice(string $providerSubscriptionId, string $newPriceId): void
+    public function updateSubscriptionPrice(string $providerSubscriptionId, string $newPriceId, bool $atPeriodEnd = false): void
     {
-        $subscription = $this->stripe->subscriptions->retrieve($providerSubscriptionId);
-        $this->stripe->subscriptions->update($providerSubscriptionId, [
-            'items' => [[
-                'id' => $subscription->items->data[0]->id,
-                'price' => $newPriceId,
-            ]],
-            'proration_behavior' => 'create_prorations',
+        $subscription = $this->stripe()->subscriptions->retrieve($providerSubscriptionId);
+        $item = $subscription->items->data[0];
+
+        if (!$atPeriodEnd) {
+            $this->stripe()->subscriptions->update($providerSubscriptionId, [
+                'items' => [['id' => $item->id, 'price' => $newPriceId]],
+                'proration_behavior' => 'create_prorations',
+            ]);
+
+            return;
+        }
+
+        // * Une "schedule" garde l'ancien prix jusqu'à la fin de la période, puis passe au nouveau ; le webhook
+        // * customer.subscription.updated met alors le plan local à jour, à la bonne date.
+        $schedule = $this->stripe()->subscriptionSchedules->create(['from_subscription' => $providerSubscriptionId]);
+        $current = $schedule->phases[0];
+        $this->stripe()->subscriptionSchedules->update($schedule->id, [
+            'end_behavior' => 'release',
+            'phases' => [
+                ['items' => [['price' => $item->price->id, 'quantity' => 1]], 'start_date' => $current->start_date, 'end_date' => $current->end_date],
+                ['items' => [['price' => $newPriceId, 'quantity' => 1]], 'iterations' => 1],
+            ],
         ]);
+    }
+
+    public function cancelSubscriptionAtPeriodEnd(string $providerSubscriptionId): void
+    {
+        $this->stripe()->subscriptions->update($providerSubscriptionId, ['cancel_at_period_end' => true]);
+    }
+
+    public function listPaymentMethods(string $providerSubscriptionId): array
+    {
+        $subscription = $this->stripe()->subscriptions->retrieve($providerSubscriptionId, ['expand' => ['customer']]);
+        $customer = $subscription->customer;
+        $defaultId = $subscription->default_payment_method ?? $customer->invoice_settings->default_payment_method;
+
+        $methods = [];
+        foreach ($this->stripe()->paymentMethods->all(['customer' => $customer->id, 'type' => 'card'])->data as $method) {
+            $methods[] = [
+                'id' => $method->id,
+                'brand' => $method->card->brand,
+                'last4' => $method->card->last4,
+                'expMonth' => $method->card->exp_month,
+                'expYear' => $method->card->exp_year,
+                'isDefault' => $method->id === $defaultId,
+            ];
+        }
+
+        return $methods;
+    }
+
+    public function setDefaultPaymentMethod(string $providerSubscriptionId, string $paymentMethodId): void
+    {
+        $subscription = $this->stripe()->subscriptions->retrieve($providerSubscriptionId);
+        $this->stripe()->subscriptions->update($providerSubscriptionId, ['default_payment_method' => $paymentMethodId]);
+        $this->stripe()->customers->update($subscription->customer, ['invoice_settings' => ['default_payment_method' => $paymentMethodId]]);
+    }
+
+    public function detachPaymentMethod(string $paymentMethodId): void
+    {
+        $this->stripe()->paymentMethods->detach($paymentMethodId);
+    }
+
+    public function createCardSetupSession(string $providerSubscriptionId, string $successUrl, string $cancelUrl): string
+    {
+        $subscription = $this->stripe()->subscriptions->retrieve($providerSubscriptionId);
+
+        return $this->stripe()->checkout->sessions->create([
+            'mode' => 'setup',
+            'customer' => $subscription->customer,
+            'payment_method_types' => ['card'],
+            'success_url' => $successUrl,
+            'cancel_url' => $cancelUrl,
+        ])->url;
     }
 }

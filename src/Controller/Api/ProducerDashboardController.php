@@ -8,6 +8,7 @@ use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
 use App\Entity\Producer\ProducerProfile;
 use App\Service\Matching\AvailableRequestPresenter;
+use App\Service\Matching\MonthlyRequestCounter;
 use App\Service\Messaging\UnreadMessageCounter;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -40,6 +41,7 @@ final class ProducerDashboardController extends AbstractController
         EntityManagerInterface $em,
         UnreadMessageCounter $unreadCounter,
         AvailableRequestPresenter $presenter,
+        MonthlyRequestCounter $monthlyRequests,
     ): JsonResponse {
         $producer = $user->getProducerProfile();
         if ($producer === null) {
@@ -63,7 +65,7 @@ final class ProducerDashboardController extends AbstractController
             'urgentRequests' => \count($urgent),
             'unreadMessages' => $unreadMessages,
             'requests' => array_map($presenter->present(...),\array_slice($available, 0, self::REQUESTS_LIST_SIZE)),
-            'subscription' => $this->subscriptionSummary($producer, $em),
+            'subscription' => $this->subscriptionSummary($producer, $em, $monthlyRequests),
             'profile' => $profile,
         ]);
     }
@@ -83,7 +85,7 @@ final class ProducerDashboardController extends AbstractController
     /**
      * @return array<string, mixed>|null
      */
-    private function subscriptionSummary(ProducerProfile $producer, EntityManagerInterface $em): ?array
+    private function subscriptionSummary(ProducerProfile $producer, EntityManagerInterface $em, MonthlyRequestCounter $monthlyRequests): ?array
     {
         $subscription = $em->getRepository(Subscription::class)->findOneBy(['producer' => $producer], ['createdAt' => 'DESC']);
         if ($subscription === null) {
@@ -91,22 +93,11 @@ final class ProducerDashboardController extends AbstractController
         }
 
         $plan = $subscription->getPlanPrice()->getPlan();
-        $monthStart = new \DateTimeImmutable('first day of this month 00:00:00');
-
-        $requestsThisMonth = (int) $em->createQueryBuilder()
-            ->select('COUNT(m.id)')
-            ->from(RequestMatch::class, 'm')
-            ->where('m.producer = :producer')
-            ->andWhere('m.createdAt >= :monthStart')
-            ->setParameter('producer', $producer)
-            ->setParameter('monthStart', $monthStart)
-            ->getQuery()
-            ->getSingleScalarResult();
 
         return [
             'planName' => $plan->getName(),
             'status' => $subscription->getStatus()->value,
-            'requestsThisMonth' => $requestsThisMonth,
+            'requestsThisMonth' => $monthlyRequests->count($producer),
             'requestsQuota' => $plan->getLimits()['requests_per_month'] ?? null,
         ];
     }

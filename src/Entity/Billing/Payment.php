@@ -2,9 +2,9 @@
 
 /**
  * Tentative de paiement individuelle rattachée à une Invoice (une facture peut avoir plusieurs tentatives
- * en cas d'échec puis de réussite, d'où $failureReason). Gérable dans le back-office via
- * PaymentCrudController, mais aucun code applicatif (StripeWebhookController compris) n'en crée encore
- * automatiquement -- seul Invoice est actuellement peuplé par le webhook Stripe.
+ * en cas d'échec puis de réussite, d'où $failureReason). Consultable dans le back-office via
+ * PaymentCrudController ; StripeWebhookController en écrit une par tentative (invoice.paid : succeeded,
+ * invoice.payment_failed : failed).
  */
 
 namespace App\Entity\Billing;

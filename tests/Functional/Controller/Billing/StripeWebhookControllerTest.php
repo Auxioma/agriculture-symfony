@@ -5,6 +5,7 @@ namespace App\Tests\Functional\Controller\Billing;
 use App\Entity\Billing\Coupon;
 use App\Entity\Billing\PlanPrice;
 use App\Entity\Billing\SubscriptionPlan;
+use App\Entity\Catalog\Currency;
 use App\Enum\BillingCycle;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
@@ -272,6 +273,182 @@ final class StripeWebhookControllerTest extends ApiTestCase
             ['userId' => $producer->getOwner()->getId()->toRfc4122()]
         );
         self::assertNotFalse($row);
+    }
+
+    /**
+     * Envoie un événement Stripe signé, comme Stripe le ferait ; $eventId fixe pour rejouer le même événement.
+     *
+     * @param array<string, mixed> $object
+     */
+    private function sendEvent(string $type, array $object, ?string $eventId = null): void
+    {
+        $payload = json_encode([
+            'id' => $eventId ?? 'evt_test_'.bin2hex(random_bytes(6)),
+            'type' => $type,
+            'data' => ['object' => $object],
+        ]);
+
+        $this->client->request('POST', '/api/webhooks/stripe', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_STRIPE_SIGNATURE' => WebhookSignature::generateSignatureHeader($payload, self::WEBHOOK_SECRET),
+        ], content: $payload);
+        self::assertResponseIsSuccessful();
+    }
+
+    // * un abonnement actif relié à Stripe ($providerId) et la devise EUR
+    private function linkedSubscription(string $providerId): \App\Entity\Billing\Subscription
+    {
+        $producer = $this->makeProducerProfile($this->makeUser(), $this->makeCountry());
+        $subscription = $this->makeActiveSubscription($producer);
+        $subscription->setProviderSubscriptionId($providerId);
+        $currency = new Currency();
+        $currency->setCode('EUR');
+        $currency->setName('Euro');
+        $this->em->persist($currency);
+        $this->em->flush();
+
+        return $subscription;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function subscriptionObject(string $providerId, string $stripeStatus): array
+    {
+        $now = time();
+
+        return [
+            'id' => $providerId,
+            'status' => $stripeStatus,
+            'cancel_at_period_end' => false,
+            'items' => ['data' => [['price' => ['id' => 'price_inconnu'], 'current_period_start' => $now - 86400, 'current_period_end' => $now + 2592000]]],
+        ];
+    }
+
+    private function localStatus(string $providerId): string
+    {
+        return $this->em->getConnection()->fetchOne('SELECT status FROM billing.subscriptions WHERE provider_subscription_id = :id', ['id' => $providerId]);
+    }
+
+    public function testSubscriptionUpdatedCopiesTheStripeStatus(): void
+    {
+        $this->linkedSubscription('sub_test_status');
+
+        $expected = [
+            'past_due' => 'past_due',
+            'unpaid' => 'past_due',
+            'active' => 'active',
+            'trialing' => 'trialing',
+            'canceled' => 'cancelled',
+            'incomplete_expired' => 'expired',
+        ];
+        foreach ($expected as $stripeStatus => $localStatus) {
+            $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_test_status', $stripeStatus));
+            self::assertSame($localStatus, $this->localStatus('sub_test_status'), "statut Stripe $stripeStatus");
+        }
+
+        // * incomplete (premier paiement pas encore fait) et paused ne changent rien
+        $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_test_status', 'active'));
+        foreach (['incomplete', 'paused'] as $ignored) {
+            $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_test_status', $ignored));
+            self::assertSame('active', $this->localStatus('sub_test_status'), "statut Stripe $ignored");
+        }
+    }
+
+    public function testLatePaymentLimitsAccessUntilStripeReactivatesTheSubscription(): void
+    {
+        $subscription = $this->linkedSubscription('sub_test_limited');
+        $producerId = $subscription->getProducer()->getId()->toRfc4122();
+        $subscription->getPlanPrice()->getPlan()->setFeatures(['reply_to_requests' => true]);
+        $this->em->flush();
+        $canReply = fn (): bool => (bool) $this->em->getConnection()->fetchOne("SELECT billing.producer_has_feature(:id, 'reply_to_requests')", ['id' => $producerId]);
+
+        self::assertTrue($canReply());
+
+        $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_test_limited', 'past_due'));
+        self::assertFalse($canReply());
+
+        $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_test_limited', 'active'));
+        self::assertTrue($canReply());
+    }
+
+    public function testCreatedSubscriptionKeepsTheStripeTrialStatus(): void
+    {
+        $producer = $this->makeProducerProfile($this->makeUser(), $this->makeCountry());
+        $plan = new SubscriptionPlan();
+        $plan->setCode('plan-'.bin2hex(random_bytes(6)));
+        $plan->setName('Basic');
+        $plan->setIsActive(true);
+        $this->em->persist($plan);
+        $planPrice = new PlanPrice();
+        $planPrice->setPlan($plan);
+        $planPrice->setBillingCycle(BillingCycle::Monthly);
+        $planPrice->setProviderPriceId('price_test_trial');
+        $planPrice->setIsActive(true);
+        $this->em->persist($planPrice);
+        $this->em->flush();
+        $now = time();
+
+        $this->sendEvent('customer.subscription.created', [
+            'id' => 'sub_test_trial',
+            'status' => 'trialing',
+            'metadata' => ['producer_id' => $producer->getId()->toRfc4122()],
+            'items' => ['data' => [['price' => ['id' => 'price_test_trial'], 'current_period_start' => $now, 'current_period_end' => $now + 1209600]]],
+        ]);
+
+        self::assertSame('trialing', $this->localStatus('sub_test_trial'));
+    }
+
+    public function testFailedPaymentRecordsAFailedInvoiceAndAPaymentForTheAdmin(): void
+    {
+        $this->linkedSubscription('sub_test_failed_rows');
+
+        $this->sendEvent('invoice.payment_failed', [
+            'id' => 'in_test_failed',
+            'amount_due' => 1900,
+            'currency' => 'eur',
+            'attempt_count' => 2,
+            'hosted_invoice_url' => 'https://invoice.stripe.test/failed',
+            'parent' => ['subscription_details' => ['subscription' => 'sub_test_failed_rows']],
+        ]);
+
+        $connection = $this->em->getConnection();
+        $invoice = $connection->fetchAssociative("SELECT status, amount, currency, invoice_url, paid_at FROM billing.invoices WHERE provider_invoice_id = 'in_test_failed'");
+        self::assertSame(['status' => 'failed', 'amount' => '19.00', 'currency' => 'EUR', 'invoice_url' => 'https://invoice.stripe.test/failed', 'paid_at' => null], $invoice);
+
+        $payment = $connection->fetchAssociative("SELECT p.status, p.amount, p.currency, p.failure_reason FROM billing.payments p JOIN billing.invoices i ON i.id = p.invoice_id WHERE i.provider_invoice_id = 'in_test_failed'");
+        self::assertSame(['status' => 'failed', 'amount' => '19.00', 'currency' => 'EUR', 'failure_reason' => 'Paiement refusé (tentative 2).'], $payment);
+    }
+
+    public function testPaidInvoiceRecordsASucceededPaymentAndSettlesTheFailedInvoiceInPlace(): void
+    {
+        $this->linkedSubscription('sub_test_retry');
+        $subscription = ['parent' => ['subscription_details' => ['subscription' => 'sub_test_retry']]];
+
+        $this->sendEvent('invoice.payment_failed', ['id' => 'in_test_retry', 'amount_due' => 1900, 'currency' => 'eur', 'attempt_count' => 1] + $subscription);
+        // * Stripe réessaie : la même facture est payée, elle ne doit pas être dupliquée
+        $this->sendEvent('invoice.paid', ['id' => 'in_test_retry', 'amount_paid' => 1900, 'currency' => 'eur', 'hosted_invoice_url' => 'https://invoice.stripe.test/paid'] + $subscription);
+
+        $connection = $this->em->getConnection();
+        $invoices = $connection->fetchAllAssociative("SELECT status, amount, invoice_url FROM billing.invoices WHERE provider_invoice_id = 'in_test_retry'");
+        self::assertSame([['status' => 'paid', 'amount' => '19.00', 'invoice_url' => 'https://invoice.stripe.test/paid']], $invoices);
+        self::assertNotNull($connection->fetchOne("SELECT paid_at FROM billing.invoices WHERE provider_invoice_id = 'in_test_retry'"));
+
+        $payments = $connection->fetchFirstColumn("SELECT p.status FROM billing.payments p JOIN billing.invoices i ON i.id = p.invoice_id WHERE i.provider_invoice_id = 'in_test_retry' ORDER BY p.created_at, p.status DESC");
+        self::assertEqualsCanonicalizing(['failed', 'succeeded'], $payments);
+    }
+
+    public function testReplayedPaymentFailedEventDoesNotDuplicateTheRows(): void
+    {
+        $this->linkedSubscription('sub_test_replay');
+        $object = ['id' => 'in_test_replay', 'amount_due' => 1900, 'currency' => 'eur', 'parent' => ['subscription_details' => ['subscription' => 'sub_test_replay']]];
+
+        $this->sendEvent('invoice.payment_failed', $object, 'evt_test_replay_fixed');
+        $this->sendEvent('invoice.payment_failed', $object, 'evt_test_replay_fixed');
+
+        $connection = $this->em->getConnection();
+        self::assertSame(1, (int) $connection->fetchOne("SELECT count(*) FROM billing.invoices WHERE provider_invoice_id = 'in_test_replay'"));
+        self::assertSame(1, (int) $connection->fetchOne("SELECT count(*) FROM billing.payments p JOIN billing.invoices i ON i.id = p.invoice_id WHERE i.provider_invoice_id = 'in_test_replay'"));
     }
 
     public function testWebhookRejectsInvalidSignature(): void

@@ -241,19 +241,7 @@ parameters:
 			path: src/Controller/Api/ProducerRequestController.php
 
 		-
-			message: '#^Access to an undefined property Stripe\\StripeObject\:\:\$amount_paid\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Controller/Api/StripeWebhookController.php
-
-		-
 			message: '#^Access to an undefined property Stripe\\StripeObject\:\:\$cancel_at_period_end\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Controller/Api/StripeWebhookController.php
-
-		-
-			message: '#^Access to an undefined property Stripe\\StripeObject\:\:\$hosted_invoice_url\.$#'
 			identifier: property.notFound
 			count: 1
 			path: src/Controller/Api/StripeWebhookController.php
@@ -1115,6 +1103,12 @@ parameters:
 			identifier: missingType.iterableValue
 			count: 1
 			path: tests/Functional/Controller/Producer/ProducerDashboardControllerTest.php
+
+		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Billing\\PaymentMethodControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Billing/PaymentMethodControllerTest.php
 
 		-
 			message: '#^Method App\\Tests\\Functional\\Controller\\Producer\\ProducerReplyAttachmentControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'

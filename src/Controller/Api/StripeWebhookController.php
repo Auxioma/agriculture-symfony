@@ -5,9 +5,11 @@ namespace App\Controller\Api;
 use App\Entity\Billing\Coupon;
 use App\Entity\Billing\CouponRedemption;
 use App\Entity\Billing\Invoice;
+use App\Entity\Billing\Payment;
 use App\Entity\Billing\PlanPrice;
 use App\Entity\Billing\Subscription;
 use App\Entity\Billing\WebhookEvent;
+use App\Entity\Catalog\Currency;
 use App\Entity\Producer\ProducerProfile;
 use App\Enum\SubscriptionStatus;
 use App\Service\Notification\NotificationService;
@@ -100,7 +102,7 @@ final class StripeWebhookController extends AbstractController
         $subscription = new Subscription();
         $subscription->setProducer($producer);
         $subscription->setPlanPrice($planPrice);
-        $subscription->setStatus(SubscriptionStatus::Active);
+        $subscription->setStatus(self::LOCAL_STATUSES[$stripeSubscription->status ?? ''] ?? SubscriptionStatus::Active);
         // ! Depuis l'API version 2026-02-25.clover, current_period_start/end n'existent plus sur l'objet
         // ! Subscription lui-même mais sur chaque subscription_item (confirmé via un vrai payload webhook
         // ! reçu en test manuel -- une souscription peut avoir plusieurs lignes facturées séparément).
@@ -127,6 +129,19 @@ final class StripeWebhookController extends AbstractController
         return true;
     }
 
+    // * Statut Stripe -> statut local (MLD : trialing, active, past_due, cancelled, expired). past_due coupe l'accès aux réponses
+    // * (billing.producer_has_feature ne garde que trialing et active) : c'est le "statut limité" du cahier fonctionnel après
+    // * un échec de paiement, levé dès que Stripe repasse l'abonnement en active. "unpaid" (relances épuisées, abonnement
+    // * gardé) reste limité aussi. "incomplete" (premier paiement pas encore fait) et "paused" ne changent rien.
+    private const LOCAL_STATUSES = [
+        'active' => SubscriptionStatus::Active,
+        'trialing' => SubscriptionStatus::Trialing,
+        'past_due' => SubscriptionStatus::PastDue,
+        'unpaid' => SubscriptionStatus::PastDue,
+        'canceled' => SubscriptionStatus::Cancelled,
+        'incomplete_expired' => SubscriptionStatus::Expired,
+    ];
+
     // * Retourne false (retry) si la Subscription locale n'existe pas encore : customer.subscription.created
     // * n'a peut-être pas fini d'être traité, Stripe ne garantissant pas l'ordre de livraison des webhooks.
     private function handleSubscriptionUpdated(Event $event, EntityManagerInterface $em): bool
@@ -143,6 +158,10 @@ final class StripeWebhookController extends AbstractController
             $subscription->setCurrentPeriodEnd((new \DateTimeImmutable())->setTimestamp($item->current_period_end));
         }
         $subscription->setCancelAtPeriodEnd((bool) $stripeSubscription->cancel_at_period_end);
+        $status = self::LOCAL_STATUSES[$stripeSubscription->status ?? ''] ?? null;
+        if ($status !== null) {
+            $subscription->setStatus($status);
+        }
 
         $priceId = $item->price->id ?? null;
         $planPrice = $priceId !== null ? $em->getRepository(PlanPrice::class)->findOneBy(['providerPriceId' => $priceId]) : null;
@@ -185,17 +204,56 @@ final class StripeWebhookController extends AbstractController
             return false;
         }
 
-        $invoice = new Invoice();
-        $invoice->setSubscription($subscription);
-        // ! Stripe exprime les montants dans la plus petite unité monétaire (centimes pour EUR/USD).
-        $invoice->setAmount(number_format($stripeInvoice->amount_paid / 100, 2, '.', ''));
+        // * une facture dont un paiement avait échoué existe déjà (handleInvoicePaymentFailed) : on la passe à "paid"
+        $invoice = $this->findOrCreateInvoice($stripeInvoice, $subscription, $em);
+        $invoice->setAmount($this->money($stripeInvoice->amount_paid ?? null));
+        $invoice->setCurrency($this->currency($stripeInvoice, $em));
         $invoice->setStatus('paid');
-        $invoice->setInvoiceUrl($stripeInvoice->hosted_invoice_url);
-        $invoice->setProviderInvoiceId($stripeInvoice->id);
+        $invoice->setInvoiceUrl($stripeInvoice->hosted_invoice_url ?? null);
         $invoice->setPaidAt(new \DateTimeImmutable());
-        $em->persist($invoice);
+        $this->recordPayment($invoice, 'succeeded', null, $em);
 
         return true;
+    }
+
+    // ! Stripe exprime les montants dans la plus petite unité monétaire (centimes pour EUR/USD).
+    private function money(?int $minorUnits): ?string
+    {
+        return $minorUnits === null ? null : number_format($minorUnits / 100, 2, '.', '');
+    }
+
+    private function currency(\Stripe\StripeObject $stripeInvoice, EntityManagerInterface $em): ?Currency
+    {
+        $code = $stripeInvoice->currency ?? null;
+
+        return $code === null ? null : $em->find(Currency::class, strtoupper($code));
+    }
+
+    private function findOrCreateInvoice(\Stripe\StripeObject $stripeInvoice, Subscription $subscription, EntityManagerInterface $em): Invoice
+    {
+        $invoice = $em->getRepository(Invoice::class)->findOneBy(['providerInvoiceId' => $stripeInvoice->id]);
+        if ($invoice === null) {
+            $invoice = new Invoice();
+            $invoice->setSubscription($subscription);
+            $invoice->setProviderInvoiceId($stripeInvoice->id);
+            $em->persist($invoice);
+        }
+
+        return $invoice;
+    }
+
+    // * Une ligne par tentative de paiement (MLD : billing.payments, une facture peut en avoir plusieurs), c'est ce que lit
+    // * l'écran admin "Paiements". L'identifiant de paiement Stripe n'est pas dans l'événement facture (provider_payment_id
+    // * reste vide), les doublons sont déjà évités par l'idempotence des événements (WebhookEvent).
+    private function recordPayment(Invoice $invoice, string $status, ?string $failureReason, EntityManagerInterface $em): void
+    {
+        $payment = new Payment();
+        $payment->setInvoice($invoice);
+        $payment->setAmount($invoice->getAmount());
+        $payment->setCurrency($invoice->getCurrency());
+        $payment->setStatus($status);
+        $payment->setFailureReason($failureReason);
+        $em->persist($payment);
     }
 
     private function handleInvoicePaymentFailed(Event $event, EntityManagerInterface $em, NotificationService $notificationService): bool
@@ -210,6 +268,15 @@ final class StripeWebhookController extends AbstractController
         if ($subscription === null) {
             return false;
         }
+
+        // * Stripe garde la facture ouverte et réessaie ; ici elle passe à "failed" (Échec, admin Factures) avec une ligne de
+        // * paiement refusé. Le statut "past_due" de l'abonnement vient, lui, de customer.subscription.updated.
+        $invoice = $this->findOrCreateInvoice($stripeInvoice, $subscription, $em);
+        $invoice->setAmount($this->money($stripeInvoice->amount_due ?? null));
+        $invoice->setCurrency($this->currency($stripeInvoice, $em));
+        $invoice->setStatus('failed');
+        $invoice->setInvoiceUrl($stripeInvoice->hosted_invoice_url ?? null);
+        $this->recordPayment($invoice, 'failed', sprintf('Paiement refusé (tentative %d).', $stripeInvoice->attempt_count ?? 1), $em);
 
         $notificationService->notify(
             $subscription->getProducer()->getOwner(),
