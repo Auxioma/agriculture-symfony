@@ -14,8 +14,10 @@ namespace App\Tests\Functional\Database;
 
 use App\Entity\Trust\Review;
 use App\Enum\ReviewStatus;
+use App\Enum\SubscriptionStatus;
 use App\Tests\DatabaseTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * Prouve que les contraintes UNIQUE et CHECK ajoutées en plus du guide rejettent bien les données invalides
@@ -27,12 +29,17 @@ final class ConstraintsTest extends DatabaseTestCase
 
     private function assertFlushRejectedWith(string $expectedNeedle): void
     {
+        // ! le fail() est hors du try : dedans, le catch l'attrapait et son message (qui contient le texte cherché)
+        // ! faisait passer le test même quand la base ne rejetait rien.
         try {
             $this->em->flush();
-            self::fail("Expected the flush to be rejected by a database constraint containing '{$expectedNeedle}'.");
         } catch (\Throwable $e) {
             self::assertStringContainsString($expectedNeedle, $e->getMessage());
+
+            return;
         }
+
+        self::fail("Expected the flush to be rejected by a database constraint containing '{$expectedNeedle}'.");
     }
 
     public function testCategorySlugMustBeUnique(): void
@@ -130,5 +137,51 @@ final class ConstraintsTest extends DatabaseTestCase
         $this->em->persist($match2);
 
         $this->assertFlushRejectedWith('23505');
+    }
+
+    /**
+     * @return iterable<string, array{SubscriptionStatus, SubscriptionStatus}>
+     */
+    public static function inForceStatusPairs(): iterable
+    {
+        yield 'deux actifs' => [SubscriptionStatus::Active, SubscriptionStatus::Active];
+        yield 'actif puis essai' => [SubscriptionStatus::Active, SubscriptionStatus::Trialing];
+        yield 'en retard puis actif' => [SubscriptionStatus::PastDue, SubscriptionStatus::Active];
+        yield 'essai puis en retard' => [SubscriptionStatus::Trialing, SubscriptionStatus::PastDue];
+    }
+
+    // * actif, en essai ou en retard de paiement : un seul à la fois par producteur, quel que soit le mélange
+    #[DataProvider('inForceStatusPairs')]
+    public function testProducerCannotHaveTwoSubscriptionsInForce(SubscriptionStatus $first, SubscriptionStatus $second): void
+    {
+        $producer = $this->makeProducerProfile($this->makeUser('producer'), $this->makeCountry());
+        $this->makeActiveSubscription($producer, $first);
+        $this->em->flush();
+
+        $this->makeActiveSubscription($producer, $second);
+
+        $this->assertFlushRejectedWith('uniq_subscriptions_one_in_force_per_producer');
+    }
+
+    public function testCancelledAndExpiredSubscriptionsPileUpBesideTheCurrentOne(): void
+    {
+        $producer = $this->makeProducerProfile($this->makeUser('producer'), $this->makeCountry());
+        $this->makeActiveSubscription($producer, SubscriptionStatus::Cancelled);
+        $this->makeActiveSubscription($producer, SubscriptionStatus::Cancelled);
+        $this->makeActiveSubscription($producer, SubscriptionStatus::Expired);
+        $this->makeActiveSubscription($producer, SubscriptionStatus::Active);
+        $this->em->flush();
+
+        self::assertSame(4, $this->em->getRepository(\App\Entity\Billing\Subscription::class)->count(['producer' => $producer]));
+    }
+
+    public function testTwoProducersCanEachHaveASubscriptionInForce(): void
+    {
+        $country = $this->makeCountry();
+        $this->makeActiveSubscription($this->makeProducerProfile($this->makeUser('producer1'), $country));
+        $this->makeActiveSubscription($this->makeProducerProfile($this->makeUser('producer2'), $country));
+
+        $this->em->flush();
+        $this->addToAssertionCount(1);
     }
 }
