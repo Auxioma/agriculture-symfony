@@ -12,6 +12,9 @@ interface PaymentGatewayInterface
     // * l'abonnement reste actif jusqu'à la fin de la période déjà payée
     public function cancelSubscriptionAtPeriodEnd(string $providerSubscriptionId): void;
 
+    // * résiliation immédiate, sans remboursement : plus aucun prélèvement (abonnement en double, voir StripeWebhookController)
+    public function cancelSubscriptionNow(string $providerSubscriptionId): void;
+
     /**
      * Cartes du client Stripe de l'abonnement, lues chez Stripe à chaque appel (rien n'est stocké chez nous).
      *

@@ -5,10 +5,18 @@ namespace App\Tests\Functional\Controller\Billing;
 use App\Entity\Billing\Coupon;
 use App\Entity\Billing\PlanPrice;
 use App\Entity\Billing\SubscriptionPlan;
+use App\Entity\Billing\Subscription;
 use App\Entity\Catalog\Currency;
+use App\Entity\Producer\ProducerProfile;
 use App\Enum\BillingCycle;
+use App\Service\Payment\FakePaymentGateway;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
+use Doctrine\DBAL\Connection;
+use Doctrine\ORM\Event\PrePersistEventArgs;
+use Doctrine\ORM\Events;
+use Stripe\Exception\ApiConnectionException;
+use Stripe\Exception\InvalidRequestException;
 use Stripe\WebhookSignature;
 
 /**
@@ -280,7 +288,7 @@ final class StripeWebhookControllerTest extends ApiTestCase
      *
      * @param array<string, mixed> $object
      */
-    private function sendEvent(string $type, array $object, ?string $eventId = null): void
+    private function sendEvent(string $type, array $object, ?string $eventId = null, bool $expectSuccess = true): void
     {
         $payload = json_encode([
             'id' => $eventId ?? 'evt_test_'.bin2hex(random_bytes(6)),
@@ -292,7 +300,9 @@ final class StripeWebhookControllerTest extends ApiTestCase
             'CONTENT_TYPE' => 'application/json',
             'HTTP_STRIPE_SIGNATURE' => WebhookSignature::generateSignatureHeader($payload, self::WEBHOOK_SECRET),
         ], content: $payload);
-        self::assertResponseIsSuccessful();
+        if ($expectSuccess) {
+            self::assertResponseIsSuccessful();
+        }
     }
 
     // * un abonnement actif relié à Stripe ($providerId) et la devise EUR
@@ -332,15 +342,19 @@ final class StripeWebhookControllerTest extends ApiTestCase
 
     public function testSubscriptionUpdatedCopiesTheStripeStatus(): void
     {
-        $this->linkedSubscription('sub_test_status');
+        $first = $this->linkedSubscription('sub_test_status');
+        // * annulé et expiré sont définitifs chez Stripe : un abonnement par statut, créés avant le premier appel HTTP (qui vide l'EntityManager)
+        $final = ['canceled' => 'cancelled', 'incomplete_expired' => 'expired'];
+        foreach (array_keys($final) as $stripeStatus) {
+            $this->makeActiveSubscription($this->makeProducerProfile($this->makeUser(), $first->getProducer()->getCountry()))->setProviderSubscriptionId('sub_test_'.$stripeStatus);
+        }
+        $this->em->flush();
 
         $expected = [
             'past_due' => 'past_due',
             'unpaid' => 'past_due',
             'active' => 'active',
             'trialing' => 'trialing',
-            'canceled' => 'cancelled',
-            'incomplete_expired' => 'expired',
         ];
         foreach ($expected as $stripeStatus => $localStatus) {
             $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_test_status', $stripeStatus));
@@ -352,6 +366,16 @@ final class StripeWebhookControllerTest extends ApiTestCase
         foreach (['incomplete', 'paused'] as $ignored) {
             $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_test_status', $ignored));
             self::assertSame('active', $this->localStatus('sub_test_status'), "statut Stripe $ignored");
+        }
+
+        // * et un événement en retard ne les remet pas en vigueur
+        foreach ($final as $stripeStatus => $localStatus) {
+            $providerId = 'sub_test_'.$stripeStatus;
+            $this->sendEvent('customer.subscription.updated', $this->subscriptionObject($providerId, $stripeStatus));
+            self::assertSame($localStatus, $this->localStatus($providerId), "statut Stripe $stripeStatus");
+
+            $this->sendEvent('customer.subscription.updated', $this->subscriptionObject($providerId, 'active'));
+            self::assertSame($localStatus, $this->localStatus($providerId), "$stripeStatus ne revient pas en vigueur");
         }
     }
 
@@ -461,5 +485,216 @@ final class StripeWebhookControllerTest extends ApiTestCase
         ], content: $payload);
 
         self::assertResponseStatusCodeSame(400);
+    }
+
+    // --- deux paiements pour le même producteur (deux sessions de paiement ouvertes, payées toutes les deux) -------------------
+
+    // * un producteur déjà abonné (abonnement relié à Stripe) ; 'price_dup' est le prix Stripe du second paiement
+    private function alreadySubscribed(): Subscription
+    {
+        $kept = $this->linkedSubscription('sub_kept_'.bin2hex(random_bytes(4)));
+        $kept->getPlanPrice()->setProviderPriceId('price_dup');
+        $this->em->flush();
+
+        return $kept;
+    }
+
+    /**
+     * @param array<string, string> $metadata
+     *
+     * @return array<string, mixed>
+     */
+    private function createdObject(string $providerId, ProducerProfile $producer, array $metadata = []): array
+    {
+        $now = time();
+
+        return [
+            'id' => $providerId,
+            'status' => 'active',
+            'metadata' => ['producer_id' => $producer->getId()->toRfc4122()] + $metadata,
+            'items' => ['data' => [['price' => ['id' => 'price_dup'], 'current_period_start' => $now, 'current_period_end' => $now + 2592000]]],
+        ];
+    }
+
+    private function gateway(): FakePaymentGateway
+    {
+        return static::getContainer()->get(FakePaymentGateway::class);
+    }
+
+    /**
+     * @return list<array<int, mixed>>
+     */
+    private function cancelNowCalls(): array
+    {
+        return array_values(array_filter($this->gateway()->calls, static fn (array $call) => 'cancel_now' === $call[0]));
+    }
+
+    private function countSubscriptions(string $providerId): int
+    {
+        return (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM billing.subscriptions WHERE provider_subscription_id = :id', ['id' => $providerId]);
+    }
+
+    public function testSecondSubscriptionOfAnAlreadySubscribedProducerIsCancelledAtStripeAndKeptAsCancelled(): void
+    {
+        $kept = $this->alreadySubscribed();
+        $coupon = $this->makeCoupon('DOUBLE10');
+        $this->em->flush();
+
+        $this->sendEvent('customer.subscription.created', $this->createdObject('sub_dup_a', $kept->getProducer(), ['coupon_id' => $coupon->getId()->toRfc4122()]));
+
+        $connection = $this->em->getConnection();
+        self::assertSame('cancelled', $this->localStatus('sub_dup_a'));
+        self::assertSame('active', $this->localStatus($kept->getProviderSubscriptionId()));
+        self::assertSame(1, (int) $connection->fetchOne(
+            "SELECT count(*) FROM billing.subscriptions WHERE producer_id = :p AND status IN ('active', 'trialing', 'past_due')",
+            ['p' => $kept->getProducer()->getId()->toRfc4122()]
+        ));
+        self::assertSame([['cancel_now', 'sub_dup_a']], $this->cancelNowCalls());
+        self::assertSame(0, (int) $connection->fetchOne('SELECT count(*) FROM billing.coupon_redemptions WHERE coupon_id = :c', ['c' => $coupon->getId()->toRfc4122()]));
+        self::assertSame(1, (int) $connection->fetchOne("SELECT count(*) FROM audit.audit_logs WHERE action = 'subscription_duplicate_cancelled'"));
+        self::assertNotFalse($connection->fetchOne(
+            "SELECT 1 FROM notification.notifications WHERE type = 'subscription_duplicate_cancelled' AND user_id = :u",
+            ['u' => $kept->getProducer()->getOwner()->getId()->toRfc4122()]
+        ));
+    }
+
+    public function testReplayedDuplicateIsCancelledOnlyOnce(): void
+    {
+        $kept = $this->alreadySubscribed();
+        $object = $this->createdObject('sub_dup_b', $kept->getProducer());
+
+        $this->sendEvent('customer.subscription.created', $object, 'evt_dup_b');
+        $this->sendEvent('customer.subscription.created', $object, 'evt_dup_b');
+        // * même abonnement sous un autre identifiant d'événement
+        $this->sendEvent('customer.subscription.created', $object, 'evt_dup_b_bis');
+
+        self::assertCount(1, $this->cancelNowCalls());
+        self::assertSame(1, $this->countSubscriptions('sub_dup_b'));
+    }
+
+    public function testSubscriptionCreatedTwiceUnderTwoEventIdsStoresASingleRow(): void
+    {
+        $producer = $this->makeProducerProfile($this->makeUser(), $this->makeCountry());
+        $this->makeKnownPrice('price_dup');
+        $this->em->flush();
+        $object = $this->createdObject('sub_once', $producer);
+
+        $this->sendEvent('customer.subscription.created', $object, 'evt_once_a');
+        $this->sendEvent('customer.subscription.created', $object, 'evt_once_b');
+
+        self::assertSame(1, $this->countSubscriptions('sub_once'));
+        self::assertSame('active', $this->localStatus('sub_once'));
+        self::assertSame([], $this->cancelNowCalls());
+    }
+
+    public function testPaidInvoiceOfTheCancelledDuplicateLandsOnItsOwnRow(): void
+    {
+        $kept = $this->alreadySubscribed();
+        $this->sendEvent('customer.subscription.created', $this->createdObject('sub_dup_d', $kept->getProducer()));
+
+        $this->sendEvent('invoice.paid', [
+            'id' => 'in_dup_d',
+            'amount_paid' => 4900,
+            'currency' => 'eur',
+            'parent' => ['subscription_details' => ['subscription' => 'sub_dup_d']],
+        ]);
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            "SELECT s.provider_subscription_id, s.status, i.status AS invoice_status FROM billing.invoices i JOIN billing.subscriptions s ON s.id = i.subscription_id WHERE i.provider_invoice_id = 'in_dup_d'"
+        );
+        self::assertSame(['provider_subscription_id' => 'sub_dup_d', 'status' => 'cancelled', 'invoice_status' => 'paid'], $row);
+    }
+
+    public function testLateEventCannotPutTheCancelledDuplicateBackInForce(): void
+    {
+        $kept = $this->alreadySubscribed();
+        $this->sendEvent('customer.subscription.created', $this->createdObject('sub_dup_e', $kept->getProducer()));
+
+        // * sans la garde, ce passage à "active" violerait l'index unique : l'événement échouerait en boucle
+        $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_dup_e', 'active'));
+
+        self::assertSame('cancelled', $this->localStatus('sub_dup_e'));
+        self::assertSame('active', $this->localStatus($kept->getProviderSubscriptionId()));
+    }
+
+    public function testStripeOutageWhileCancellingTheDuplicateAsksStripeToRetry(): void
+    {
+        $kept = $this->alreadySubscribed();
+        $object = $this->createdObject('sub_dup_f', $kept->getProducer());
+
+        $this->gateway()->failure = new ApiConnectionException('panne simulée');
+        $this->sendEvent('customer.subscription.created', $object, 'evt_dup_f', expectSuccess: false);
+
+        self::assertResponseStatusCodeSame(409);
+        self::assertSame(0, $this->countSubscriptions('sub_dup_f'), 'rien n\'est enregistré tant que Stripe n\'a pas résilié');
+        self::assertSame('failed', $this->em->getConnection()->fetchOne("SELECT status FROM billing.webhook_events WHERE provider_event_id = 'evt_dup_f'"));
+
+        // * Stripe réessaie le même événement, Stripe répond cette fois
+        $this->gateway()->failure = null;
+        $this->sendEvent('customer.subscription.created', $object, 'evt_dup_f');
+
+        self::assertSame('cancelled', $this->localStatus('sub_dup_f'));
+    }
+
+    public function testDuplicateAlreadyCancelledAtStripeIsStillRecorded(): void
+    {
+        $kept = $this->alreadySubscribed();
+
+        // * réessai après un échec d'enregistrement : Stripe répond que l'abonnement n'est plus à résilier
+        $this->gateway()->failure = new InvalidRequestException('No such subscription');
+        $this->sendEvent('customer.subscription.created', $this->createdObject('sub_dup_g', $kept->getProducer()));
+
+        self::assertSame('cancelled', $this->localStatus('sub_dup_g'));
+    }
+
+    public function testPaymentsProcessedAtTheSameTimeLeaveOneSubscriptionAndAskStripeToRetry(): void
+    {
+        $producer = $this->makeProducerProfile($this->makeUser(), $this->makeCountry());
+        $planPrice = $this->makeKnownPrice('price_dup');
+        $this->em->flush();
+
+        // * simule l'autre webhook : un abonnement en vigueur apparaît entre le contrôle "déjà abonné" et l'enregistrement
+        $this->em->getEventManager()->addEventListener([Events::prePersist], new class($this->em->getConnection(), $producer->getId()->toRfc4122(), $planPrice->getId()->toRfc4122()) {
+            private bool $done = false;
+
+            public function __construct(private readonly Connection $connection, private readonly string $producerId, private readonly string $planPriceId)
+            {
+            }
+
+            public function prePersist(PrePersistEventArgs $args): void
+            {
+                if ($this->done || !$args->getObject() instanceof Subscription) {
+                    return;
+                }
+                $this->done = true;
+                $this->connection->executeStatement(
+                    "INSERT INTO billing.subscriptions (id, status, current_period_start, current_period_end, cancel_at_period_end, created_at, updated_at, producer_id, plan_price_id) VALUES (gen_random_uuid(), 'active', now(), now() + interval '1 month', false, now(), now(), :producer, :planPrice)",
+                    ['producer' => $this->producerId, 'planPrice' => $this->planPriceId]
+                );
+            }
+        });
+
+        $this->sendEvent('customer.subscription.created', $this->createdObject('sub_race', $producer), expectSuccess: false);
+
+        self::assertResponseStatusCodeSame(409);
+    }
+
+    // * une offre dont le prix Stripe est connu ('price_dup'), sans abonnement
+    private function makeKnownPrice(string $providerPriceId): PlanPrice
+    {
+        $plan = new SubscriptionPlan();
+        $plan->setCode('plan-'.bin2hex(random_bytes(6)));
+        $plan->setName('Basic');
+        $plan->setIsActive(true);
+        $this->em->persist($plan);
+
+        $planPrice = new PlanPrice();
+        $planPrice->setPlan($plan);
+        $planPrice->setBillingCycle(BillingCycle::Monthly);
+        $planPrice->setProviderPriceId($providerPriceId);
+        $planPrice->setIsActive(true);
+        $this->em->persist($planPrice);
+
+        return $planPrice;
     }
 }

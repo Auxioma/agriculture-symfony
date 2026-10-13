@@ -75,6 +75,11 @@ final class StripeGateway implements PaymentGatewayInterface
         $this->stripe()->subscriptions->update($providerSubscriptionId, ['cancel_at_period_end' => true]);
     }
 
+    public function cancelSubscriptionNow(string $providerSubscriptionId): void
+    {
+        $this->stripe()->subscriptions->cancel($providerSubscriptionId);
+    }
+
     public function listPaymentMethods(string $providerSubscriptionId): array
     {
         $subscription = $this->stripe()->subscriptions->retrieve($providerSubscriptionId, ['expand' => ['customer']]);

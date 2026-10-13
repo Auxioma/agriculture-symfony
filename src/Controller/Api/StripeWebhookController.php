@@ -12,10 +12,17 @@ use App\Entity\Billing\WebhookEvent;
 use App\Entity\Catalog\Currency;
 use App\Entity\Producer\ProducerProfile;
 use App\Enum\SubscriptionStatus;
+use App\Service\Audit\AuditLogger;
 use App\Service\Notification\NotificationService;
+use App\Service\Payment\PaymentGatewayInterface;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use Stripe\Event;
+use Stripe\Exception\ExceptionInterface as StripeException;
+use Stripe\Exception\InvalidRequestException;
 use Stripe\Exception\SignatureVerificationException;
+use Stripe\StripeObject;
 use Stripe\Webhook;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -28,6 +35,9 @@ final class StripeWebhookController extends AbstractController
     public function __construct(
         #[Autowire(env: 'STRIPE_WEBHOOK_SECRET')]
         private readonly string $webhookSecret,
+        private readonly PaymentGatewayInterface $paymentGateway,
+        private readonly AuditLogger $auditLogger,
+        private readonly LoggerInterface $logger,
     ) {
     }
 
@@ -49,7 +59,7 @@ final class StripeWebhookController extends AbstractController
         }
 
         $handled = match ($event->type) {
-            'customer.subscription.created' => $this->handleSubscriptionCreated($event, $em),
+            'customer.subscription.created' => $this->handleSubscriptionCreated($event, $em, $notificationService),
             'customer.subscription.updated' => $this->handleSubscriptionUpdated($event, $em),
             'customer.subscription.deleted' => $this->handleSubscriptionDeleted($event, $em),
             'invoice.payment_failed' => $this->handleInvoicePaymentFailed($event, $em, $notificationService),
@@ -67,7 +77,14 @@ final class StripeWebhookController extends AbstractController
             $webhookEvent->setProcessedAt(new \DateTimeImmutable());
         }
         $em->persist($webhookEvent);
-        $em->flush();
+        try {
+            $em->flush();
+        } catch (UniqueConstraintViolationException) {
+            // * Deux paiements du même producteur traités en même temps : le contrôle "déjà abonné" a laissé passer les deux
+            // * et l'index unique (un seul abonnement en vigueur) a refusé le second. Rien n'est enregistré, Stripe réessaie et
+            // * le réessai tombe sur le cas du doublon (cancelDuplicate).
+            return $this->json(['error' => 'Conflit à l\'enregistrement, nouvelle tentative attendue.'], 409);
+        }
 
         // ! Cahier devops : "Webhooks sécurisés, idempotence, logs, alertes échec paiement" et "Webhooks
         // ! paiement -- échecs répétés -- Haute" supposent que Stripe puisse effectivement réessayer. On ne
@@ -83,7 +100,7 @@ final class StripeWebhookController extends AbstractController
     // * Retourne toujours true : producer_id absent ou planPrice inconnu sont des problèmes permanents
     // * (mauvaise config, prix jamais synchronisé) -- retenter ne les résoudra jamais, contrairement au cas
     // * "cible pas encore créée" des trois autres handlers.
-    private function handleSubscriptionCreated(Event $event, EntityManagerInterface $em): bool
+    private function handleSubscriptionCreated(Event $event, EntityManagerInterface $em, NotificationService $notificationService): bool
     {
         $stripeSubscription = $event->data->object;
         $producerId = $stripeSubscription->metadata['producer_id'] ?? null;
@@ -97,6 +114,20 @@ final class StripeWebhookController extends AbstractController
         $planPrice = $priceId !== null ? $em->getRepository(PlanPrice::class)->findOneBy(['providerPriceId' => $priceId]) : null;
         if ($producer === null || $planPrice === null || $item === null) {
             return true;
+        }
+
+        // * Stripe peut renvoyer la création sous un autre identifiant d'événement : déjà enregistrée, rien à refaire.
+        if ($em->getRepository(Subscription::class)->findOneBy(['providerSubscriptionId' => $stripeSubscription->id]) !== null) {
+            return true;
+        }
+
+        // * Le producteur est déjà abonné : ce paiement est un doublon (deux sessions de paiement ouvertes, payées toutes les deux).
+        $kept = $em->getRepository(Subscription::class)->findOneBy([
+            'producer' => $producer,
+            'status' => [SubscriptionStatus::Active, SubscriptionStatus::Trialing, SubscriptionStatus::PastDue],
+        ]);
+        if ($kept !== null) {
+            return $this->cancelDuplicate($stripeSubscription, $item->current_period_start, $item->current_period_end, $producer, $planPrice, $kept, $em, $notificationService);
         }
 
         $subscription = new Subscription();
@@ -125,6 +156,53 @@ final class StripeWebhookController extends AbstractController
             $redemption->setRedeemedAt(new \DateTimeImmutable());
             $em->persist($redemption);
         }
+
+        return true;
+    }
+
+    // * Le premier abonnement reste. Le second est résilié tout de suite chez Stripe (plus aucun prélèvement) et gardé ici en
+    // * "cancelled" : les événements suivants de ce doublon (invoice.paid, deleted) retrouvent leur cible au lieu d'être
+    // * réessayés pendant des jours, et sa facture payée apparaît dans l'admin pour le rembourser. Le remboursement reste manuel
+    // * (décision financière) : l'audit et le log critique servent d'alerte. Pas de CouponRedemption, ce coupon n'a servi à rien.
+    // * Retourne false (Stripe réessaie) si Stripe est injoignable : rien n'est enregistré avant la résiliation.
+    private function cancelDuplicate(StripeObject $stripeSubscription, int $periodStart, int $periodEnd, ProducerProfile $producer, PlanPrice $planPrice, Subscription $kept, EntityManagerInterface $em, NotificationService $notificationService): bool
+    {
+        try {
+            $this->paymentGateway->cancelSubscriptionNow($stripeSubscription->id);
+        } catch (InvalidRequestException) {
+            // * déjà résilié chez Stripe (réessai après un échec d'enregistrement) : on garde quand même la trace du doublon
+        } catch (StripeException $e) {
+            $this->logger->error('Abonnement Stripe en double non résilié, nouvelle tentative attendue.', [
+                'stripe_subscription' => $stripeSubscription->id,
+                'producer' => $producer->getId()->toRfc4122(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+
+        $duplicate = new Subscription();
+        $duplicate->setProducer($producer);
+        $duplicate->setPlanPrice($planPrice);
+        $duplicate->setStatus(SubscriptionStatus::Cancelled);
+        $duplicate->setCurrentPeriodStart((new \DateTimeImmutable())->setTimestamp($periodStart));
+        $duplicate->setCurrentPeriodEnd((new \DateTimeImmutable())->setTimestamp($periodEnd));
+        $duplicate->setProviderSubscriptionId($stripeSubscription->id);
+        $em->persist($duplicate);
+
+        $details = [
+            'producer' => $producer->getId()->toRfc4122(),
+            'kept_subscription' => $kept->getId()->toRfc4122(),
+            'cancelled_stripe_subscription' => $stripeSubscription->id,
+        ];
+        $this->auditLogger->log('subscription_duplicate_cancelled', 'billing', 'subscriptions', $duplicate->getId()->toRfc4122(), null, $details);
+        $this->logger->critical('Abonnement Stripe en double résilié : le paiement est à rembourser à la main.', $details);
+        $notificationService->notify(
+            $producer->getOwner(),
+            'subscription_duplicate_cancelled',
+            'Abonnement en double annulé',
+            'Vous avez souscrit deux fois : le second abonnement a été annulé. Notre équipe va vérifier le paiement en double et vous le rembourser.'
+        );
 
         return true;
     }
@@ -159,7 +237,10 @@ final class StripeWebhookController extends AbstractController
         }
         $subscription->setCancelAtPeriodEnd((bool) $stripeSubscription->cancel_at_period_end);
         $status = self::LOCAL_STATUSES[$stripeSubscription->status ?? ''] ?? null;
-        if ($status !== null) {
+        // * annulé ou expiré est définitif chez Stripe : un événement en retard ne doit pas le remettre en vigueur (la base
+        // * refuserait d'ailleurs un second abonnement en vigueur pour ce producteur)
+        $final = [SubscriptionStatus::Cancelled, SubscriptionStatus::Expired];
+        if ($status !== null && !\in_array($subscription->getStatus(), $final, true)) {
             $subscription->setStatus($status);
         }
 

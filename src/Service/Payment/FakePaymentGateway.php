@@ -35,6 +35,11 @@ final class FakePaymentGateway implements PaymentGatewayInterface
         $this->record('cancel', $providerSubscriptionId);
     }
 
+    public function cancelSubscriptionNow(string $providerSubscriptionId): void
+    {
+        $this->record('cancel_now', $providerSubscriptionId);
+    }
+
     public function listPaymentMethods(string $providerSubscriptionId): array
     {
         $this->record('list_payment_methods', $providerSubscriptionId);
