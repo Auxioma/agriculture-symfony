@@ -16,6 +16,7 @@ use App\Enum\SubscriptionStatus;
 use App\Service\Matching\MonthlyRequestCounter;
 use App\Service\Payment\PaymentGatewayInterface;
 use Doctrine\ORM\EntityManagerInterface;
+use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\ExceptionInterface as StripeException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -307,7 +308,12 @@ final class SubscriptionController extends AbstractController
         $atPeriodEnd = ($newPlanPrice->getPlan()->getPosition() ?? 0) < ($subscription->getPlanPrice()->getPlan()->getPosition() ?? 0);
         try {
             $paymentGateway->updateSubscriptionPrice($subscription->getProviderSubscriptionId(), $newPlanPrice->getProviderPriceId(), $atPeriodEnd);
-        } catch (StripeException) {
+        } catch (StripeException $e) {
+            // * 402 : le paiement du changement a échoué (carte refusée, authentification demandée...), Stripe n'a rien modifié
+            if ($e instanceof ApiErrorException && $e->getHttpStatus() === 402) {
+                return $this->json(['error' => "Le paiement de ce changement d'offre n'a pas abouti : votre abonnement n'a pas changé. Vérifiez votre moyen de paiement puis réessayez."], 402);
+            }
+
             return $this->paymentUnavailable();
         }
 

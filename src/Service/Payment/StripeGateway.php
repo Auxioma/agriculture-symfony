@@ -52,6 +52,9 @@ final class StripeGateway implements PaymentGatewayInterface
             $this->stripe()->subscriptions->update($providerSubscriptionId, [
                 'items' => [['id' => $item->id, 'price' => $newPriceId]],
                 'proration_behavior' => 'create_prorations',
+                // * Passer de mensuel à annuel (ou l'inverse) facture tout de suite. Si ce paiement échoue, Stripe refuse alors le
+                // * changement (402) au lieu de l'appliquer et de passer l'abonnement en retard de paiement avec la nouvelle offre.
+                'payment_behavior' => 'error_if_incomplete',
             ]);
 
             return;

@@ -560,6 +560,27 @@ final class SubscriptionControllerTest extends ApiTestCase
         self::assertResponseStatusCodeSame(502);
     }
 
+    public function testChangePlanTellsTheProducerWhenThePaymentOfTheChangeFails(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $subscription = $this->makeActiveSubscription($producer);
+        $subscription->setProviderSubscriptionId('sub_test_declined');
+        $other = $this->makePlanPriceWithProviderId('price_test_declined');
+        $this->em->flush();
+
+        // * Stripe répond 402 (carte refusée) et n'applique pas le changement
+        $declined = new \Stripe\Exception\CardException('Your card was declined.');
+        $declined->setHttpStatus(402);
+        $this->gateway()->failure = $declined;
+        $this->client->request('POST', '/api/subscription/change-plan', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => $other->getId()->toRfc4122()]));
+
+        self::assertResponseStatusCodeSame(402);
+        self::assertStringContainsString("n'a pas changé", json_decode($this->client->getResponse()->getContent(), true)['error']);
+    }
+
     public function testChangePlanRejectsWhenNoActiveSubscription(): void
     {
         [$token] = $this->registerProducerAndLogin();
