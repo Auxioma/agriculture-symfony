@@ -241,12 +241,6 @@ parameters:
 			path: src/Controller/Api/ProducerRequestController.php
 
 		-
-			message: '#^Access to an undefined property Stripe\\StripeObject\:\:\$cancel_at_period_end\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Controller/Api/StripeWebhookController.php
-
-		-
 			message: '#^Method App\\Entity\\Audit\\AuditLog\:\:getNewData\(\) return type has no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1

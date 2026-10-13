@@ -222,6 +222,10 @@ final class StripeWebhookController extends AbstractController
 
     // * Retourne false (retry) si la Subscription locale n'existe pas encore : customer.subscription.created
     // * n'a peut-être pas fini d'être traité, Stripe ne garantissant pas l'ordre de livraison des webhooks.
+    // * Pour la même raison (et parce que Stripe rejoue les événements en échec), le contenu de l'événement peut être périmé : un
+    // * vieux "past_due" reçu après le retour à "active" couperait l'accès à tort, et l'inverse laisserait un impayé en vigueur.
+    // * On applique donc l'état actuel relu chez Stripe, pas celui de l'événement : l'ordre de livraison n'a plus d'importance.
+    // * Stripe injoignable : false, il réessaiera. Abonnement inconnu de Stripe : rien à synchroniser.
     private function handleSubscriptionUpdated(Event $event, EntityManagerInterface $em): bool
     {
         $stripeSubscription = $event->data->object;
@@ -230,22 +234,32 @@ final class StripeWebhookController extends AbstractController
             return false;
         }
 
-        $item = $stripeSubscription->items->data[0] ?? null;
-        if ($item !== null) {
-            $subscription->setCurrentPeriodStart((new \DateTimeImmutable())->setTimestamp($item->current_period_start));
-            $subscription->setCurrentPeriodEnd((new \DateTimeImmutable())->setTimestamp($item->current_period_end));
+        try {
+            $current = $this->paymentGateway->retrieveSubscription($stripeSubscription->id);
+        } catch (InvalidRequestException $e) {
+            $this->logger->warning('Abonnement inconnu de Stripe, événement ignoré.', ['stripe_subscription' => $stripeSubscription->id, 'error' => $e->getMessage()]);
+
+            return true;
+        } catch (StripeException $e) {
+            $this->logger->error('Abonnement Stripe illisible, nouvelle tentative attendue.', ['stripe_subscription' => $stripeSubscription->id, 'error' => $e->getMessage()]);
+
+            return false;
         }
-        $subscription->setCancelAtPeriodEnd((bool) $stripeSubscription->cancel_at_period_end);
-        $status = self::LOCAL_STATUSES[$stripeSubscription->status ?? ''] ?? null;
-        // * annulé ou expiré est définitif chez Stripe : un événement en retard ne doit pas le remettre en vigueur (la base
-        // * refuserait d'ailleurs un second abonnement en vigueur pour ce producteur)
+
+        if ($current['periodStart'] !== null && $current['periodEnd'] !== null) {
+            $subscription->setCurrentPeriodStart((new \DateTimeImmutable())->setTimestamp($current['periodStart']));
+            $subscription->setCurrentPeriodEnd((new \DateTimeImmutable())->setTimestamp($current['periodEnd']));
+        }
+        $subscription->setCancelAtPeriodEnd($current['cancelAtPeriodEnd']);
+        $status = self::LOCAL_STATUSES[$current['status']] ?? null;
+        // * annulé ou expiré est définitif chez Stripe : jamais remis en vigueur (la base refuserait d'ailleurs un second
+        // * abonnement en vigueur pour ce producteur)
         $final = [SubscriptionStatus::Cancelled, SubscriptionStatus::Expired];
         if ($status !== null && !\in_array($subscription->getStatus(), $final, true)) {
             $subscription->setStatus($status);
         }
 
-        $priceId = $item->price->id ?? null;
-        $planPrice = $priceId !== null ? $em->getRepository(PlanPrice::class)->findOneBy(['providerPriceId' => $priceId]) : null;
+        $planPrice = $current['priceId'] !== null ? $em->getRepository(PlanPrice::class)->findOneBy(['providerPriceId' => $current['priceId']]) : null;
         if ($planPrice !== null) {
             $subscription->setPlanPrice($planPrice);
         }
@@ -317,6 +331,7 @@ final class StripeWebhookController extends AbstractController
             $invoice = new Invoice();
             $invoice->setSubscription($subscription);
             $invoice->setProviderInvoiceId($stripeInvoice->id);
+            $invoice->setStatus('open');
             $em->persist($invoice);
         }
 
@@ -353,11 +368,19 @@ final class StripeWebhookController extends AbstractController
         // * Stripe garde la facture ouverte et réessaie ; ici elle passe à "failed" (Échec, admin Factures) avec une ligne de
         // * paiement refusé. Le statut "past_due" de l'abonnement vient, lui, de customer.subscription.updated.
         $invoice = $this->findOrCreateInvoice($stripeInvoice, $subscription, $em);
-        $invoice->setAmount($this->money($stripeInvoice->amount_due ?? null));
-        $invoice->setCurrency($this->currency($stripeInvoice, $em));
-        $invoice->setStatus('failed');
-        $invoice->setInvoiceUrl($stripeInvoice->hosted_invoice_url ?? null);
+        // * "paid" est définitif : un échec reçu en retard (réessayé après un 409, par exemple) ne rouvre pas une facture déjà payée
+        // * et ne déclenche pas de relance. La tentative refusée reste dans l'historique des paiements.
+        $alreadyPaid = $invoice->getStatus() === 'paid';
+        if (!$alreadyPaid) {
+            $invoice->setAmount($this->money($stripeInvoice->amount_due ?? null));
+            $invoice->setCurrency($this->currency($stripeInvoice, $em));
+            $invoice->setStatus('failed');
+            $invoice->setInvoiceUrl($stripeInvoice->hosted_invoice_url ?? null);
+        }
         $this->recordPayment($invoice, 'failed', sprintf('Paiement refusé (tentative %d).', $stripeInvoice->attempt_count ?? 1), $em);
+        if ($alreadyPaid) {
+            return true;
+        }
 
         $notificationService->notify(
             $subscription->getProducer()->getOwner(),

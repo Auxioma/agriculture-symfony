@@ -13,6 +13,9 @@ final class FakePaymentGateway implements PaymentGatewayInterface
         ['id' => 'pm_fake_mastercard', 'brand' => 'mastercard', 'last4' => '4444', 'expMonth' => 1, 'expYear' => 2030, 'isDefault' => false],
     ];
 
+    /** @var array<string, array{status: string, cancelAtPeriodEnd: bool, priceId: string|null, periodStart: int|null, periodEnd: int|null}> état de chaque abonnement "chez Stripe", à poser dans le test avant d'envoyer l'événement */
+    public array $subscriptions = [];
+
     // * Pour simuler une panne ou une clé Stripe absente : toute méthode lève cette exception.
     public ?\Throwable $failure = null;
 
@@ -33,6 +36,13 @@ final class FakePaymentGateway implements PaymentGatewayInterface
     public function cancelSubscriptionAtPeriodEnd(string $providerSubscriptionId): void
     {
         $this->record('cancel', $providerSubscriptionId);
+    }
+
+    public function retrieveSubscription(string $providerSubscriptionId): array
+    {
+        $this->record('retrieve_subscription', $providerSubscriptionId);
+
+        return $this->subscriptions[$providerSubscriptionId] ?? throw new \LogicException(\sprintf('État de %s non défini dans FakePaymentGateway::$subscriptions.', $providerSubscriptionId));
     }
 
     public function cancelSubscriptionNow(string $providerSubscriptionId): void

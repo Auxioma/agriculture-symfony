@@ -335,6 +335,26 @@ final class StripeWebhookControllerTest extends ApiTestCase
         ];
     }
 
+    // * l'état de l'abonnement "chez Stripe", celui que le webhook relit à chaque événement (voir FakePaymentGateway)
+    private function stripeNow(string $providerId, string $status, string $priceId = 'price_inconnu', bool $cancelAtPeriodEnd = false): void
+    {
+        $now = time();
+        $this->gateway()->subscriptions[$providerId] = [
+            'status' => $status,
+            'cancelAtPeriodEnd' => $cancelAtPeriodEnd,
+            'priceId' => $priceId,
+            'periodStart' => $now - 86400,
+            'periodEnd' => $now + 2592000,
+        ];
+    }
+
+    // * cas courant : l'événement et l'état actuel chez Stripe disent la même chose
+    private function sendSubscriptionUpdated(string $providerId, string $stripeStatus): void
+    {
+        $this->stripeNow($providerId, $stripeStatus);
+        $this->sendEvent('customer.subscription.updated', $this->subscriptionObject($providerId, $stripeStatus));
+    }
+
     private function localStatus(string $providerId): string
     {
         return $this->em->getConnection()->fetchOne('SELECT status FROM billing.subscriptions WHERE provider_subscription_id = :id', ['id' => $providerId]);
@@ -357,24 +377,24 @@ final class StripeWebhookControllerTest extends ApiTestCase
             'trialing' => 'trialing',
         ];
         foreach ($expected as $stripeStatus => $localStatus) {
-            $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_test_status', $stripeStatus));
+            $this->sendSubscriptionUpdated('sub_test_status', $stripeStatus);
             self::assertSame($localStatus, $this->localStatus('sub_test_status'), "statut Stripe $stripeStatus");
         }
 
         // * incomplete (premier paiement pas encore fait) et paused ne changent rien
-        $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_test_status', 'active'));
+        $this->sendSubscriptionUpdated('sub_test_status', 'active');
         foreach (['incomplete', 'paused'] as $ignored) {
-            $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_test_status', $ignored));
+            $this->sendSubscriptionUpdated('sub_test_status', $ignored);
             self::assertSame('active', $this->localStatus('sub_test_status'), "statut Stripe $ignored");
         }
 
         // * et un événement en retard ne les remet pas en vigueur
         foreach ($final as $stripeStatus => $localStatus) {
             $providerId = 'sub_test_'.$stripeStatus;
-            $this->sendEvent('customer.subscription.updated', $this->subscriptionObject($providerId, $stripeStatus));
+            $this->sendSubscriptionUpdated($providerId, $stripeStatus);
             self::assertSame($localStatus, $this->localStatus($providerId), "statut Stripe $stripeStatus");
 
-            $this->sendEvent('customer.subscription.updated', $this->subscriptionObject($providerId, 'active'));
+            $this->sendSubscriptionUpdated($providerId, 'active');
             self::assertSame($localStatus, $this->localStatus($providerId), "$stripeStatus ne revient pas en vigueur");
         }
     }
@@ -389,10 +409,10 @@ final class StripeWebhookControllerTest extends ApiTestCase
 
         self::assertTrue($canReply());
 
-        $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_test_limited', 'past_due'));
+        $this->sendSubscriptionUpdated('sub_test_limited', 'past_due');
         self::assertFalse($canReply());
 
-        $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_test_limited', 'active'));
+        $this->sendSubscriptionUpdated('sub_test_limited', 'active');
         self::assertTrue($canReply());
     }
 
@@ -611,7 +631,7 @@ final class StripeWebhookControllerTest extends ApiTestCase
         $this->sendEvent('customer.subscription.created', $this->createdObject('sub_dup_e', $kept->getProducer()));
 
         // * sans la garde, ce passage à "active" violerait l'index unique : l'événement échouerait en boucle
-        $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_dup_e', 'active'));
+        $this->sendSubscriptionUpdated('sub_dup_e', 'active');
 
         self::assertSame('cancelled', $this->localStatus('sub_dup_e'));
         self::assertSame('active', $this->localStatus($kept->getProviderSubscriptionId()));
@@ -696,5 +716,84 @@ final class StripeWebhookControllerTest extends ApiTestCase
         $this->em->persist($planPrice);
 
         return $planPrice;
+    }
+
+    // --- événements périmés : Stripe ne garantit pas l'ordre et rejoue ceux qui ont échoué ----------------------------------------
+
+    public function testStaleSubscriptionEventNeverOverwritesTheCurrentStripeState(): void
+    {
+        $this->linkedSubscription('sub_stale');
+
+        // * Stripe est revenu à "active" ; un vieil événement "past_due" arrive après
+        $this->stripeNow('sub_stale', 'active');
+        $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_stale', 'past_due'));
+        self::assertSame('active', $this->localStatus('sub_stale'));
+
+        // * et l'inverse : le paiement a échoué depuis, un vieil événement "active" ne rend pas l'accès
+        $this->stripeNow('sub_stale', 'past_due');
+        $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_stale', 'active'));
+        self::assertSame('past_due', $this->localStatus('sub_stale'));
+    }
+
+    public function testSubscriptionEventAppliesThePlanPeriodAndCancellationReadAtStripe(): void
+    {
+        $this->linkedSubscription('sub_plan');
+        $newPrice = $this->makeKnownPrice('price_new');
+        $this->em->flush();
+
+        // * l'événement parle de l'ancien prix, sans annulation : c'est l'état chez Stripe qui compte
+        $this->stripeNow('sub_plan', 'active', 'price_new', true);
+        $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_plan', 'active'));
+
+        $row = $this->em->getConnection()->fetchAssociative("SELECT plan_price_id, cancel_at_period_end, current_period_end FROM billing.subscriptions WHERE provider_subscription_id = 'sub_plan'");
+        self::assertSame($newPrice->getId()->toRfc4122(), $row['plan_price_id']);
+        self::assertTrue((bool) $row['cancel_at_period_end']);
+        self::assertEqualsWithDelta(time() + 2592000, (new \DateTimeImmutable($row['current_period_end']))->getTimestamp(), 5);
+    }
+
+    public function testStripeOutageWhenReadingTheSubscriptionAsksStripeToRetry(): void
+    {
+        $this->linkedSubscription('sub_read');
+        $this->stripeNow('sub_read', 'past_due');
+        $object = $this->subscriptionObject('sub_read', 'past_due');
+
+        $this->gateway()->failure = new ApiConnectionException('panne simulée');
+        $this->sendEvent('customer.subscription.updated', $object, 'evt_read', expectSuccess: false);
+
+        self::assertResponseStatusCodeSame(409);
+        self::assertSame('active', $this->localStatus('sub_read'), 'rien n\'est appliqué tant que Stripe n\'a pas répondu');
+
+        $this->gateway()->failure = null;
+        $this->sendEvent('customer.subscription.updated', $object, 'evt_read');
+        self::assertSame('past_due', $this->localStatus('sub_read'));
+    }
+
+    public function testEventForASubscriptionUnknownToStripeIsIgnored(): void
+    {
+        $this->linkedSubscription('sub_gone');
+
+        $this->gateway()->failure = new InvalidRequestException('No such subscription');
+        $this->sendEvent('customer.subscription.updated', $this->subscriptionObject('sub_gone', 'past_due'));
+
+        self::assertSame('active', $this->localStatus('sub_gone'));
+    }
+
+    public function testLateFailedPaymentEventDoesNotReopenAPaidInvoice(): void
+    {
+        $subscription = $this->linkedSubscription('sub_late_invoice');
+        $ofSubscription = ['parent' => ['subscription_details' => ['subscription' => 'sub_late_invoice']]];
+
+        $this->sendEvent('invoice.paid', ['id' => 'in_late', 'amount_paid' => 1900, 'currency' => 'eur'] + $ofSubscription);
+        // * l'échec de la première tentative arrive après le paiement (il avait été réessayé)
+        $this->sendEvent('invoice.payment_failed', ['id' => 'in_late', 'amount_due' => 1900, 'currency' => 'eur', 'attempt_count' => 1] + $ofSubscription);
+
+        $connection = $this->em->getConnection();
+        self::assertSame('paid', $connection->fetchOne("SELECT status FROM billing.invoices WHERE provider_invoice_id = 'in_late'"));
+        $payments = $connection->fetchFirstColumn("SELECT p.status FROM billing.payments p JOIN billing.invoices i ON i.id = p.invoice_id WHERE i.provider_invoice_id = 'in_late'");
+        self::assertEqualsCanonicalizing(['failed', 'succeeded'], $payments);
+        self::assertSame(0, (int) $connection->fetchOne(
+            "SELECT count(*) FROM notification.notifications WHERE type = 'payment_failed' AND user_id = :u",
+            ['u' => $subscription->getProducer()->getOwner()->getId()->toRfc4122()]
+        ));
     }
 }

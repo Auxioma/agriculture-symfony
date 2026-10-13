@@ -12,6 +12,14 @@ interface PaymentGatewayInterface
     // * l'abonnement reste actif jusqu'à la fin de la période déjà payée
     public function cancelSubscriptionAtPeriodEnd(string $providerSubscriptionId): void;
 
+    /**
+     * État actuel de l'abonnement chez Stripe. Source de vérité quand un événement arrive : Stripe ne garantit pas l'ordre
+     * de livraison des webhooks et rejoue ceux qui ont échoué, donc le contenu d'un événement peut être périmé.
+     *
+     * @return array{status: string, cancelAtPeriodEnd: bool, priceId: string|null, periodStart: int|null, periodEnd: int|null}
+     */
+    public function retrieveSubscription(string $providerSubscriptionId): array;
+
     // * résiliation immédiate, sans remboursement : plus aucun prélèvement (abonnement en double, voir StripeWebhookController)
     public function cancelSubscriptionNow(string $providerSubscriptionId): void;
 
