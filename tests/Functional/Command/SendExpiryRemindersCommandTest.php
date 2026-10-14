@@ -204,4 +204,67 @@ final class SendExpiryRemindersCommandTest extends ApiTestCase
         );
         self::assertFalse($cancellingNotification);
     }
+
+    public function testSubscriptionReminderGivesTheRenewalDateInParis(): void
+    {
+        $owner = $this->makeUser('renewing');
+        $producer = $this->makeProducerProfile($owner, $this->makeCountry());
+        // * 23 h 30 UTC --> à Paris c'est déjà le lendemain, et c'est ce jour-là que le producteur doit lire
+        $periodEnd = new \DateTimeImmutable('tomorrow 23:30', new \DateTimeZone('UTC'));
+        $this->makeActiveSubscription($producer, periodEnd: $periodEnd);
+        $this->em->flush();
+
+        $this->executeReminderCommand();
+
+        $body = $this->em->getConnection()->fetchOne(
+            "SELECT body FROM notification.notifications WHERE user_id = :id AND type = 'subscription_renewing_soon'",
+            ['id' => $owner->getId()->toRfc4122()]
+        );
+        $parisDay = $periodEnd->setTimezone(new \DateTimeZone('Europe/Paris'))->format('d/m/Y');
+        self::assertNotSame($periodEnd->format('d/m/Y'), $parisDay);
+        self::assertSame(\sprintf('Votre abonnement sera renouvelé le %s.', $parisDay), $body);
+    }
+
+    public function testRunningTwiceDoesNotDuplicateTheSubscriptionReminder(): void
+    {
+        $owner = $this->makeUser('renewing');
+        $producer = $this->makeProducerProfile($owner, $this->makeCountry());
+        $this->makeActiveSubscription($producer, periodEnd: new \DateTimeImmutable('+3 days'));
+        $this->em->flush();
+
+        $this->executeReminderCommand();
+        $this->executeReminderCommand();
+
+        self::assertSame(1, $this->countRenewalReminders($owner));
+    }
+
+    // * Avant, le rappel n'était envoyé qu'une fois dans la vie de l'abonnement --> un abonné mensuel n'était prévenu que
+    // * avant son premier renouvellement. Le renouvellement repousse la fin de période (ici +3 jours, puis +5 jours dans la
+    // * même fenêtre, faute de pouvoir attendre un mois) : c'est une nouvelle échéance, donc un nouveau rappel.
+    public function testRemindsAgainForTheNextRenewalOfTheSameSubscription(): void
+    {
+        $owner = $this->makeUser('renewing');
+        $producer = $this->makeProducerProfile($owner, $this->makeCountry());
+        $subscription = $this->makeActiveSubscription($producer, periodEnd: new \DateTimeImmutable('+3 days'));
+        $this->em->flush();
+        $this->executeReminderCommand();
+        self::assertSame(1, $this->countRenewalReminders($owner));
+
+        $subscription->setCurrentPeriodEnd(new \DateTimeImmutable('+5 days'));
+        $this->em->flush();
+        $this->executeReminderCommand();
+        self::assertSame(2, $this->countRenewalReminders($owner));
+
+        // * et pas de nouveau rappel tant que la fin de période ne bouge pas
+        $this->executeReminderCommand();
+        self::assertSame(2, $this->countRenewalReminders($owner));
+    }
+
+    private function countRenewalReminders(\App\Entity\Identity\User $owner): int
+    {
+        return (int) $this->em->getConnection()->fetchOne(
+            "SELECT count(*) FROM notification.notifications WHERE user_id = :id AND type = 'subscription_renewing_soon'",
+            ['id' => $owner->getId()->toRfc4122()]
+        );
+    }
 }

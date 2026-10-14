@@ -27,7 +27,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  * Idempotente par construction : avant d'envoyer un rappel, on vérifie qu'aucune notification du même
  * type pour le même enregistrement n'existe déjà, en relisant Notification.data (JSON) -- évite d'ajouter
- * un champ "reminderSentAt" sur ClientRequest/Subscription juste pour ça.
+ * un champ "reminderSentAt" sur ClientRequest/Subscription juste pour ça. Pour un abonnement, l'enregistrement
+ * est l'échéance (abonnement + fin de période) : le rappel revient à chaque renouvellement, pas une seule fois.
  *
  * ! setParameter() sans type explicite infère Types::DATETIME_IMMUTABLE (sans fuseau horaire) pour un
  * ! \DateTimeImmutable -- Postgres interprète alors la valeur naïve avec le fuseau horaire de la session
@@ -42,6 +43,8 @@ final class SendExpiryRemindersCommand extends Command
 {
     private const REQUEST_REMINDER_WINDOW = '+2 days';
     private const SUBSCRIPTION_REMINDER_WINDOW = '+7 days';
+    // * la date du renouvellement est écrite pour le producteur, pas en UTC
+    private const DISPLAY_TIMEZONE = 'Europe/Paris';
     private const ACTIVE_REQUEST_STATUSES = [
         RequestStatus::Sent, RequestStatus::WaitingReplies, RequestStatus::RepliesReceived, RequestStatus::ConversationOpen,
     ];
@@ -89,7 +92,7 @@ final class SendExpiryRemindersCommand extends Command
         foreach ($requests as $request) {
             $requestId = $request->getId()->toRfc4122();
 
-            if (!$this->alreadyNotified($request->getClient(), 'request_expiring_soon', 'requestId', $requestId)) {
+            if (!$this->alreadyNotified($request->getClient(), 'request_expiring_soon', ['requestId' => $requestId])) {
                 $this->notificationService->notify(
                     $request->getClient(), 'request_expiring_soon', 'Demande expirant bientôt',
                     'Votre demande arrive bientôt à expiration.', ['requestId' => $requestId]
@@ -111,7 +114,7 @@ final class SendExpiryRemindersCommand extends Command
                 }
                 $notifiedProducers[$producerId] = true;
 
-                if (!$this->alreadyNotified($producer->getOwner(), 'request_expiring_soon', 'requestId', $requestId)) {
+                if (!$this->alreadyNotified($producer->getOwner(), 'request_expiring_soon', ['requestId' => $requestId])) {
                     $this->notificationService->notify(
                         $producer->getOwner(), 'request_expiring_soon', 'Demande expirant bientôt',
                         'Une demande à laquelle vous avez répondu arrive bientôt à expiration.', ['requestId' => $requestId]
@@ -142,12 +145,17 @@ final class SendExpiryRemindersCommand extends Command
         $count = 0;
         foreach ($subscriptions as $subscription) {
             $owner = $subscription->getProducer()->getOwner();
-            $subscriptionId = $subscription->getId()->toRfc4122();
+            $periodEnd = $subscription->getCurrentPeriodEnd();
+            $renewal = [
+                'subscriptionId' => $subscription->getId()->toRfc4122(),
+                'periodEnd' => $periodEnd->setTimezone(new \DateTimeZone('UTC'))->format(\DATE_ATOM),
+            ];
 
-            if (!$this->alreadyNotified($owner, 'subscription_renewing_soon', 'subscriptionId', $subscriptionId)) {
+            if (!$this->alreadyNotified($owner, 'subscription_renewing_soon', $renewal)) {
                 $this->notificationService->notify(
                     $owner, 'subscription_renewing_soon', 'Abonnement bientôt renouvelé',
-                    'Votre abonnement sera renouvelé prochainement.', ['subscriptionId' => $subscriptionId]
+                    \sprintf('Votre abonnement sera renouvelé le %s.', $periodEnd->setTimezone(new \DateTimeZone(self::DISPLAY_TIMEZONE))->format('d/m/Y')),
+                    $renewal
                 );
                 ++$count;
             }
@@ -156,13 +164,21 @@ final class SendExpiryRemindersCommand extends Command
         return $count;
     }
 
-    private function alreadyNotified(User $recipient, string $type, string $dataKey, string $recordId): bool
+    /**
+     * @param array<string, string> $match clés de Notification.data qui doivent toutes valoir ces valeurs
+     */
+    private function alreadyNotified(User $recipient, string $type, array $match): bool
     {
-        $exists = $this->em->getConnection()->fetchOne(
-            "SELECT 1 FROM notification.notifications WHERE user_id = :userId AND type = :type AND data->>:key = :recordId LIMIT 1",
-            ['userId' => $recipient->getId()->toRfc4122(), 'type' => $type, 'key' => $dataKey, 'recordId' => $recordId]
-        );
+        $sql = 'SELECT 1 FROM notification.notifications WHERE user_id = :userId AND type = :type';
+        $params = ['userId' => $recipient->getId()->toRfc4122(), 'type' => $type];
+        $i = 0;
+        foreach ($match as $key => $value) {
+            $sql .= " AND data->>:key$i = :value$i";
+            $params["key$i"] = $key;
+            $params["value$i"] = $value;
+            ++$i;
+        }
 
-        return false !== $exists;
+        return false !== $this->em->getConnection()->fetchOne($sql.' LIMIT 1', $params);
     }
 }
