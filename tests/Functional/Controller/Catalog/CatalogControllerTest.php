@@ -10,6 +10,7 @@ use App\Entity\Catalog\ProductTranslation;
 use App\Enum\VerificationStatus;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * Teste aussi ?locale= (cahier fonctionnel, "SEO avancé, multi-langue complet") : les traductions
@@ -19,6 +20,9 @@ use App\Tests\Fixtures\EntityFactoryTrait;
 final class CatalogControllerTest extends ApiTestCase
 {
     use EntityFactoryTrait;
+
+    /** Compteur pour donner un nom/un utilisateur unique à chaque producteur créé par addProducers() */
+    private int $producerSequence = 0;
 
     public function testListCategoriesReturnsOnlyActiveOnes(): void
     {
@@ -345,6 +349,247 @@ final class CatalogControllerTest extends ApiTestCase
         self::assertResponseIsSuccessful();
         $data = json_decode($this->client->getResponse()->getContent(), true);
         self::assertSame(1, $this->categoryRow($data, $category)['producerCount']);
+    }
+
+    // ─────────────── Catégories populaires (?sort=popular&limit=N : accueil et navbar) ───────────────
+
+    public function testListCategoriesWithoutParametersKeepsAllActiveSortedByPosition(): void
+    {
+        // * Non-régression de la page Catégories : sans paramètre, rien ne change (tout est listé, trié par position)
+        $second = $this->makeActiveRoot('Légumes', 20);
+        $first = $this->makeActiveRoot('Fruits', 10);
+        $child = $this->makeActiveRoot('Pommes', 30);
+        $child->setParent($first);
+        $draft = $this->makeActiveRoot('Brouillon', 40);
+        $draft->setIsActive(false);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/categories');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame(
+            [$first->getId()->toRfc4122(), $second->getId()->toRfc4122(), $child->getId()->toRfc4122()],
+            $this->idsOf($data, $first, $second, $child, $draft),
+        );
+    }
+
+    public function testListCategoriesPopularReturnsRootCategoriesOnly(): void
+    {
+        // * Les comptes du repository incluent les sous-catégories : sans ce filtre, "Pommes" doublerait "Fruits"
+        $country = $this->makeCountry();
+        $family = $this->makeActiveRoot('Fruits', 10);
+        $child = $this->makeActiveRoot('Pommes', 20);
+        $child->setParent($family);
+        $this->addProducers($child, 3, $country);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/categories?sort=popular');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame([null], array_values(array_unique(array_column($data, 'parentId'))));
+        self::assertSame([$family->getId()->toRfc4122()], $this->idsOf($data, $family, $child));
+    }
+
+    public function testListCategoriesPopularSortsByProducerCountDescending(): void
+    {
+        $country = $this->makeCountry();
+        // créées dans le désordre (positions croisées) pour prouver que le tri vient bien de la popularité
+        $none = $this->makeActiveRoot('Miel', 10);
+        $one = $this->makeActiveRoot('Légumes', 20);
+        $three = $this->makeActiveRoot('Fruits', 30);
+        $two = $this->makeActiveRoot('Laitiers', 40);
+        $this->addProducers($one, 1, $country);
+        $this->addProducers($two, 2, $country);
+        $this->addProducers($three, 3, $country);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/categories?sort=popular');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame(
+            [$three->getId()->toRfc4122(), $two->getId()->toRfc4122(), $one->getId()->toRfc4122(), $none->getId()->toRfc4122()],
+            $this->idsOf($data, $none, $one, $three, $two),
+        );
+        $counts = array_column($data, 'producerCount');
+        $sorted = $counts;
+        rsort($sorted);
+        self::assertSame($sorted, $counts);
+    }
+
+    public function testListCategoriesPopularLimitKeepsTheMostPopular(): void
+    {
+        $country = $this->makeCountry();
+        $third = $this->makeActiveRoot('Miel', 10);
+        $first = $this->makeActiveRoot('Fruits', 20);
+        $second = $this->makeActiveRoot('Légumes', 30);
+        $this->addProducers($third, 1, $country);
+        $this->addProducers($second, 2, $country);
+        $this->addProducers($first, 3, $country);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/categories?sort=popular&limit=2');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame([$first->getId()->toRfc4122(), $second->getId()->toRfc4122()], array_column($data, 'id'));
+    }
+
+    public function testListCategoriesPopularKeepsPositionOrderOnTies(): void
+    {
+        $country = $this->makeCountry();
+        // créée en premier mais positionnée en dernier : à égalité de producteurs, c'est la position qui départage
+        $late = $this->makeActiveRoot('Légumes', 20);
+        $early = $this->makeActiveRoot('Fruits', 10);
+        $this->addProducers($late, 1, $country);
+        $this->addProducers($early, 1, $country);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/categories?sort=popular');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame(
+            [$early->getId()->toRfc4122(), $late->getId()->toRfc4122()],
+            $this->idsOf($data, $late, $early),
+        );
+    }
+
+    public function testListCategoriesLimitWithoutSortKeepsPositionOrder(): void
+    {
+        $second = $this->makeActiveRoot('Légumes', 20);
+        $first = $this->makeActiveRoot('Fruits', 10);
+        $this->makeActiveRoot('Miel', 30);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/categories?limit=2');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame([$first->getId()->toRfc4122(), $second->getId()->toRfc4122()], array_column($data, 'id'));
+    }
+
+    #[DataProvider('invalidLimits')]
+    public function testListCategoriesIgnoresAnInvalidLimit(string $limit): void
+    {
+        $categories = [];
+        for ($i = 1; $i <= 7; ++$i) {
+            $categories[] = $this->makeActiveRoot('Famille '.$i, $i);
+        }
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/categories?limit='.$limit);
+
+        // * "abc", 0 et les valeurs négatives ne limitent rien : tout est renvoyé, comme sans paramètre
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertCount(7, $this->idsOf($data, ...$categories));
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function invalidLimits(): iterable
+    {
+        yield 'texte' => ['abc'];
+        yield 'zéro' => ['0'];
+        yield 'négatif' => ['-3'];
+    }
+
+    public function testListCategoriesCapsLimitAtFifty(): void
+    {
+        for ($i = 1; $i <= 51; ++$i) {
+            $this->makeActiveRoot('Famille '.$i, $i);
+        }
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/categories?limit=999');
+
+        self::assertResponseIsSuccessful();
+        self::assertCount(50, json_decode($this->client->getResponse()->getContent(), true));
+    }
+
+    public function testListCategoriesIgnoresUnknownSort(): void
+    {
+        $second = $this->makeActiveRoot('Légumes', 20);
+        $first = $this->makeActiveRoot('Fruits', 10);
+        $this->addProducers($second, 2, $this->makeCountry());
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/categories?sort=foo');
+
+        // * Une valeur inconnue n'active pas le tri par popularité : l'ordre par position reste
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame([$first->getId()->toRfc4122(), $second->getId()->toRfc4122()], $this->idsOf($data, $second, $first));
+    }
+
+    public function testListCategoriesPopularReturnsTranslatedFieldsForRequestedLocale(): void
+    {
+        // * Les traductions sont chargées après la limite : la catégorie retenue doit bien être traduite
+        $top = $this->makeActiveRoot('Fruits', 10);
+        $other = $this->makeActiveRoot('Légumes', 20);
+        $this->addProducers($top, 1, $this->makeCountry());
+        $translation = new CategoryTranslation();
+        $translation->setCategory($top);
+        $translation->setLocale('en');
+        $translation->setName('Fresh fruits');
+        $this->em->persist($translation);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/categories?sort=popular&limit=1&locale=en');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertCount(1, $data);
+        self::assertSame($top->getId()->toRfc4122(), $data[0]['id']);
+        self::assertSame('Fresh fruits', $data[0]['name']);
+        self::assertNotSame($other->getId()->toRfc4122(), $data[0]['id']);
+    }
+
+    public function testListCategoriesPopularIsPublic(): void
+    {
+        // *Aucun header Authorization : la navbar et l'accueil sont affichés aux invités
+        $this->makeActiveRoot('Fruits', 10);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/categories?sort=popular&limit=5');
+
+        self::assertResponseIsSuccessful();
+    }
+
+    /** Catégorie racine active à une position donnée (non flushée : appeler $this->em->flush() ensuite) */
+    private function makeActiveRoot(string $name, int $position): Category
+    {
+        $category = $this->makeCategory($name);
+        $category->setIsActive(true);
+        $category->setPosition($position);
+
+        return $category;
+    }
+
+    /** Rattache $count producteurs actifs distincts à la catégorie (un produit chacun) */
+    private function addProducers(Category $category, int $count, object $country): void
+    {
+        for ($i = 0; $i < $count; ++$i) {
+            $n = ++$this->producerSequence;
+            $producer = $this->makeProducerProfile($this->makeUser('popular'.$n), $country, farmName: 'Ferme populaire '.$n);
+            $this->makeProducerProduct($producer, $this->makeProduct($category, 'Produit populaire '.$n));
+        }
+    }
+
+    /**
+     * Ids (dans l'ordre de la réponse) des seules catégories données : isole le test des autres données de la base.
+     *
+     * @param array<int, array<string, mixed>> $categories réponse de GET /api/categories
+     *
+     * @return list<string>
+     */
+    private function idsOf(array $categories, Category ...$wanted): array
+    {
+        $wantedIds = array_map(static fn (Category $c) => $c->getId()->toRfc4122(), $wanted);
+
+        return array_values(array_filter(array_column($categories, 'id'), static fn (string $id) => in_array($id, $wantedIds, true)));
     }
 
     /** @param array<int, array<string, mixed>> $categories réponse de GET /api/categories */

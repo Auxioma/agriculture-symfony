@@ -49,6 +49,24 @@ final class CatalogController extends AbstractController
         // * Seules les catégories actives sont visibles publiquement, une catégorie désactivée
         // * est un brouillon/masquage volontaire côté back-office, pas censée apparaître ici
         $categories = $em->getRepository(Category::class)->findBy(['isActive' => true], ['position' => 'ASC']);
+        $producerCount = $this->producerProducts->countProducersByCategory();
+
+        if ($request->query->get('sort') === 'popular') {
+            $categories = array_values(array_filter($categories, fn (Category $c) => $c->getParent() === null));
+            
+            usort($categories, fn (Category $a, Category $b) => 
+                ($producerCount[$b->getId()->toRfc4122()] ?? 0) <=> (($producerCount[$a->getId()->toRfc4122()] ?? 0))
+            );
+        }
+
+        // * On lit la valeur brute et on la valide nous-mêmes : getInt() lève une 400 sur une valeur non numérique
+        $rawLimit = $request->query->all()['limit'] ?? null;
+        $limit = is_string($rawLimit) ? filter_var($rawLimit, FILTER_VALIDATE_INT) : false;
+
+        if (is_int($limit) && $limit > 0) {
+            $categories = array_slice($categories, 0, min($limit, 50));
+        }
+
         $translations = $this->indexTranslationsByParentId(
             $categories === [] ? [] : $em->getRepository(CategoryTranslation::class)->findBy(['category' => $categories, 'locale' => $locale]),
             static fn (CategoryTranslation $t) => $t->getCategory()->getId()->toRfc4122()
