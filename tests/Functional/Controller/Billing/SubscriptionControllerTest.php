@@ -238,10 +238,12 @@ final class SubscriptionControllerTest extends ApiTestCase
         $this->em->flush();
         $id = $subscription->getId()->toRfc4122();
         $this->gateway()->failure = new \Stripe\Exception\InvalidArgumentException('api_key cannot be the empty string');
+        $logSize = $this->logSize();
 
         $this->client->request('POST', '/api/subscription/cancel', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
 
         self::assertResponseStatusCodeSame(502);
+        self::assertStringContainsString('Appel Stripe échoué : cancel', $this->logsSince($logSize));
         self::assertFalse((bool) $this->em->getConnection()->fetchOne('SELECT cancel_at_period_end FROM billing.subscriptions WHERE id = :id', ['id' => $id]));
     }
 
@@ -337,6 +339,7 @@ final class SubscriptionControllerTest extends ApiTestCase
         $planPrice = $this->makePlanPriceWithProviderId('price_test_checkout_down');
         $this->em->flush();
         $this->gateway()->failure = new \Stripe\Exception\InvalidArgumentException('api_key cannot be the empty string');
+        $logSize = $this->logSize();
 
         $this->client->request('POST', '/api/subscription/checkout', server: [
             'CONTENT_TYPE' => 'application/json',
@@ -344,6 +347,8 @@ final class SubscriptionControllerTest extends ApiTestCase
         ], content: json_encode(['planPriceId' => $planPrice->getId()->toRfc4122()]));
 
         self::assertResponseStatusCodeSame(502);
+        self::assertStringContainsString('Appel Stripe échoué : checkout', $this->logsSince($logSize));
+        self::assertStringContainsString('api_key cannot be the empty string', $this->logsSince($logSize));
         self::assertStringContainsString('indisponible', json_decode($this->client->getResponse()->getContent(), true)['error']);
     }
 
@@ -556,8 +561,10 @@ final class SubscriptionControllerTest extends ApiTestCase
         self::assertResponseStatusCodeSame(422);
 
         $this->gateway()->failure = new \Stripe\Exception\InvalidArgumentException('api_key cannot be the empty string');
+        $logSize = $this->logSize();
         $post($other);
         self::assertResponseStatusCodeSame(502);
+        self::assertStringContainsString('Appel Stripe échoué : change-plan', $this->logsSince($logSize));
     }
 
     public function testChangePlanTellsTheProducerWhenThePaymentOfTheChangeFails(): void

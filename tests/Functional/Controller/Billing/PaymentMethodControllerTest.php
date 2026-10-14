@@ -136,9 +136,15 @@ final class PaymentMethodControllerTest extends ApiTestCase
     {
         [$token] = $this->loginAsProducer();
         $this->gateway()->failure = new \Stripe\Exception\InvalidArgumentException('api_key cannot be the empty string');
+        $logSize = $this->logSize();
 
         self::assertSame(502, $this->call('GET', '/api/subscription/payment-methods', $token));
         self::assertSame(502, $this->call('POST', '/api/subscription/payment-methods/setup', $token));
         self::assertSame(502, $this->call('DELETE', '/api/subscription/payment-methods/pm_fake_mastercard', $token));
+
+        $logs = $this->logsSince($logSize);
+        foreach (['payment-methods-list', 'payment-methods-setup', 'payment-methods-action'] as $action) {
+            self::assertStringContainsString('Appel Stripe échoué : '.$action, $logs);
+        }
     }
 }

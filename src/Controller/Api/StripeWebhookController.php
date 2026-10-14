@@ -44,6 +44,14 @@ final class StripeWebhookController extends AbstractController
     #[Route('/api/webhooks/stripe', methods: ['POST'])]
     public function handle(Request $request, EntityManagerInterface $em, NotificationService $notificationService): JsonResponse
     {
+        // ! Sans secret, la signature se calcule avec une clé vide que n'importe qui peut reproduire : de faux événements seraient
+        // ! acceptés (un abonnement gratuit, par exemple). On refuse tout tant que le secret n'est pas configuré.
+        if ($this->webhookSecret === '') {
+            $this->logger->critical('STRIPE_WEBHOOK_SECRET est vide : webhook Stripe refusé.');
+
+            return $this->json(['error' => 'Webhook non configuré.'], 503);
+        }
+
         try {
             $event = Webhook::constructEvent($request->getContent(), $request->headers->get('Stripe-Signature', ''), $this->webhookSecret);
         } catch (\UnexpectedValueException|SignatureVerificationException) {

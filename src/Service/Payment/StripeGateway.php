@@ -2,6 +2,7 @@
 
 namespace App\Service\Payment;
 
+use Stripe\Exception\InvalidArgumentException;
 use Stripe\StripeClient;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
@@ -11,12 +12,20 @@ final class StripeGateway implements PaymentGatewayInterface
 
     // * Le client n'est créé qu'au premier appel : sans STRIPE_SECRET_KEY (dev), Stripe lève une exception dès le
     // * constructeur, et elle doit arriver dans le try/catch des contrôleurs, pas pendant l'injection.
-    public function __construct(#[Autowire(env: 'STRIPE_SECRET_KEY')] private readonly string $secretKey)
-    {
+    public function __construct(
+        #[Autowire(env: 'STRIPE_SECRET_KEY')] private readonly string $secretKey,
+        #[Autowire('%kernel.environment%')] private readonly string $environment,
+    ) {
     }
 
     private function stripe(): StripeClient
     {
+        // ! Une clé live en dev ou en test ferait de vrais prélèvements. Refusée ici : cette exception est rattrapée comme les
+        // ! autres erreurs Stripe par les contrôleurs (502 + une ligne dans les logs qui dit pourquoi).
+        if ('prod' !== $this->environment && 1 === preg_match('/^[sr]k_live_/', $this->secretKey)) {
+            throw new InvalidArgumentException(\sprintf('Clé Stripe live refusée hors production (environnement : %s).', $this->environment));
+        }
+
         return $this->stripe ??= new StripeClient($this->secretKey);
     }
 
@@ -28,6 +37,9 @@ final class StripeGateway implements PaymentGatewayInterface
             'line_items' => [['price' => $priceId, 'quantity' => 1]],
             'success_url' => $successUrl,
             'cancel_url' => $cancelUrl,
+            // * Une session ouverte reste payable 24 h par défaut : deux sessions payées chacune = deux abonnements. 35 minutes
+            // * (Stripe exige au moins 30, la marge couvre le temps de l'appel) réduisent cette fenêtre.
+            'expires_at' => time() + 2100,
             // ! subscription_data.metadata (pas metadata au niveau racine) : c'est ce qui permet de
             // ! retrouver producer_id directement sur l'objet Subscription Stripe créé juste après --
             // ! sans ça, seul l'événement checkout.session.completed le porterait, et il ne contient pas

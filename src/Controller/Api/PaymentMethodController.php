@@ -6,6 +6,7 @@ use App\Entity\Billing\Subscription;
 use App\Entity\Identity\User;
 use App\Enum\SubscriptionStatus;
 use App\Service\Payment\PaymentGatewayInterface;
+use App\Service\Payment\StripeFailureLogger;
 use Doctrine\ORM\EntityManagerInterface;
 use Stripe\Exception\ExceptionInterface as StripeException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -22,6 +23,10 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
  */
 final class PaymentMethodController extends AbstractController
 {
+    public function __construct(private readonly StripeFailureLogger $stripeFailures)
+    {
+    }
+
     #[Route('/api/subscription/payment-methods', methods: ['GET'])]
     public function list(#[CurrentUser] User $user, EntityManagerInterface $em, PaymentGatewayInterface $gateway): JsonResponse
     {
@@ -32,7 +37,9 @@ final class PaymentMethodController extends AbstractController
 
         try {
             return $this->json($gateway->listPaymentMethods($providerId));
-        } catch (StripeException) {
+        } catch (StripeException $e) {
+            $this->stripeFailures->log('payment-methods-list', $e);
+
             return $this->unavailable();
         }
     }
@@ -56,7 +63,9 @@ final class PaymentMethodController extends AbstractController
                 $frontendUrl.'/producer/subscription/payment-methods?card=added',
                 $frontendUrl.'/producer/subscription/payment-methods?card=cancelled',
             );
-        } catch (StripeException) {
+        } catch (StripeException $e) {
+            $this->stripeFailures->log('payment-methods-setup', $e);
+
             return $this->unavailable();
         }
 
@@ -100,7 +109,9 @@ final class PaymentMethodController extends AbstractController
                 return $this->json(['error' => "Choisissez d'abord une autre carte par défaut."], 409);
             }
             $action($providerId, $card);
-        } catch (StripeException) {
+        } catch (StripeException $e) {
+            $this->stripeFailures->log('payment-methods-action', $e);
+
             return $this->unavailable();
         }
 

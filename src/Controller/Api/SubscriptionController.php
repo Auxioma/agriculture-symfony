@@ -15,6 +15,7 @@ use App\Entity\Producer\ProducerProfile;
 use App\Enum\SubscriptionStatus;
 use App\Service\Matching\MonthlyRequestCounter;
 use App\Service\Payment\PaymentGatewayInterface;
+use App\Service\Payment\StripeFailureLogger;
 use Doctrine\ORM\EntityManagerInterface;
 use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\ExceptionInterface as StripeException;
@@ -30,6 +31,10 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
  */
 final class SubscriptionController extends AbstractController
 {
+    public function __construct(private readonly StripeFailureLogger $stripeFailures)
+    {
+    }
+
     /**
      * Liste des offres d'abonnement actives et leurs tarifs.
      */
@@ -152,7 +157,9 @@ final class SubscriptionController extends AbstractController
         if ($subscription->getProviderSubscriptionId() !== null) {
             try {
                 $paymentGateway->cancelSubscriptionAtPeriodEnd($subscription->getProviderSubscriptionId());
-            } catch (StripeException) {
+            } catch (StripeException $e) {
+                $this->stripeFailures->log('cancel', $e);
+
                 return $this->paymentUnavailable();
             }
         }
@@ -211,7 +218,9 @@ final class SubscriptionController extends AbstractController
                 cancelUrl: $frontendUrl.'/producer/subscription?checkout=cancelled',
                 couponId: $couponId,
             );
-        } catch (StripeException) {
+        } catch (StripeException $e) {
+            $this->stripeFailures->log('checkout', $e);
+
             return $this->paymentUnavailable();
         }
 
@@ -309,6 +318,7 @@ final class SubscriptionController extends AbstractController
         try {
             $paymentGateway->updateSubscriptionPrice($subscription->getProviderSubscriptionId(), $newPlanPrice->getProviderPriceId(), $atPeriodEnd);
         } catch (StripeException $e) {
+            $this->stripeFailures->log('change-plan', $e);
             // * 402 : le paiement du changement a échoué (carte refusée, authentification demandée...), Stripe n'a rien modifié
             if ($e instanceof ApiErrorException && $e->getHttpStatus() === 402) {
                 return $this->json(['error' => "Le paiement de ce changement d'offre n'a pas abouti : votre abonnement n'a pas changé. Vérifiez votre moyen de paiement puis réessayez."], 402);
