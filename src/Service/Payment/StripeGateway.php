@@ -2,8 +2,10 @@
 
 namespace App\Service\Payment;
 
+use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\InvalidArgumentException;
 use Stripe\StripeClient;
+use Stripe\Subscription;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 final class StripeGateway implements PaymentGatewayInterface
@@ -58,36 +60,60 @@ final class StripeGateway implements PaymentGatewayInterface
     public function updateSubscriptionPrice(string $providerSubscriptionId, string $newPriceId, bool $atPeriodEnd = false): void
     {
         $subscription = $this->stripe()->subscriptions->retrieve($providerSubscriptionId);
+        // ! Un changement prévu (planification) interdit toute autre modification directe de l'abonnement (changer d'offre,
+        // ! annuler en fin de période) : on le libère d'abord, l'abonnement garde son état courant. Monter d'offre annule donc
+        // ! une rétrogradation prévue, et en programmer une nouvelle remplace la précédente.
+        $this->releaseSchedule($subscription);
         $item = $subscription->items->data[0];
 
         if (!$atPeriodEnd) {
             $this->stripe()->subscriptions->update($providerSubscriptionId, [
                 'items' => [['id' => $item->id, 'price' => $newPriceId]],
                 'proration_behavior' => 'create_prorations',
-                // * Passer de mensuel à annuel (ou l'inverse) facture tout de suite. Si ce paiement échoue, Stripe refuse alors le
-                // * changement (402) au lieu de l'appliquer et de passer l'abonnement en retard de paiement avec la nouvelle offre.
+                // * Ne joue que si le changement facture tout de suite. Avec la facturation "flexible" de Stripe (celle de ce compte),
+                // * un simple changement de prix ne facture rien : le supplément arrive avec le renouvellement.
                 'payment_behavior' => 'error_if_incomplete',
             ]);
 
             return;
         }
 
-        // * Une "schedule" garde l'ancien prix jusqu'à la fin de la période, puis passe au nouveau ; le webhook
-        // * customer.subscription.updated met alors le plan local à jour, à la bonne date.
+        // * Une planification garde l'ancien prix jusqu'à la fin de la période, puis passe au nouveau pour une période, après quoi
+        // * elle se libère toute seule (end_behavior). Le webhook customer.subscription.updated met alors le plan local à jour,
+        // * à la bonne date. La durée de la 2e phase suit l'intervalle du nouveau prix : "iterations" n'existe plus dans cette
+        // * version de l'API (Stripe répond "unknown parameter").
         $schedule = $this->stripe()->subscriptionSchedules->create(['from_subscription' => $providerSubscriptionId]);
-        $current = $schedule->phases[0];
-        $this->stripe()->subscriptionSchedules->update($schedule->id, [
-            'end_behavior' => 'release',
-            'phases' => [
-                ['items' => [['price' => $item->price->id, 'quantity' => 1]], 'start_date' => $current->start_date, 'end_date' => $current->end_date],
-                ['items' => [['price' => $newPriceId, 'quantity' => 1]], 'iterations' => 1],
-            ],
-        ]);
+        try {
+            $current = $schedule->phases[0];
+            $recurring = $this->stripe()->prices->retrieve($newPriceId)->recurring;
+            $this->stripe()->subscriptionSchedules->update($schedule->id, [
+                'end_behavior' => 'release',
+                'phases' => [
+                    ['items' => [['price' => $item->price->id, 'quantity' => 1]], 'start_date' => $current->start_date, 'end_date' => $current->end_date],
+                    ['items' => [['price' => $newPriceId, 'quantity' => 1]], 'duration' => ['interval' => $recurring->interval, 'interval_count' => $recurring->interval_count]],
+                ],
+            ]);
+        } catch (ApiErrorException $e) {
+            // ! ne jamais laisser une planification à moitié faite : elle bloquerait ensuite l'annulation et les changements d'offre
+            $this->stripe()->subscriptionSchedules->release($schedule->id);
+
+            throw $e;
+        }
     }
 
     public function cancelSubscriptionAtPeriodEnd(string $providerSubscriptionId): void
     {
+        // * un changement d'offre prévu empêche l'annulation en fin de période : il n'a plus de raison d'être, on le libère
+        $this->releaseSchedule($this->stripe()->subscriptions->retrieve($providerSubscriptionId));
         $this->stripe()->subscriptions->update($providerSubscriptionId, ['cancel_at_period_end' => true]);
+    }
+
+    private function releaseSchedule(Subscription $subscription): void
+    {
+        $schedule = $subscription->schedule;
+        if (null !== $schedule) {
+            $this->stripe()->subscriptionSchedules->release(\is_string($schedule) ? $schedule : $schedule->id);
+        }
     }
 
     public function retrieveSubscription(string $providerSubscriptionId): array

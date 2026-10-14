@@ -7,6 +7,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Stripe\ApiRequestor;
 use Stripe\Exception\InvalidArgumentException;
+use Stripe\Exception\InvalidRequestException;
 use Stripe\HttpClient\ClientInterface;
 use Stripe\HttpClient\CurlClient;
 
@@ -19,21 +20,43 @@ final class StripeGatewayTest extends TestCase
 {
     private const CHECKOUT_SESSION = '{"id":"cs_1","object":"checkout.session","url":"https://checkout.stripe.test/cs_1"}';
 
-    private const SUBSCRIPTION = '{"id":"sub_1","object":"subscription","status":"past_due","cancel_at_period_end":true,"items":{"object":"list","data":[{"id":"si_1","object":"subscription_item","current_period_start":1700000000,"current_period_end":1702592000,"price":{"id":"price_old","object":"price"}}],"has_more":false,"url":"/v1/subscription_items"}}';
+    private const SCHEDULE = '{"id":"sub_sched_1","object":"subscription_schedule","phases":[{"start_date":1700000000,"end_date":1702592000,"items":[{"price":"price_old"}]}]}';
+
+    private const PRICE = '{"id":"price_new","object":"price","recurring":{"interval":"year","interval_count":1}}';
+
+    private const SUBSCRIPTION = '{"id":"sub_1","object":"subscription","status":"past_due","cancel_at_period_end":true,"schedule":null,"items":{"object":"list","data":[{"id":"si_1","object":"subscription_item","current_period_start":1700000000,"current_period_end":1702592000,"price":{"id":"price_old","object":"price"}}],"has_more":false,"url":"/v1/subscription_items"}}';
 
     /** @var \ArrayObject<int, array{string, string, array<string, mixed>}> méthode, chemin et paramètres de chaque appel */
     private \ArrayObject $requests;
 
     protected function setUp(): void
     {
-        $this->requests = new \ArrayObject();
+        $this->answerWith();
+    }
 
-        ApiRequestor::setHttpClient(new class($this->requests, ['/v1/checkout/sessions' => self::CHECKOUT_SESSION], self::SUBSCRIPTION) implements ClientInterface {
+    /**
+     * Installe le faux Stripe. $subscription : l'abonnement renvoyé pour tous les chemins non listés ; $statuses : chemins
+     * auxquels Stripe répond par une erreur 400 ("unknown parameter") au lieu de la réponse type.
+     *
+     * @param array<string, int> $statuses
+     */
+    private function answerWith(string $subscription = self::SUBSCRIPTION, array $statuses = []): void
+    {
+        $this->requests = new \ArrayObject();
+        $bodies = [
+            '/v1/checkout/sessions' => self::CHECKOUT_SESSION,
+            '/v1/subscription_schedules' => self::SCHEDULE,
+            '/v1/subscription_schedules/sub_sched_1' => self::SCHEDULE,
+            '/v1/prices/price_new' => self::PRICE,
+        ];
+
+        ApiRequestor::setHttpClient(new class($this->requests, $bodies, $subscription, $statuses) implements ClientInterface {
             /**
              * @param \ArrayObject<int, array{string, string, array<string, mixed>}> $requests
              * @param array<string, string>                                          $bodies   réponse par chemin ; $default pour les autres
+             * @param array<string, int>                                             $statuses chemins qui répondent par une erreur
              */
-            public function __construct(private readonly \ArrayObject $requests, private readonly array $bodies, private readonly string $default)
+            public function __construct(private readonly \ArrayObject $requests, private readonly array $bodies, private readonly string $default, private readonly array $statuses)
             {
             }
 
@@ -52,6 +75,10 @@ final class StripeGatewayTest extends TestCase
             {
                 $path = (string) parse_url($absUrl, PHP_URL_PATH);
                 $this->requests->append([strtoupper($method), $path, $params]);
+
+                if (isset($this->statuses[$path])) {
+                    return ['{"error":{"type":"invalid_request_error","message":"Received unknown parameter: phases[iterations]"}}', $this->statuses[$path], []];
+                }
 
                 return [$this->bodies[$path] ?? $this->default, 200, []];
             }
@@ -141,5 +168,74 @@ final class StripeGatewayTest extends TestCase
         }
 
         self::assertCount(4, $this->requests);
+    }
+
+    /**
+     * @return list<string> "MÉTHODE chemin" de chaque appel envoyé à Stripe, dans l'ordre
+     */
+    private function calls(): array
+    {
+        return array_map(static fn (array $r) => $r[0].' '.$r[1], $this->requests->getArrayCopy());
+    }
+
+    private const WITH_SCHEDULE = '{"id":"sub_1","object":"subscription","status":"active","cancel_at_period_end":false,"schedule":"sub_sched_old","items":{"object":"list","data":[{"id":"si_1","object":"subscription_item","current_period_start":1700000000,"current_period_end":1702592000,"price":{"id":"price_old","object":"price"}}],"has_more":false,"url":"/v1/subscription_items"}}';
+
+    public function testADowngradeIsScheduledForTheNextRenewalAndLastsOnePeriodOfTheNewPrice(): void
+    {
+        $this->gateway()->updateSubscriptionPrice('sub_1', 'price_new', true);
+
+        self::assertSame([
+            'GET /v1/subscriptions/sub_1',
+            'POST /v1/subscription_schedules',
+            'GET /v1/prices/price_new',
+            'POST /v1/subscription_schedules/sub_sched_1',
+        ], $this->calls());
+        $update = $this->requests[3][2];
+        self::assertSame('release', $update['end_behavior']);
+        self::assertSame(['items' => [['price' => 'price_old', 'quantity' => 1]], 'start_date' => 1700000000, 'end_date' => 1702592000], $update['phases'][0]);
+        // * la durée de la 2e phase vient de l'intervalle du NOUVEAU prix (ici annuel) ; "iterations" n'existe plus dans cette version de l'API
+        self::assertSame(['items' => [['price' => 'price_new', 'quantity' => 1]], 'duration' => ['interval' => 'year', 'interval_count' => 1]], $update['phases'][1]);
+    }
+
+    public function testAChangeAlreadyPlannedIsReleasedBeforeAnyOtherChange(): void
+    {
+        $this->answerWith(self::WITH_SCHEDULE);
+
+        $this->gateway()->updateSubscriptionPrice('sub_1', 'price_new');
+
+        self::assertSame(['GET /v1/subscriptions/sub_1', 'POST /v1/subscription_schedules/sub_sched_old/release', 'POST /v1/subscriptions/sub_1'], $this->calls());
+    }
+
+    public function testAChangeAlreadyPlannedIsReleasedBeforeCancelling(): void
+    {
+        $this->answerWith(self::WITH_SCHEDULE);
+
+        $this->gateway()->cancelSubscriptionAtPeriodEnd('sub_1');
+
+        self::assertSame(['GET /v1/subscriptions/sub_1', 'POST /v1/subscription_schedules/sub_sched_old/release', 'POST /v1/subscriptions/sub_1'], $this->calls());
+        // * le SDK envoie les booléens sous forme de texte
+        self::assertSame('true', $this->requests[2][2]['cancel_at_period_end']);
+    }
+
+    public function testNothingIsReleasedWhenNoChangeIsPlanned(): void
+    {
+        $this->gateway()->cancelSubscriptionAtPeriodEnd('sub_1');
+
+        self::assertSame(['GET /v1/subscriptions/sub_1', 'POST /v1/subscriptions/sub_1'], $this->calls());
+    }
+
+    public function testAHalfMadeScheduleIsReleasedWhenStripeRefusesItsPhases(): void
+    {
+        $this->answerWith(self::SUBSCRIPTION, ['/v1/subscription_schedules/sub_sched_1' => 400]);
+
+        try {
+            $this->gateway()->updateSubscriptionPrice('sub_1', 'price_new', true);
+            self::fail('Le refus de Stripe aurait dû remonter.');
+        } catch (InvalidRequestException $e) {
+            self::assertStringContainsString('unknown parameter', $e->getMessage());
+        }
+
+        // * sans ça, la planification vide resterait attachée à l'abonnement et bloquerait ensuite l'annulation
+        self::assertSame('POST /v1/subscription_schedules/sub_sched_1/release', $this->calls()[array_key_last($this->calls())]);
     }
 }
