@@ -16,6 +16,9 @@ final class FakePaymentGateway implements PaymentGatewayInterface
     /** @var array<string, array{status: string, cancelAtPeriodEnd: bool, priceId: string|null, periodStart: int|null, periodEnd: int|null}> état de chaque abonnement "chez Stripe", à poser dans le test avant d'envoyer l'événement */
     public array $subscriptions = [];
 
+    /** @var array<string, array{priceId: string, startsAt: int}> changement d'offre planifié de chaque abonnement, à poser dans le test */
+    public array $scheduledChanges = [];
+
     // * Pour simuler une panne ou une clé Stripe absente : toute méthode lève cette exception.
     public ?\Throwable $failure = null;
 
@@ -36,6 +39,18 @@ final class FakePaymentGateway implements PaymentGatewayInterface
     public function cancelSubscriptionAtPeriodEnd(string $providerSubscriptionId): void
     {
         $this->record('cancel', $providerSubscriptionId);
+    }
+
+    public function resumeSubscription(string $providerSubscriptionId): void
+    {
+        $this->record('resume', $providerSubscriptionId);
+    }
+
+    public function scheduledChange(string $providerSubscriptionId): ?array
+    {
+        $this->record('scheduled_change', $providerSubscriptionId);
+
+        return $this->scheduledChanges[$providerSubscriptionId] ?? null;
     }
 
     public function retrieveSubscription(string $providerSubscriptionId): array

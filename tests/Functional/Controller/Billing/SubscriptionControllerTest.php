@@ -256,6 +256,174 @@ final class SubscriptionControllerTest extends ApiTestCase
         self::assertResponseStatusCodeSame(404);
     }
 
+    // --- reprise d'un abonnement dont l'annulation était programmée ------------------------------------------------------------
+
+    private function post(string $path, string $token): void
+    {
+        $this->client->request('POST', $path, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+    }
+
+    private function cancelAtPeriodEnd(string $subscriptionId): bool
+    {
+        return (bool) $this->em->getConnection()->fetchOne('SELECT cancel_at_period_end FROM billing.subscriptions WHERE id = :id', ['id' => $subscriptionId]);
+    }
+
+    public function testResumeSubscriptionTellsStripeAndClearsTheCancellation(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $subscription = $this->makeActiveSubscription($producer);
+        $subscription->setProviderSubscriptionId('sub_test_resume');
+        $subscription->setCancelAtPeriodEnd(true);
+        $this->em->flush();
+        $id = $subscription->getId()->toRfc4122();
+
+        $this->post('/api/subscription/resume', $token);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([['resume', 'sub_test_resume']], $this->gateway()->calls);
+        self::assertFalse($this->cancelAtPeriodEnd($id));
+    }
+
+    public function testResumeSubscriptionRefusesWhenNothingIsBeingCancelled(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $this->makeActiveSubscription($producer)->setProviderSubscriptionId('sub_test_resume_none');
+        $this->em->flush();
+
+        $this->post('/api/subscription/resume', $token);
+
+        self::assertResponseStatusCodeSame(409);
+        self::assertSame([], $this->gateway()->calls);
+    }
+
+    public function testResumeSubscriptionReturns404WhenNoActiveSubscription(): void
+    {
+        [$token] = $this->registerProducerAndLogin();
+
+        $this->post('/api/subscription/resume', $token);
+
+        self::assertResponseStatusCodeSame(404);
+    }
+
+    public function testResumeSubscriptionKeepsTheCancellationWhenStripeIsUnavailable(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $subscription = $this->makeActiveSubscription($producer);
+        $subscription->setProviderSubscriptionId('sub_test_resume_down');
+        $subscription->setCancelAtPeriodEnd(true);
+        $this->em->flush();
+        $id = $subscription->getId()->toRfc4122();
+        $this->gateway()->failure = new \Stripe\Exception\InvalidArgumentException('api_key cannot be the empty string');
+        $logSize = $this->logSize();
+
+        $this->post('/api/subscription/resume', $token);
+
+        self::assertResponseStatusCodeSame(502);
+        self::assertStringContainsString('Appel Stripe échoué : resume', $this->logsSince($logSize));
+        self::assertTrue($this->cancelAtPeriodEnd($id));
+    }
+
+    public function testResumeSubscriptionAnswers409WhenStripeSaysTheSubscriptionIsOver(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $subscription = $this->makeActiveSubscription($producer);
+        $subscription->setProviderSubscriptionId('sub_test_resume_over');
+        $subscription->setCancelAtPeriodEnd(true);
+        $this->em->flush();
+        $id = $subscription->getId()->toRfc4122();
+        $this->gateway()->failure = new \Stripe\Exception\InvalidRequestException('A canceled subscription can only update its cancellation_details and metadata.');
+
+        $this->post('/api/subscription/resume', $token);
+
+        self::assertResponseStatusCodeSame(409);
+        self::assertStringContainsString('souscrivez de nouveau', json_decode($this->client->getResponse()->getContent(), true)['error']);
+        self::assertTrue($this->cancelAtPeriodEnd($id));
+    }
+
+    public function testResumeSubscriptionRejectsAccountWithoutProducerProfile(): void
+    {
+        $token = $this->registerClientAndLogin();
+
+        $this->post('/api/subscription/resume', $token);
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    // --- changement d'offre planifié ---------------------------------------------------------------------------------------------
+
+    private function getScheduledChange(string $token): void
+    {
+        $this->client->request('GET', '/api/subscription/scheduled-change', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+    }
+
+    public function testScheduledChangeReturnsThePlannedPlanAndDate(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $this->makeActiveSubscription($producer)->setProviderSubscriptionId('sub_test_planned');
+        $planned = $this->makePlanPriceWithProviderId('price_test_planned');
+        $this->em->flush();
+        $this->gateway()->scheduledChanges['sub_test_planned'] = ['priceId' => 'price_test_planned', 'startsAt' => 1893456000];
+
+        $this->getScheduledChange($token);
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame($planned->getId()->toRfc4122(), $data['planPriceId']);
+        self::assertSame('Plan test', $data['planName']);
+        self::assertSame('monthly', $data['billingCycle']);
+        self::assertSame(1893456000, (new \DateTimeImmutable($data['effectiveAt']))->getTimestamp());
+    }
+
+    public function testScheduledChangeIs204WhenNothingIsPlanned(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $this->makeActiveSubscription($producer)->setProviderSubscriptionId('sub_test_not_planned');
+        $this->em->flush();
+
+        $this->getScheduledChange($token);
+
+        self::assertResponseStatusCodeSame(204);
+        self::assertSame([['scheduled_change', 'sub_test_not_planned']], $this->gateway()->calls);
+    }
+
+    public function testScheduledChangeIs204AndAsksNothingWithoutAStripeSubscription(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $this->makeActiveSubscription($producer);
+        $this->em->flush();
+
+        $this->getScheduledChange($token);
+
+        self::assertResponseStatusCodeSame(204);
+        self::assertSame([], $this->gateway()->calls);
+    }
+
+    public function testScheduledChangeIgnoresAPriceUnknownLocally(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $this->makeActiveSubscription($producer)->setProviderSubscriptionId('sub_test_unknown_price');
+        $this->em->flush();
+        $this->gateway()->scheduledChanges['sub_test_unknown_price'] = ['priceId' => 'price_nobody_knows', 'startsAt' => 1893456000];
+
+        $this->getScheduledChange($token);
+
+        self::assertResponseStatusCodeSame(204);
+    }
+
+    public function testScheduledChangeAnswers502AndLogsWhenStripeFails(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $this->makeActiveSubscription($producer)->setProviderSubscriptionId('sub_test_planned_down');
+        $this->em->flush();
+        $this->gateway()->failure = new \Stripe\Exception\InvalidArgumentException('api_key cannot be the empty string');
+        $logSize = $this->logSize();
+
+        $this->getScheduledChange($token);
+
+        self::assertResponseStatusCodeSame(502);
+        self::assertStringContainsString('Appel Stripe échoué : scheduled-change', $this->logsSince($logSize));
+    }
+
     public function testCancelSubscriptionRejectsAccountWithoutProducerProfile(): void
     {
         $token = $this->registerClientAndLogin();

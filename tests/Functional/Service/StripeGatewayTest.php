@@ -22,6 +22,8 @@ final class StripeGatewayTest extends TestCase
 
     private const SCHEDULE = '{"id":"sub_sched_1","object":"subscription_schedule","phases":[{"start_date":1700000000,"end_date":1702592000,"items":[{"price":"price_old"}]}]}';
 
+    private const SCHEDULE_PLANNED = '{"id":"sub_sched_old","object":"subscription_schedule","phases":[{"start_date":1700000000,"end_date":4102444800,"items":[{"price":"price_old"}]},{"start_date":4102444800,"end_date":null,"items":[{"price":"price_new"}]}]}';
+
     private const PRICE = '{"id":"price_new","object":"price","recurring":{"interval":"year","interval_count":1}}';
 
     private const SUBSCRIPTION = '{"id":"sub_1","object":"subscription","status":"past_due","cancel_at_period_end":true,"schedule":null,"items":{"object":"list","data":[{"id":"si_1","object":"subscription_item","current_period_start":1700000000,"current_period_end":1702592000,"price":{"id":"price_old","object":"price"}}],"has_more":false,"url":"/v1/subscription_items"}}';
@@ -48,6 +50,7 @@ final class StripeGatewayTest extends TestCase
             '/v1/subscription_schedules' => self::SCHEDULE,
             '/v1/subscription_schedules/sub_sched_1' => self::SCHEDULE,
             '/v1/prices/price_new' => self::PRICE,
+            '/v1/subscription_schedules/sub_sched_old' => self::SCHEDULE_PLANNED,
         ];
 
         ApiRequestor::setHttpClient(new class($this->requests, $bodies, $subscription, $statuses) implements ClientInterface {
@@ -239,5 +242,31 @@ final class StripeGatewayTest extends TestCase
 
         // * sans ça, la planification vide resterait attachée à l'abonnement et bloquerait ensuite l'annulation
         self::assertSame('POST /v1/subscription_schedules/sub_sched_1/release', $this->calls()[array_key_last($this->calls())]);
+    }
+
+    public function testAPlannedChangeIsThePhaseThatHasNotStartedYet(): void
+    {
+        $this->answerWith(self::WITH_SCHEDULE);
+
+        $change = $this->gateway()->scheduledChange('sub_1');
+
+        // * la 1re phase (l'offre actuelle) a commencé, la 2e est le changement à venir
+        self::assertSame(['priceId' => 'price_new', 'startsAt' => 4102444800], $change);
+        self::assertSame(['GET /v1/subscriptions/sub_1', 'GET /v1/subscription_schedules/sub_sched_old'], $this->calls());
+    }
+
+    public function testThereIsNoPlannedChangeWithoutASchedule(): void
+    {
+        self::assertNull($this->gateway()->scheduledChange('sub_1'));
+        self::assertSame(['GET /v1/subscriptions/sub_1'], $this->calls());
+    }
+
+    public function testResumingCancelsTheCancellationAtStripe(): void
+    {
+        $this->gateway()->resumeSubscription('sub_1');
+
+        self::assertSame(['POST /v1/subscriptions/sub_1'], $this->calls());
+        // * le SDK envoie les booléens sous forme de texte
+        self::assertSame('false', $this->requests[0][2]['cancel_at_period_end']);
     }
 }

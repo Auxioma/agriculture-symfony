@@ -12,6 +12,17 @@ interface PaymentGatewayInterface
     // * l'abonnement reste actif jusqu'à la fin de la période déjà payée
     public function cancelSubscriptionAtPeriodEnd(string $providerSubscriptionId): void;
 
+    // * annule l'annulation programmée : l'abonnement continue et se renouvelle normalement
+    public function resumeSubscription(string $providerSubscriptionId): void;
+
+    /**
+     * Changement d'offre déjà planifié (rétrogradation à la prochaine échéance) : le prix à venir et la date, ou null s'il n'y
+     * en a pas. Lu chez Stripe : la base ne garde rien de ce changement, il ne s'applique qu'à l'échéance.
+     *
+     * @return array{priceId: string, startsAt: int}|null
+     */
+    public function scheduledChange(string $providerSubscriptionId): ?array;
+
     /**
      * État actuel de l'abonnement chez Stripe. Source de vérité quand un événement arrive : Stripe ne garantit pas l'ordre
      * de livraison des webhooks et rejoue ceux qui ont échoué, donc le contenu d'un événement peut être périmé.

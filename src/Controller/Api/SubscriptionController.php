@@ -19,6 +19,7 @@ use App\Service\Payment\StripeFailureLogger;
 use Doctrine\ORM\EntityManagerInterface;
 use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\ExceptionInterface as StripeException;
+use Stripe\Exception\InvalidRequestException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -167,6 +168,87 @@ final class SubscriptionController extends AbstractController
         $em->flush();
 
         return $this->json(null, 200);
+    }
+
+    /**
+     * Reprise d'un abonnement dont l'annulation en fin de période était programmée. Le cahier veut une annulation simple et
+     * claire : on peut revenir dessus tant que la période payée n'est pas terminée.
+     */
+    #[Route('/api/subscription/resume', methods: ['POST'])]
+    public function resumeSubscription(#[CurrentUser] User $user, EntityManagerInterface $em, PaymentGatewayInterface $paymentGateway): JsonResponse
+    {
+        $producer = $user->getProducerProfile();
+        if ($producer === null) {
+            return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
+        }
+
+        $subscription = $this->findInForce($producer, $em);
+        if ($subscription === null) {
+            return $this->json(['error' => 'Aucun abonnement actif.'], 404);
+        }
+        if (!$subscription->isCancelAtPeriodEnd()) {
+            return $this->json(['error' => "Votre abonnement n'est pas en cours d'annulation."], 409);
+        }
+
+        if ($subscription->getProviderSubscriptionId() !== null) {
+            try {
+                $paymentGateway->resumeSubscription($subscription->getProviderSubscriptionId());
+            } catch (InvalidRequestException $e) {
+                // * Stripe ne reprend pas un abonnement déjà terminé (la fin est arrivée avant l'événement qui le dit)
+                $this->stripeFailures->log('resume', $e);
+
+                return $this->json(['error' => 'Cet abonnement est déjà terminé : souscrivez de nouveau.'], 409);
+            } catch (StripeException $e) {
+                $this->stripeFailures->log('resume', $e);
+
+                return $this->paymentUnavailable();
+            }
+        }
+        $subscription->setCancelAtPeriodEnd(false);
+        $em->flush();
+
+        return $this->json(null, 200);
+    }
+
+    /**
+     * Changement d'offre planifié (rétrogradation à la prochaine échéance), pour que le producteur le voie : le cahier veut des
+     * conditions d'upgrade et de downgrade transparentes. 204 s'il n'y en a pas.
+     */
+    #[Route('/api/subscription/scheduled-change', methods: ['GET'])]
+    public function scheduledChange(#[CurrentUser] User $user, EntityManagerInterface $em, PaymentGatewayInterface $paymentGateway): JsonResponse
+    {
+        $producer = $user->getProducerProfile();
+        if ($producer === null) {
+            return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
+        }
+
+        $subscription = $this->findInForce($producer, $em);
+        if ($subscription === null || $subscription->getProviderSubscriptionId() === null) {
+            return $this->json(null, 204);
+        }
+
+        try {
+            $change = $paymentGateway->scheduledChange($subscription->getProviderSubscriptionId());
+        } catch (StripeException $e) {
+            $this->stripeFailures->log('scheduled-change', $e);
+
+            return $this->paymentUnavailable();
+        }
+
+        $planPrice = $change === null ? null : $em->getRepository(PlanPrice::class)->findOneBy(['providerPriceId' => $change['priceId']]);
+        if ($change === null || $planPrice === null) {
+            return $this->json(null, 204);
+        }
+
+        return $this->json([
+            'planPriceId' => $planPrice->getId()->toRfc4122(),
+            'planCode' => $planPrice->getPlan()->getCode(),
+            'planName' => $planPrice->getPlan()->getName(),
+            'billingCycle' => $planPrice->getBillingCycle()->value,
+            'amount' => $planPrice->getAmount(),
+            'currencyCode' => $planPrice->getCurrency()?->getCode(),
+            'effectiveAt' => (new \DateTimeImmutable())->setTimestamp($change['startsAt'])->format(DATE_ATOM),
+        ]);
     }
 
     /**

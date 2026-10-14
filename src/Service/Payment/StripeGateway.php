@@ -111,6 +111,29 @@ final class StripeGateway implements PaymentGatewayInterface
         $this->stripe()->subscriptions->update($providerSubscriptionId, ['cancel_at_period_end' => true]);
     }
 
+    public function resumeSubscription(string $providerSubscriptionId): void
+    {
+        $this->stripe()->subscriptions->update($providerSubscriptionId, ['cancel_at_period_end' => false]);
+    }
+
+    public function scheduledChange(string $providerSubscriptionId): ?array
+    {
+        $schedule = $this->stripe()->subscriptions->retrieve($providerSubscriptionId)->schedule;
+        if (null === $schedule) {
+            return null;
+        }
+
+        // * la phase qui n'a pas encore commencé est le changement à venir (la première est l'offre actuelle)
+        $schedule = $this->stripe()->subscriptionSchedules->retrieve(\is_string($schedule) ? $schedule : $schedule->id);
+        foreach ($schedule->phases as $phase) {
+            if ($phase->start_date > time()) {
+                return ['priceId' => $phase->items[0]->price, 'startsAt' => $phase->start_date];
+            }
+        }
+
+        return null;
+    }
+
     private function releaseSchedule(Subscription $subscription): void
     {
         $schedule = $subscription->schedule;
