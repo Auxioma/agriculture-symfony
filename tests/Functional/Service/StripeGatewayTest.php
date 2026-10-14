@@ -95,14 +95,16 @@ final class StripeGatewayTest extends TestCase
         return new StripeGateway($key, $environment);
     }
 
-    public function testAnImmediateChangeIsRefusedByStripeWhenItsPaymentFails(): void
+    public function testAnImmediateChangeInvoicesTheDifferenceAtOnceAndIsRefusedWhenItsPaymentFails(): void
     {
         $this->gateway()->updateSubscriptionPrice('sub_1', 'price_new');
 
         $update = $this->requests[1];
         self::assertSame(['POST', '/v1/subscriptions/sub_1'], [$update[0], $update[1]]);
         self::assertSame([['id' => 'si_1', 'price' => 'price_new']], $update[2]['items']);
-        self::assertSame('create_prorations', $update[2]['proration_behavior']);
+        // * la différence (prorata) est facturée tout de suite : sans ça elle n'arrive qu'au renouvellement, un an plus tard pour un annuel
+        self::assertSame('always_invoice', $update[2]['proration_behavior']);
+        // * et si le paiement échoue, Stripe répond 402 sans appliquer le changement
         self::assertSame('error_if_incomplete', $update[2]['payment_behavior']);
     }
 

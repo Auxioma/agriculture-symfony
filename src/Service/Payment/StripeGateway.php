@@ -69,9 +69,12 @@ final class StripeGateway implements PaymentGatewayInterface
         if (!$atPeriodEnd) {
             $this->stripe()->subscriptions->update($providerSubscriptionId, [
                 'items' => [['id' => $item->id, 'price' => $newPriceId]],
-                'proration_behavior' => 'create_prorations',
-                // * Ne joue que si le changement facture tout de suite. Avec la facturation "flexible" de Stripe (celle de ce compte),
-                // * un simple changement de prix ne facture rien : le supplément arrive avec le renouvellement.
+                // ! Facture tout de suite la différence, au prorata de la période en cours (crédit du temps non utilisé de l'ancienne
+                // ! offre, débit du temps restant de la nouvelle). Avec "create_prorations" et la facturation "flexible" de ce compte,
+                // ! le supplément n'arrive qu'au prochain renouvellement : jusqu'à un an plus tard pour un abonnement annuel, et un
+                // ! passage mensuel -> annuel donnait l'année sans la payer (facture de 931 EUR dans un an, vérifié chez Stripe).
+                'proration_behavior' => 'always_invoice',
+                // * si ce paiement échoue (carte refusée...), Stripe répond 402 et n'applique pas le changement
                 'payment_behavior' => 'error_if_incomplete',
             ]);
 
