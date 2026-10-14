@@ -87,7 +87,7 @@ final class ProducerDashboardController extends AbstractController
      */
     private function subscriptionSummary(ProducerProfile $producer, EntityManagerInterface $em, MonthlyRequestCounter $monthlyRequests): ?array
     {
-        $subscription = $em->getRepository(Subscription::class)->findOneBy(['producer' => $producer], ['createdAt' => 'DESC']);
+        $subscription = $em->getRepository(Subscription::class)->findCurrentOf($producer);
         if ($subscription === null) {
             return null;
         }

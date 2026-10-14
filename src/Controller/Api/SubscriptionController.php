@@ -76,10 +76,7 @@ final class SubscriptionController extends AbstractController
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
         }
 
-        $subscription = $em->getRepository(Subscription::class)->findOneBy(
-            ['producer' => $producer],
-            ['createdAt' => 'DESC']
-        );
+        $subscription = $em->getRepository(Subscription::class)->findCurrentOf($producer);
         if ($subscription === null) {
             return $this->json(null, 204);
         }

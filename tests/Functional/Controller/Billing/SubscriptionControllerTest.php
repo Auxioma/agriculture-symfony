@@ -150,6 +150,40 @@ final class SubscriptionControllerTest extends ApiTestCase
         self::assertSame(30, $data['requestsQuota']);
     }
 
+    // * Un paiement en double est gardé "cancelled", enregistré après l'abonnement qu'on garde : le plus récent n'est pas le bon,
+    // * sinon la page montre l'offre gratuite à un producteur abonné.
+    public function testGetCurrentSubscriptionShowsTheOneInForceNotANewerCancelledDuplicate(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $kept = $this->makeActiveSubscription($producer);
+        $duplicate = $this->makeActiveSubscription($producer, status: SubscriptionStatus::Cancelled);
+        $this->em->flush();
+        $this->makeSubscriptionNewest($duplicate);
+        $keptId = $kept->getId()->toRfc4122();
+
+        $this->client->request('GET', '/api/subscription/current', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame($keptId, $data['id']);
+        self::assertSame('active', $data['status']);
+    }
+
+    // * Sans abonnement en vigueur, on garde le plus récent (le front en fait "offre gratuite") : l'ordre reste par date.
+    public function testGetCurrentSubscriptionOfAProducerWhoLeftIsTheLatestEndedOne(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $this->makeActiveSubscription($producer, status: SubscriptionStatus::Expired);
+        $cancelled = $this->makeActiveSubscription($producer, status: SubscriptionStatus::Cancelled);
+        $this->em->flush();
+        $this->makeSubscriptionNewest($cancelled);
+
+        $this->client->request('GET', '/api/subscription/current', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame('cancelled', json_decode($this->client->getResponse()->getContent(), true)['status']);
+    }
+
     public function testGetCurrentSubscriptionReturns204WhenNone(): void
     {
         [$token] = $this->registerProducerAndLogin();

@@ -14,6 +14,7 @@ use App\Enum\MatchStatus;
 use App\Enum\NeedType;
 use App\Enum\ReplyStatus;
 use App\Enum\RequestStatus;
+use App\Enum\SubscriptionStatus;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 use Symfony\Component\Uid\Uuid;
@@ -598,6 +599,23 @@ final class ProducerDashboardControllerTest extends ApiTestCase
         self::assertSame('active', $summary['status']);
         self::assertSame(2, $summary['requestsThisMonth']);
         self::assertSame(30, $summary['requestsQuota']);
+    }
+
+    // * un paiement en double est gardé "cancelled", enregistré après l'abonnement qu'on garde : le résumé montre le bon
+    public function testDashboardSummaryShowsTheSubscriptionInForceNotANewerCancelledDuplicate(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $kept = $this->makeActiveSubscription($producer);
+        $kept->getPlanPrice()->getPlan()->setName('Standard');
+        $duplicate = $this->makeActiveSubscription($producer, status: SubscriptionStatus::Cancelled);
+        $duplicate->getPlanPrice()->getPlan()->setName('Premium');
+        $this->em->flush();
+        $this->makeSubscriptionNewest($duplicate);
+
+        $summary = $this->getDashboard($token)['subscription'];
+
+        self::assertSame('Standard', $summary['planName']);
+        self::assertSame('active', $summary['status']);
     }
 
     public function testDashboardHasNoSubscriptionAndAnEmptyProfileForANewProducer(): void
