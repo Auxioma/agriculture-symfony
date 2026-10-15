@@ -12,6 +12,7 @@ use App\Entity\Billing\Subscription;
 use App\Entity\Billing\SubscriptionPlan;
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerProfile;
+use App\Enum\BillingCycle;
 use App\Enum\SubscriptionStatus;
 use App\Service\Matching\MonthlyRequestCounter;
 use App\Service\Payment\PaymentGatewayInterface;
@@ -364,8 +365,10 @@ final class SubscriptionController extends AbstractController
 
     /**
      * Demande le passage à une autre formule d'abonnement (cahier fonctionnel : "l'upgrade prend effet immédiatement,
-     * le downgrade à la prochaine échéance"). Un plan plus bas dans la liste (position) est un downgrade ; changer
-     * seulement de cycle (mensuel / annuel) ou monter de plan est immédiat. La réponse dit quand ça prend effet.
+     * le downgrade à la prochaine échéance"). Un plan plus bas dans la liste (position) est un downgrade ; monter de plan ou
+     * passer du mensuel à l'annuel est immédiat. L'abonnement annuel est un engagement (cahier fonctionnel, tableau des
+     * abonnements) : repasser au mensuel attend la fin de la période annuelle, même vers un plan plus haut. La réponse dit
+     * quand ça prend effet.
      */
     #[Route('/api/subscription/change-plan', methods: ['POST'])]
     public function changePlan(
@@ -402,7 +405,13 @@ final class SubscriptionController extends AbstractController
             return $this->json(['error' => 'Vous avez déjà cette offre.'], 422);
         }
 
-        $atPeriodEnd = ($newPlanPrice->getPlan()->getPosition() ?? 0) < ($subscription->getPlanPrice()->getPlan()->getPosition() ?? 0);
+        // * 2 cas qui attendent l'échéance : un plan plus bas (downgrade), ou le mensuel quand on est sous engagement annuel
+        // ! l'engagement passe avant "l'upgrade est immédiat" : Standard annuel --> Premium mensuel démarre à la fin de l'année,
+        // ! sinon on rend un crédit au client (testé sur Stripe le 14/10) et l'annuel ne retient plus personne
+        $isLowerPlan = ($newPlanPrice->getPlan()->getPosition() ?? 0) < ($subscription->getPlanPrice()->getPlan()->getPosition() ?? 0);
+        $leavesAnnualCommitment = $subscription->getPlanPrice()->getBillingCycle() === BillingCycle::Yearly
+            && $newPlanPrice->getBillingCycle() === BillingCycle::Monthly;
+        $atPeriodEnd = $isLowerPlan || $leavesAnnualCommitment;
         try {
             $paymentGateway->updateSubscriptionPrice($subscription->getProviderSubscriptionId(), $newPlanPrice->getProviderPriceId(), $atPeriodEnd);
         } catch (StripeException $e) {

@@ -482,6 +482,48 @@ final class StripeWebhookControllerTest extends ApiTestCase
         self::assertEqualsCanonicalizing(['failed', 'succeeded'], $payments);
     }
 
+    // * Facture réglée par le crédit du client (renouvellement après un crédit, vu sur Stripe : total 49, amount_paid 0) : elle reste
+    // * téléchargeable mais vaut 0 (les revenus de l'admin comptent l'encaissé) et aucun paiement n'est enregistré
+    public function testInvoiceSettledByCreditIsKeptAtZeroAndRecordsNoPayment(): void
+    {
+        $this->linkedSubscription('sub_test_credit');
+
+        $this->sendEvent('invoice.paid', [
+            'id' => 'in_test_credit',
+            'total' => 4900,
+            'amount_paid' => 0,
+            'currency' => 'eur',
+            'hosted_invoice_url' => 'https://invoice.stripe.test/credit',
+            'parent' => ['subscription_details' => ['subscription' => 'sub_test_credit']],
+        ]);
+
+        $connection = $this->em->getConnection();
+        $invoice = $connection->fetchAssociative("SELECT status, amount, invoice_url FROM billing.invoices WHERE provider_invoice_id = 'in_test_credit'");
+        self::assertSame(['status' => 'paid', 'amount' => '0.00', 'invoice_url' => 'https://invoice.stripe.test/credit'], $invoice);
+        self::assertSame(0, (int) $connection->fetchOne("SELECT count(*) FROM billing.payments p JOIN billing.invoices i ON i.id = p.invoice_id WHERE i.provider_invoice_id = 'in_test_credit'"));
+    }
+
+    // * un événement rejoué des jours plus tard ne doit pas décaler la facture (ni les revenus du mois de l'admin, qui suivent paid_at)
+    public function testInvoiceDatesComeFromStripeNotFromTheDayTheEventIsProcessed(): void
+    {
+        $this->linkedSubscription('sub_test_dates');
+        $subscription = ['parent' => ['subscription_details' => ['subscription' => 'sub_test_dates']]];
+        $created = strtotime('2026-09-01 10:00:00 UTC');
+        $paidAt = strtotime('2026-09-01 10:05:00 UTC');
+
+        $this->sendEvent('invoice.payment_failed', ['id' => 'in_test_dates', 'amount_due' => 1900, 'currency' => 'eur', 'created' => $created] + $subscription);
+        $this->sendEvent('invoice.paid', ['id' => 'in_test_dates', 'amount_paid' => 1900, 'currency' => 'eur', 'created' => $created, 'status_transitions' => ['paid_at' => $paidAt]] + $subscription);
+        $this->sendEvent('invoice.paid', ['id' => 'in_test_dates_no_dates', 'amount_paid' => 1900, 'currency' => 'eur'] + $subscription);
+
+        $connection = $this->em->getConnection();
+        $row = $connection->fetchAssociative("SELECT extract(epoch from created_at)::bigint AS created, extract(epoch from paid_at)::bigint AS paid FROM billing.invoices WHERE provider_invoice_id = 'in_test_dates'");
+        self::assertSame([$created, $paidAt], [(int) $row['created'], (int) $row['paid']]);
+        // * sans dates dans l'événement, on retombe sur le moment du traitement
+        $fallback = $connection->fetchAssociative("SELECT extract(epoch from created_at)::bigint AS created, extract(epoch from paid_at)::bigint AS paid FROM billing.invoices WHERE provider_invoice_id = 'in_test_dates_no_dates'");
+        self::assertEqualsWithDelta(time(), (int) $fallback['created'], 10);
+        self::assertEqualsWithDelta(time(), (int) $fallback['paid'], 10);
+    }
+
     public function testReplayedPaymentFailedEventDoesNotDuplicateTheRows(): void
     {
         $this->linkedSubscription('sub_test_replay');

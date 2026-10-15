@@ -158,6 +158,14 @@ class Invoice
         return $this;
     }
 
+    // * la date de Stripe, pas celle où le webhook est traité (un événement rejoué plus tard donnerait une mauvaise date)
+    public function setCreatedAt(\DateTimeImmutable $createdAt): static
+    {
+        $this->createdAt = $createdAt;
+
+        return $this;
+    }
+
     public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;

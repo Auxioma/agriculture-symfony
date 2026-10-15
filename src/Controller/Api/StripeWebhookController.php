@@ -313,8 +313,14 @@ final class StripeWebhookController extends AbstractController
         $invoice->setCurrency($this->currency($stripeInvoice, $em));
         $invoice->setStatus('paid');
         $invoice->setInvoiceUrl($stripeInvoice->hosted_invoice_url ?? null);
-        $invoice->setPaidAt(new \DateTimeImmutable());
-        $this->recordPayment($invoice, 'succeeded', null, $em);
+        // * date de paiement de Stripe : l'admin compte les revenus par mois de paid_at, un événement rejoué plus tard ne doit pas les décaler
+        $paidAt = $stripeInvoice->status_transitions->paid_at ?? null;
+        $invoice->setPaidAt($paidAt !== null ? (new \DateTimeImmutable())->setTimestamp($paidAt) : new \DateTimeImmutable());
+        // * amount = ce qui est réellement encaissé (les revenus de l'admin en font la somme). Une facture réglée par le crédit du client,
+        // * ou un avoir, vaut 0 : la facture existe (téléchargeable) mais il n'y a eu aucun paiement à enregistrer
+        if (($stripeInvoice->amount_paid ?? 0) > 0) {
+            $this->recordPayment($invoice, 'succeeded', null, $em);
+        }
 
         return true;
     }
@@ -340,6 +346,9 @@ final class StripeWebhookController extends AbstractController
             $invoice->setSubscription($subscription);
             $invoice->setProviderInvoiceId($stripeInvoice->id);
             $invoice->setStatus('open');
+            if (isset($stripeInvoice->created)) {
+                $invoice->setCreatedAt((new \DateTimeImmutable())->setTimestamp($stripeInvoice->created));
+            }
             $em->persist($invoice);
         }
 

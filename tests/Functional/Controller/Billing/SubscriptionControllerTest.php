@@ -59,7 +59,7 @@ final class SubscriptionControllerTest extends ApiTestCase
 
     // * providerPriceId paramétrable : indispensable pour checkout()/changePlan(), qui rejettent tout
     // * PlanPrice sans correspondance Stripe (cf. SubscriptionController::checkout()).
-    private function makePlanPriceWithProviderId(string $providerPriceId): PlanPrice
+    private function makePlanPriceWithProviderId(string $providerPriceId, BillingCycle $cycle = BillingCycle::Monthly): PlanPrice
     {
         $plan = new SubscriptionPlan();
         $plan->setCode('plan-'.bin2hex(random_bytes(6)));
@@ -69,7 +69,7 @@ final class SubscriptionControllerTest extends ApiTestCase
 
         $planPrice = new PlanPrice();
         $planPrice->setPlan($plan);
-        $planPrice->setBillingCycle(BillingCycle::Monthly);
+        $planPrice->setBillingCycle($cycle);
         $planPrice->setProviderPriceId($providerPriceId);
         $planPrice->setIsActive(true);
         $this->em->persist($planPrice);
@@ -793,6 +793,69 @@ final class SubscriptionControllerTest extends ApiTestCase
         self::assertSame('next_renewal', $downgrade['effect']);
         self::assertEquals(new \DateTimeImmutable($periodEnd), new \DateTimeImmutable($downgrade['effectiveAt']));
         self::assertSame([false, true], array_column($this->gateway()->calls, 3));
+    }
+
+    // * Cahier fonctionnel : "Annuel : engagement annuel". Sous engagement, le mensuel attend la fin de la période annuelle, même vers un plan
+    // * plus haut (sinon crédit rendu au client, vu sur Stripe) ; un autre plan annuel, plus haut, reste immédiat ("l'upgrade est immédiat").
+    public function testLeavingAnAnnualSubscriptionForMonthlyWaitsForTheEndOfTheCommitment(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $subscription = $this->makeActiveSubscription($producer);
+        $subscription->setProviderSubscriptionId('sub_test_annual');
+        $subscription->getPlanPrice()->setBillingCycle(BillingCycle::Yearly);
+        $subscription->getPlanPrice()->getPlan()->setPosition(2);
+        $sameMonthly = $this->makePlanPriceWithProviderId('price_test_same_monthly');
+        $sameMonthly->getPlan()->setPosition(2);
+        $higherMonthly = $this->makePlanPriceWithProviderId('price_test_higher_monthly');
+        $higherMonthly->getPlan()->setPosition(3);
+        $higherYearly = $this->makePlanPriceWithProviderId('price_test_higher_yearly', BillingCycle::Yearly);
+        $higherYearly->getPlan()->setPosition(3);
+        $this->em->flush();
+        $periodEnd = $subscription->getCurrentPeriodEnd()->format(DATE_ATOM);
+        $post = function (PlanPrice $price) use ($token): array {
+            $this->client->request('POST', '/api/subscription/change-plan', server: [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            ], content: json_encode(['planPriceId' => $price->getId()->toRfc4122()]));
+            self::assertResponseStatusCodeSame(202);
+
+            return json_decode($this->client->getResponse()->getContent(), true);
+        };
+
+        $sameLevel = $post($sameMonthly);
+        $higher = $post($higherMonthly);
+        $upgrade = $post($higherYearly);
+
+        self::assertSame('next_renewal', $sameLevel['effect']);
+        self::assertSame('next_renewal', $higher['effect']);
+        self::assertEquals(new \DateTimeImmutable($periodEnd), new \DateTimeImmutable($higher['effectiveAt']));
+        self::assertSame(['effect' => 'immediate', 'effectiveAt' => null], $upgrade);
+        // * 4e colonne = "à l'échéance" : les deux changements vers le mensuel sont planifiés, la montée annuelle part tout de suite
+        self::assertSame([true, true, false], array_column($this->gateway()->calls, 3));
+    }
+
+    // * l'engagement ne concerne que l'annuel : depuis le mensuel, passer à l'annuel (même plan) ou monter de plan reste immédiat
+    public function testFromMonthlyTheCommitmentRuleDoesNotApply(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $subscription = $this->makeActiveSubscription($producer);
+        $subscription->setProviderSubscriptionId('sub_test_monthly');
+        $subscription->getPlanPrice()->getPlan()->setPosition(2);
+        $sameYearly = $this->makePlanPriceWithProviderId('price_test_same_yearly', BillingCycle::Yearly);
+        $sameYearly->getPlan()->setPosition(2);
+        $higherMonthly = $this->makePlanPriceWithProviderId('price_test_up_monthly');
+        $higherMonthly->getPlan()->setPosition(3);
+        $this->em->flush();
+
+        foreach ([$sameYearly, $higherMonthly] as $price) {
+            $this->client->request('POST', '/api/subscription/change-plan', server: [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            ], content: json_encode(['planPriceId' => $price->getId()->toRfc4122()]));
+            self::assertResponseStatusCodeSame(202);
+            self::assertSame('immediate', json_decode($this->client->getResponse()->getContent(), true)['effect']);
+        }
+        self::assertSame([false, false], array_column($this->gateway()->calls, 3));
     }
 
     public function testChangePlanRejectsTheCurrentOfferAndAnswers502WhenStripeIsUnavailable(): void
