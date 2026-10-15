@@ -436,6 +436,7 @@ final class ProducerDashboardControllerTest extends ApiTestCase
     public function testReceivedRequestsTellNewTreatedAndClosedApart(): void
     {
         [$token, $producer] = $this->loginAsProducer();
+        $this->makeActiveSubscription($producer);
         $new = $this->makeMatch($producer, urgency: 0);
         $new->getRequest()->getClient()->setFirstName('Camille')->setLastName('Roux');
         $draft = $this->makeMatch($producer, urgency: 0);
@@ -469,6 +470,7 @@ final class ProducerDashboardControllerTest extends ApiTestCase
     public function testRequestDetailExposesFieldsAttachmentsAndStatus(): void
     {
         [$token, $producer] = $this->loginAsProducer();
+        $this->makeActiveSubscription($producer);
         $match = $this->makeMatch($producer, urgency: 2);
         $request = $match->getRequest();
         $request->setDesiredDate(new \DateTimeImmutable('2026-08-23'));
@@ -508,6 +510,155 @@ final class ProducerDashboardControllerTest extends ApiTestCase
         self::assertSame('treated', $data['status']);
         self::assertTrue($data['declined']);
         self::assertNotNull($data['respondedAt']);
+    }
+
+    // * Cahier fonctionnel, "Producteur non abonné" : aperçu limité. Visible sans abonnement : produit, zone approximative, date,
+    // * volume. Bloqué : coordonnées, message complet, pièces jointes. Avant, seule la réponse était refusée.
+    private function makeRequestWithPrivateContent(ProducerProfile $producer): RequestMatch
+    {
+        $match = $this->makeMatch($producer, urgency: 1);
+        $request = $match->getRequest();
+        $request->getClient()->setFirstName('Camille')->setLastName('Roux');
+        $request->setMessage('Appelez-moi au 06 12 34 56 78, ferme du Pré');
+        $request->setBudgetMax('12.00');
+        $request->setQuantity('40');
+        $request->setCountry($producer->getCountry());
+        $request->setPostalCode('69003');
+        $request->setDesiredDate(new \DateTimeImmutable('2026-08-23'));
+        $attachment = new RequestAttachment();
+        $attachment->setRequest($request);
+        $attachment->setFileName('photo-parcelle.jpg');
+        $attachment->setFileUrl('https://files.test/photo-parcelle.jpg');
+        $this->em->persist($attachment);
+        $request->getAttachments()->add($attachment);
+
+        return $match;
+    }
+
+    /**
+     * @return array<int|string, mixed>
+     */
+    private function getJson(string $url, string $token): array
+    {
+        $this->client->request('GET', $url, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        self::assertResponseIsSuccessful();
+
+        return json_decode($this->client->getResponse()->getContent(), true);
+    }
+
+    public function testWithoutSubscriptionAvailableRequestsAreALimitedPreview(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $this->makeRequestWithPrivateContent($producer);
+        $this->em->flush();
+
+        $item = $this->getJson('/api/producer/requests/available', $token)[0];
+
+        self::assertTrue($item['locked']);
+        // * caché
+        self::assertSame('Client', $item['clientName']);
+        self::assertNull($item['message']);
+        self::assertNull($item['budgetMax']);
+        // * visible : produit, zone approximative, volume
+        self::assertSame('Produit non catalogue', $item['product']);
+        self::assertEquals(40, $item['quantity']);
+        self::assertSame('Lyon', $item['city']);
+        self::assertEquals(4, $item['distanceKm']);
+        self::assertTrue($item['urgent']);
+        // * rien de privé dans toute la réponse
+        self::assertStringNotContainsString('06 12 34 56 78', $this->client->getResponse()->getContent());
+        self::assertStringNotContainsString('Roux', $this->client->getResponse()->getContent());
+    }
+
+    public function testWithASubscriptionAvailableRequestsAreComplete(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $this->makeActiveSubscription($producer);
+        $this->makeRequestWithPrivateContent($producer);
+        $this->em->flush();
+
+        $item = $this->getJson('/api/producer/requests/available', $token)[0];
+
+        self::assertFalse($item['locked']);
+        self::assertSame('Camille R.', $item['clientName']);
+        self::assertSame('Appelez-moi au 06 12 34 56 78, ferme du Pré', $item['message']);
+        self::assertEquals(12, $item['budgetMax']);
+    }
+
+    // * un abonnement en retard de paiement n'ouvre pas l'accès complet (statut limité, billing.producer_has_feature)
+    public function testALatePaymentSubscriptionOnlyGetsThePreview(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $this->makeActiveSubscription($producer, SubscriptionStatus::PastDue);
+        $this->makeRequestWithPrivateContent($producer);
+        $this->em->flush();
+
+        self::assertTrue($this->getJson('/api/producer/requests/available', $token)[0]['locked']);
+    }
+
+    public function testWithoutSubscriptionTheDashboardRequestsAreALimitedPreview(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $this->makeRequestWithPrivateContent($producer);
+        $this->em->flush();
+
+        $item = $this->getDashboard($token)['requests'][0];
+
+        self::assertTrue($item['locked']);
+        self::assertSame('Client', $item['clientName']);
+        self::assertNull($item['message']);
+        self::assertNull($item['budgetMax']);
+    }
+
+    public function testWithoutSubscriptionTheReceivedRequestsDoNotGiveTheClientName(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $this->makeRequestWithPrivateContent($producer);
+        $this->em->flush();
+
+        $item = $this->getJson('/api/producer/requests/received', $token)[0];
+
+        self::assertTrue($item['locked']);
+        self::assertSame('Client', $item['clientName']);
+        self::assertEquals(40, $item['quantity']);
+    }
+
+    public function testWithoutSubscriptionTheDetailKeepsTheEssentialsAndHidesMessageBudgetAndAttachments(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $match = $this->makeRequestWithPrivateContent($producer);
+        $this->em->flush();
+
+        $data = $this->getJson('/api/producer/requests/'.$match->getRequest()->getId()->toRfc4122(), $token);
+
+        self::assertTrue($data['locked']);
+        self::assertSame('Client', $data['clientName']);
+        self::assertNull($data['message']);
+        self::assertNull($data['budgetMax']);
+        self::assertSame([], $data['attachments']);
+        // * visible : produit, zone approximative (ville, département), date, volume
+        self::assertSame('Produit non catalogue', $data['product']);
+        self::assertEquals(40, $data['quantity']);
+        self::assertSame('Lyon', $data['city']);
+        self::assertSame('69', $data['department']);
+        self::assertStringStartsWith('2026-08-23', $data['desiredDate']);
+        self::assertStringNotContainsString('06 12 34 56 78', $this->client->getResponse()->getContent());
+        self::assertStringNotContainsString('photo-parcelle.jpg', $this->client->getResponse()->getContent());
+    }
+
+    public function testWithASubscriptionTheDetailIsComplete(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $this->makeActiveSubscription($producer);
+        $match = $this->makeRequestWithPrivateContent($producer);
+        $this->em->flush();
+
+        $data = $this->getJson('/api/producer/requests/'.$match->getRequest()->getId()->toRfc4122(), $token);
+
+        self::assertFalse($data['locked']);
+        self::assertSame('Appelez-moi au 06 12 34 56 78, ferme du Pré', $data['message']);
+        self::assertEquals(12, $data['budgetMax']);
+        self::assertSame([['fileName' => 'photo-parcelle.jpg', 'fileUrl' => 'https://files.test/photo-parcelle.jpg']], $data['attachments']);
     }
 
     public function testRequestDetailReturnsTheCurrentDraftAndKeepsTheRequestNew(): void

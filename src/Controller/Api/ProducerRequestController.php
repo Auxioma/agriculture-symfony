@@ -21,6 +21,7 @@ use App\Enum\RequestStatus;
 use App\Repository\Matching\RequestMatchRepository;
 use App\Service\Audit\AuditLogger;
 use App\Service\Matching\AvailableRequestPresenter;
+use App\Service\Matching\ProducerRequestAccess;
 use App\Service\Matching\ReplyAttachmentManager;
 use App\Service\Notification\NotificationService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -43,12 +44,14 @@ final class ProducerRequestController extends AbstractController
      * Liste des demandes matching accessibles au producteur.
      */
     #[Route('/api/producer/requests/available', methods: ['GET'])]
-    public function listAvailableRequests(#[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter): JsonResponse
+    public function listAvailableRequests(#[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter, ProducerRequestAccess $access): JsonResponse
     {
         $producer = $user->getProducerProfile();
         if ($producer === null) {
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
         }
+        // ! sans abonnement : aperçu limité (cahier fonctionnel), pas le message ni le budget ni le nom du client
+        $locked = !$access->hasFullAccess($producer);
 
         $matches = $em->getRepository(RequestMatch::class)->createAvailableQueryBuilder($producer)
             ->orderBy('m.score', 'DESC')
@@ -62,7 +65,7 @@ final class ProducerRequestController extends AbstractController
                 'score' => $m->getScore(),
                 'status' => $m->getStatus()->value,
                 'needType' => $m->getRequest()->getNeedType()->value,
-            ] + $presenter->present($m),
+            ] + $presenter->present($m, $locked),
             $matches
         ));
     }
@@ -73,12 +76,13 @@ final class ProducerRequestController extends AbstractController
      * réponse envoyée ou refus (un brouillon ne compte pas), "closed" = plus ouverte (expirée, annulée...).
      */
     #[Route('/api/producer/requests/received', methods: ['GET'])]
-    public function listReceivedRequests(#[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter): JsonResponse
+    public function listReceivedRequests(#[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter, ProducerRequestAccess $access): JsonResponse
     {
         $producer = $user->getProducerProfile();
         if ($producer === null) {
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
         }
+        $locked = !$access->hasFullAccess($producer);
 
         $repository = $em->getRepository(RequestMatch::class);
         $newIds = array_flip(array_map(
@@ -102,18 +106,19 @@ final class ProducerRequestController extends AbstractController
             ->getQuery()
             ->getResult();
 
-        return $this->json(array_map(function (RequestMatch $m) use ($newIds, $replies, $presenter) {
+        return $this->json(array_map(function (RequestMatch $m) use ($newIds, $replies, $presenter, $locked) {
             $request = $m->getRequest();
             $reply = $replies[$request->getId()->toRfc4122()] ?? null;
             $quantity = $request->getQuantity();
 
             return [
                 'requestId' => $request->getId()->toRfc4122(),
-                'clientName' => $presenter->clientName($request->getClient()),
+                'clientName' => $presenter->clientName($request->getClient(), $locked),
                 'product' => $request->getProduct()?->getName() ?? $request->getCustomProduct(),
                 'quantity' => $quantity !== null ? (float) $quantity : null,
                 'unit' => $request->getUnit()?->getCode(),
                 'urgent' => $request->getUrgencyLevel() > 0,
+                'locked' => $locked,
                 'status' => $this->requestStatus($reply, isset($newIds[$m->getId()->toRfc4122()]), $m),
                 'receivedAt' => $m->getCreatedAt()->format(DATE_ATOM),
                 'respondedAt' => $reply?->getCreatedAt()->format(DATE_ATOM),
@@ -128,13 +133,15 @@ final class ProducerRequestController extends AbstractController
      * pièces jointes. status/respondedAt/declined : comme pour la liste des demandes reçues.
      */
     #[Route('/api/producer/requests/{id}', methods: ['GET'])]
-    public function getRequestDetailForProducer(string $id, #[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter, ReplyAttachmentManager $attachments): JsonResponse
+    public function getRequestDetailForProducer(string $id, #[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter, ReplyAttachmentManager $attachments, ProducerRequestAccess $access): JsonResponse
     {
         $result = $this->findMatchedRequest($id, $user, $em);
         if ($result instanceof JsonResponse) {
             return $result;
         }
         [$clientRequest, $producer, $match] = $result;
+        // ! sans abonnement : pas de message complet ni de pièces jointes (le CTA de déblocage est côté front)
+        $locked = !$access->hasFullAccess($producer);
 
         $isNew = $em->getRepository(RequestMatch::class)->createAvailableQueryBuilder($producer)
             ->andWhere('m = :match')
@@ -158,7 +165,7 @@ final class ProducerRequestController extends AbstractController
         );
         $postalCode = (string) $clientRequest->getPostalCode();
 
-        return $this->json($presenter->present($match) + [
+        return $this->json($presenter->present($match, $locked) + [
             // * brouillon de réponse en cours (page "Répondre à la demande"), null s'il n'y en a pas
             'draft' => $draft === null ? null : [
                 'id' => $draft->getId()->toRfc4122(),
@@ -181,7 +188,7 @@ final class ProducerRequestController extends AbstractController
                 : null,
             'pickupWanted' => $clientRequest->isPickupWanted(),
             'deliveryWanted' => $clientRequest->isDeliveryWanted(),
-            'attachments' => array_map(
+            'attachments' => $locked ? [] : array_map(
                 static fn (RequestAttachment $a) => ['fileName' => $a->getFileName(), 'fileUrl' => $a->getFileUrl()],
                 $clientRequest->getAttachments()->toArray()
             ),
@@ -214,6 +221,7 @@ final class ProducerRequestController extends AbstractController
         #[CurrentUser] User $user,
         EntityManagerInterface $em,
         NotificationService $notificationService,
+        ProducerRequestAccess $access,
     ): JsonResponse {
         $result = $this->findMatchedRequest($id, $user, $em);
         if ($result instanceof JsonResponse) {
@@ -242,11 +250,7 @@ final class ProducerRequestController extends AbstractController
             }
 
             // Vérification des droits d'abonnement producteur (feature 'reply_to_requests')
-            $hasFeature = $em->getConnection()->fetchOne(
-                "SELECT billing.producer_has_feature(:pid, 'reply_to_requests')",
-                ['pid' => $producer->getId()->toRfc4122()]
-            );
-            if (!$hasFeature) {
+            if (!$access->hasFullAccess($producer)) {
                 return $this->json(['error' => "Votre abonnement ne vous permet pas de répondre aux demandes."], 403);
             }
         }

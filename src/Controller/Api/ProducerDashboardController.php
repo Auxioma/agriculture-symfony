@@ -9,6 +9,7 @@ use App\Entity\Messaging\Conversation;
 use App\Entity\Producer\ProducerProfile;
 use App\Service\Matching\AvailableRequestPresenter;
 use App\Service\Matching\MonthlyRequestCounter;
+use App\Service\Matching\ProducerRequestAccess;
 use App\Service\Messaging\UnreadMessageCounter;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -42,6 +43,7 @@ final class ProducerDashboardController extends AbstractController
         UnreadMessageCounter $unreadCounter,
         AvailableRequestPresenter $presenter,
         MonthlyRequestCounter $monthlyRequests,
+        ProducerRequestAccess $access,
     ): JsonResponse {
         $producer = $user->getProducerProfile();
         if ($producer === null) {
@@ -58,13 +60,15 @@ final class ProducerDashboardController extends AbstractController
         $unreadMessages = array_sum($unreadCounter->countByConversation($conversations, $user));
 
         $profile = $this->profileCompletion($producer);
+        // * sans abonnement, les demandes du tableau de bord sont en aperçu limité (comme la liste des demandes)
+        $locked = !$access->hasFullAccess($producer);
 
         return $this->json([
             'farmName' => $producer->getFarmName(),
             'availableRequests' => \count($available),
             'urgentRequests' => \count($urgent),
             'unreadMessages' => $unreadMessages,
-            'requests' => array_map($presenter->present(...),\array_slice($available, 0, self::REQUESTS_LIST_SIZE)),
+            'requests' => array_map(static fn (RequestMatch $m) => $presenter->present($m, $locked), \array_slice($available, 0, self::REQUESTS_LIST_SIZE)),
             'subscription' => $this->subscriptionSummary($producer, $em, $monthlyRequests),
             'profile' => $profile,
         ]);
