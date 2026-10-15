@@ -9,9 +9,10 @@ use App\Entity\Producer\ProducerSetting;
 use App\Enum\VerificationStatus;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
- * Teste GET /api/producers et GET /api/producers/{id} (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf,
+ * Teste GET /api/producers et GET /api/producers/{identifier} (slug ou UUID) (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf,
  * round 1) et les filtres de recherche ajoutés sur GET /api/producers (cahier fonctionnel, "recherche et listing producteurs" :
  * produit, catégorie, label, retrait/livraison, producteur vérifié, localisation+rayon, tri par distance).
  * Routes publiques : aucun header Authorization envoyé dans ces tests.
@@ -520,8 +521,98 @@ final class ProducerControllerTest extends ApiTestCase
 
     public function testGetProducerReturns404ForMalformedId(): void
     {
-        // * Une colonne uuid refuse "abc" : sans contrôle du format, la base lèverait une erreur (HTTP 500).
+        // * "abc" n'est pas un UUID : il est traité comme un slug (inconnu ici). Dans les deux cas, jamais d'erreur 500
+        // * de la colonne uuid de la base, mais un 404.
         $this->client->request('GET', '/api/producers/abc');
+
+        self::assertResponseStatusCodeSame(404);
+    }
+
+    // ─────────────── URL publique de la fiche : slug (l'UUID reste accepté) ───────────────
+
+    public function testGetProducerBySlug(): void
+    {
+        $producer = $this->makeProducerWithSlug('ferme-du-soleil');
+
+        $this->client->request('GET', '/api/producers/ferme-du-soleil');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame($producer->getId()->toRfc4122(), $data['id']);
+        self::assertSame('ferme-du-soleil', $data['slug']);
+    }
+
+    public function testGetProducerStillWorksByUuidWhenASlugExists(): void
+    {
+        $producer = $this->makeProducerWithSlug('ferme-du-soleil');
+
+        // * Anciens liens et favoris basés sur l'id
+        $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122());
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame('ferme-du-soleil', $data['slug']);
+    }
+
+    public function testGetProducerReturns404ForUnknownSlug(): void
+    {
+        $this->client->request('GET', '/api/producers/ferme-inconnue');
+
+        self::assertResponseStatusCodeSame(404);
+    }
+
+    #[DataProvider('malformedSlugs')]
+    public function testGetProducerReturns404ForMalformedSlug(string $slug): void
+    {
+        // * Rejeté avant toute requête en base : jamais de 500
+        $this->client->request('GET', '/api/producers/'.$slug);
+
+        self::assertResponseStatusCodeSame(404);
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function malformedSlugs(): iterable
+    {
+        yield 'underscore' => ['a_b'];
+        yield 'tiret au début' => ['-ferme'];
+        yield 'tiret à la fin' => ['ferme-'];
+        yield 'double tiret' => ['ferme--soleil'];
+    }
+
+    public function testGetProducerReturns404ForInactiveProducerFoundBySlug(): void
+    {
+        $producer = $this->makeProducerWithSlug('ferme-fermee');
+        $producer->setIsActive(false);
+        $this->em->flush();
+
+        // * Cohérent avec la liste : un producteur désactivé n'est pas listé, son lien direct non plus
+        $this->client->request('GET', '/api/producers/ferme-fermee');
+
+        self::assertResponseStatusCodeSame(404);
+    }
+
+    public function testListProducerReviewsBySlug(): void
+    {
+        $country = $this->makeCountry();
+        $producer = $this->makeProducerProfile($this->makeUser('reviewed-by-slug'), $country);
+        $producer->setSlug('ferme-notee');
+        $this->em->flush();
+
+        $client = $this->makeUser('slug-client');
+        $this->makeReview($client, $producer, $this->makeClientRequest($client), 5);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/ferme-notee/reviews');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame(1, $data['count']);
+        self::assertCount(1, $data['reviews']);
+    }
+
+    public function testListProducerReviewsReturns404ForUnknownSlug(): void
+    {
+        $this->client->request('GET', '/api/producers/ferme-inconnue/reviews');
 
         self::assertResponseStatusCodeSame(404);
     }
@@ -757,6 +848,16 @@ final class ProducerControllerTest extends ApiTestCase
     }
 
     // ─────────────── Aides ───────────────
+
+    /** Producteur actif avec le slug donné ; un seul par test (makeCountry). */
+    private function makeProducerWithSlug(string $slug): ProducerProfile
+    {
+        $producer = $this->makeProducerProfile($this->makeUser('slug'), $this->makeCountry(), farmName: 'Ferme du Soleil');
+        $producer->setSlug($slug);
+        $this->em->flush();
+
+        return $producer;
+    }
 
     /** @return string[] noms des fermes renvoyés par GET $uri, dans l'ordre de la réponse (qui doit être un 200) */
     private function farmNamesFrom(string $uri): array

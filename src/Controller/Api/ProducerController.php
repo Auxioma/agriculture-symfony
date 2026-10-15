@@ -30,6 +30,9 @@ final class ProducerController extends AbstractController
     private const MAX_FEATURED = 50;
     // * Fenêtre des tris « popularité » et « réactivité » : métriques des 30 derniers jours.
     private const METRICS_WINDOW_DAYS = 30;
+    // * Forme d'un slug dans l'URL publique (lettres, chiffres, tirets simples) : tout le reste est rejeté
+    // * avant d'interroger la base.
+    private const SLUG_PATTERN = '/^[a-z0-9]+(?:-[a-z0-9]+)*$/i';
 
     #[Route('/api/producers', methods: ['GET'])]
     public function listProducers(Request $request, EntityManagerInterface $em): JsonResponse
@@ -403,12 +406,31 @@ SQL;
         return $labelsByProducerId;
     }
 
-    #[Route('/api/producers/{id}', methods: ['GET'])]
-    public function getProducer(string $id, EntityManagerInterface $em): JsonResponse
+    /**
+     * Producteur actif retrouvé par son slug (URL publique de la fiche) ou par son UUID : l'UUID reste accepté
+     * pour les anciens liens, les favoris et les appels internes.
+     *
+     * Un producteur désactivé n'est pas listé, et son lien direct ne doit pas non plus être consultable.
+     */
+    private function findActiveProducer(string $identifier, EntityManagerInterface $em): ?ProducerProfile
     {
-        $producer = UuidFormat::isValid($id) ? $em->find(ProducerProfile::class, $id) : null;
-        // * Un producteur désactivé n'est pas listé, et son lien direct ne doit pas non plus être consultable.
-        if ($producer === null || !$producer->isActive()) {
+        $producer = null;
+        if (UuidFormat::isValid($identifier)) {
+            $producer = $em->find(ProducerProfile::class, $identifier);
+        } elseif (preg_match(self::SLUG_PATTERN, $identifier) === 1) {
+            $producer = $em->getRepository(ProducerProfile::class)->findOneBy(['slug' => $identifier]);
+        }
+
+        return $producer !== null && $producer->isActive() ? $producer : null;
+    }
+
+    // * {identifier} = slug du producteur (ou son UUID). "featured" est déclarée plus haut :
+    // * un producteur dont le slug serait "featured" ne serait donc pas joignable ici (slug à interdire à la création).
+    #[Route('/api/producers/{identifier}', methods: ['GET'])]
+    public function getProducer(string $identifier, EntityManagerInterface $em): JsonResponse
+    {
+        $producer = $this->findActiveProducer($identifier, $em);
+        if ($producer === null) {
             return $this->json(['error' => 'Producteur introuvable.'], 404);
         }
 
@@ -518,11 +540,11 @@ SQL;
         ]);
     }
 
-    #[Route('/api/producers/{id}/reviews', methods: ['GET'])]
-    public function listProducerReviews(string $id, EntityManagerInterface $em): JsonResponse
+    #[Route('/api/producers/{identifier}/reviews', methods: ['GET'])]
+    public function listProducerReviews(string $identifier, EntityManagerInterface $em): JsonResponse
     {
-        $producer = UuidFormat::isValid($id) ? $em->find(ProducerProfile::class, $id) : null;
-        if ($producer === null || !$producer->isActive()) {
+        $producer = $this->findActiveProducer($identifier, $em);
+        if ($producer === null) {
             return $this->json(['error' => 'Producteur introuvable.'], 404);
         }
 
