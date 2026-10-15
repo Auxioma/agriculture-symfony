@@ -519,6 +519,57 @@ final class SubscriptionControllerTest extends ApiTestCase
         self::assertSame([['cancel', 'sub_test_late']], $this->gateway()->calls);
     }
 
+    // * annulation programmée : pas de changement d'offre ni de nouveau checkout, il faut d'abord reprendre l'abonnement
+    // * (sur Stripe une descente aurait effacé l'annulation toute seule, voir le contrôleur)
+    public function testAScheduledCancellationBlocksChangingPlanUntilTheSubscriptionIsResumed(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $subscription = $this->makeActiveSubscription($producer);
+        $subscription->setProviderSubscriptionId('sub_test_leaving');
+        $subscription->setCancelAtPeriodEnd(true);
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_leaving');
+        $this->em->flush();
+        $post = function (string $url, array $body = []) use ($token): int {
+            $this->client->request('POST', $url, server: [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            ], content: json_encode($body));
+
+            return $this->client->getResponse()->getStatusCode();
+        };
+        $body = ['planPriceId' => $planPrice->getId()->toRfc4122()];
+
+        self::assertSame(409, $post('/api/subscription/change-plan', $body));
+        self::assertStringContainsString('reprenez-le', json_decode($this->client->getResponse()->getContent(), true)['error']);
+        self::assertSame(409, $post('/api/subscription/checkout', $body));
+        self::assertStringContainsString('reprenez-le', json_decode($this->client->getResponse()->getContent(), true)['error']);
+        // * rien n'est parti chez Stripe
+        self::assertSame([], $this->gateway()->calls);
+
+        // * une fois repris, le changement passe
+        self::assertSame(200, $post('/api/subscription/resume'));
+        self::assertSame(202, $post('/api/subscription/change-plan', $body));
+        self::assertSame([['resume', 'sub_test_leaving'], ['update_price', 'sub_test_leaving', 'price_test_leaving', false]], $this->gateway()->calls);
+    }
+
+    public function testALatePaymentIsToldBeforeTheCancellationWhenBothApply(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $subscription = $this->makeActiveSubscription($producer, SubscriptionStatus::PastDue);
+        $subscription->setProviderSubscriptionId('sub_test_late_leaving');
+        $subscription->setCancelAtPeriodEnd(true);
+        $planPrice = $this->makePlanPriceWithProviderId('price_test_late_leaving');
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/subscription/change-plan', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['planPriceId' => $planPrice->getId()->toRfc4122()]));
+
+        self::assertResponseStatusCodeSame(409);
+        self::assertStringContainsString('moyen de paiement', json_decode($this->client->getResponse()->getContent(), true)['error']);
+    }
+
     public function testATrialSubscriptionCountsAsExistingToo(): void
     {
         [$token, $producer] = $this->registerProducerAndLogin();

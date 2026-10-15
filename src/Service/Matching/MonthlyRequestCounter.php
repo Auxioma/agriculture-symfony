@@ -18,6 +18,10 @@ final readonly class MonthlyRequestCounter
 
     public function count(ProducerProfile $producer): int
     {
+        // * mois calendaire (depuis le 1er), pas depuis le renouvellement : le quota est "par mois" meme pour un abo annuel,
+        // * une fenetre qui suit le renouvellement serait d'un an pour eux. Choix du 15/10, le cahier donne pas de période
+        // ? on compte les demandes recues (matchs), "réponses limitées" --> a voir avec le client
+        // TODO rien ne bloque quand le quota est atteint, c'est juste affiché
         return (int) $this->em->createQueryBuilder()
             ->select('COUNT(m.id)')
             ->from(RequestMatch::class, 'm')

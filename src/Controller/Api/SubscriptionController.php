@@ -315,11 +315,17 @@ final class SubscriptionController extends AbstractController
         );
     }
 
+    // * le retard de paiement passe avant l'annulation (c'est lui qui bloque l'accès)
     private function existingSubscriptionMessage(Subscription $subscription): string
     {
-        return $subscription->getStatus() === SubscriptionStatus::PastDue
-            ? 'Votre dernier paiement a échoué : mettez à jour votre moyen de paiement.'
-            : 'Un abonnement actif existe déjà -- utilisez change-plan.';
+        if ($subscription->getStatus() === SubscriptionStatus::PastDue) {
+            return 'Votre dernier paiement a échoué : mettez à jour votre moyen de paiement.';
+        }
+        if ($subscription->isCancelAtPeriodEnd()) {
+            return "Votre abonnement est en cours d'annulation : reprenez-le avant de changer d'offre.";
+        }
+
+        return 'Un abonnement actif existe déjà -- utilisez change-plan.';
     }
 
     private function paymentUnavailable(): JsonResponse
@@ -377,7 +383,10 @@ final class SubscriptionController extends AbstractController
         if ($subscription === null) {
             return $this->json(['error' => 'Aucun abonnement actif.'], 404);
         }
-        if ($subscription->getStatus() === SubscriptionStatus::PastDue) {
+        // ! en retard de paiement OU annulation programmée --> on bloque (409)
+        // * testé sur Stripe le 15/10 : une montée facture la différence mais l'abo s'arrete quand meme à l'échéance, et une descente
+        // * efface l'annulation toute seule (le client serait prélevé alors qu'il voulait partir). Il doit d'abord reprendre (POST /resume)
+        if ($subscription->getStatus() === SubscriptionStatus::PastDue || $subscription->isCancelAtPeriodEnd()) {
             return $this->json(['error' => $this->existingSubscriptionMessage($subscription)], 409);
         }
         if ($subscription->getProviderSubscriptionId() === null) {
