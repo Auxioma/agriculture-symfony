@@ -408,7 +408,7 @@ final class SubscriptionController extends AbstractController
         }
 
         // * 2 cas qui attendent l'échéance : un plan plus bas (downgrade), ou le mensuel quand on est sous engagement annuel
-        // ! l'engagement passe avant "l'upgrade est immédiat" : Standard annuel --> Premium mensuel démarre à la fin de l'année,
+        // ! l'engagement passe avant "l'upgrade est immédiat" : Pro annuel --> Premium mensuel démarre à la fin de l'année,
         // ! sinon on rend un crédit au client (testé sur Stripe le 14/10) et l'annuel ne retient plus personne
         $isLowerPlan = ($newPlanPrice->getPlan()->getPosition() ?? 0) < ($subscription->getPlanPrice()->getPlan()->getPosition() ?? 0);
         $leavesAnnualCommitment = $subscription->getPlanPrice()->getBillingCycle() === BillingCycle::Yearly

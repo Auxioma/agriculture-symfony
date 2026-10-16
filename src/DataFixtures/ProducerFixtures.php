@@ -95,7 +95,7 @@ class ProducerFixtures extends Fixture implements DependentFixtureInterface
 
         $faker = Factory::create('fr_FR');
         $country = $this->getReference(CatalogFixtures::COUNTRY_FR, Country::class);
-        $planPrice = $this->getReference(SubscriptionPlanFixtures::PLAN_PRICE_STANDARD_MONTHLY, PlanPrice::class);
+        $planPrice = $this->getReference(SubscriptionPlanFixtures::PLAN_PRICE_PRO_MONTHLY, PlanPrice::class);
 
         for ($i = 0; $i < UserFixtures::PRODUCER_OWNER_COUNT; ++$i) {
             $owner = $this->getReference(UserFixtures::PRODUCER_OWNER_REFERENCE_PREFIX.$i, User::class);
