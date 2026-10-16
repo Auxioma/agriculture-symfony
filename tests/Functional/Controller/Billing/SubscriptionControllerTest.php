@@ -105,6 +105,24 @@ final class SubscriptionControllerTest extends ApiTestCase
         self::assertNotContains($inactivePlan->getCode(), $codes);
     }
 
+    // * la page publique "Tarifs producteurs" montre les droits et les limites de chaque offre (cahier : "droits du plan explicites")
+    public function testListPlansExposesTheFeaturesAndLimitsOfEachOffer(): void
+    {
+        $this->makeCountry();
+        $this->em->flush();
+        [, $producer] = $this->registerProducerAndLogin('producer', 'FR');
+        $plan = $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true, 'max_products' => 20, 'featured' => false])->getPlanPrice()->getPlan();
+        $plan->setLimits(['requests_per_month' => 30]);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/subscription/plans');
+
+        self::assertResponseIsSuccessful();
+        $data = array_column(json_decode($this->client->getResponse()->getContent(), true), null, 'code');
+        self::assertSame(['reply_to_requests' => true, 'max_products' => 20, 'featured' => false], $data[$plan->getCode()]['features']);
+        self::assertSame(['requests_per_month' => 30], $data[$plan->getCode()]['limits']);
+    }
+
     public function testGetCurrentSubscriptionReturnsData(): void
     {
         [$token, $producer] = $this->registerProducerAndLogin();

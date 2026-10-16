@@ -52,6 +52,8 @@ final class SubscriptionController extends AbstractController
                 'name' => $p->getName(),
                 'description' => $p->getDescription(),
                 'features' => $p->getFeatures(),
+                // * ex. requests_per_month ; absent = illimité. Lu par la page publique des tarifs (droits du plan explicites)
+                'limits' => $p->getLimits(),
                 'prices' => array_values(array_map(
                     static fn (PlanPrice $price) => [
                         'id' => $price->getId()->toRfc4122(),

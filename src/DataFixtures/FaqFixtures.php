@@ -47,6 +47,38 @@ class FaqFixtures extends Fixture
             'Comment recevoir plus de demandes ?',
             'Complétez votre profil (produits, disponibilités, photos, labels) et répondez vite : les demandes sont proposées selon la pertinence des produits, la proximité, la qualité du profil et la réactivité.',
         ],
+        // * catégorie "Abonnement" : la FAQ de la page publique "Tarifs producteurs" (cahier graphisme : "une FAQ sur l'abonnement").
+        // * Réponses d'après le cahier fonctionnel (règles d'accès) et le comportement réel du back.
+        [
+            'Abonnement',
+            'Que débloque l\'abonnement ?',
+            'Il donne accès aux demandes en entier (message du client, budget, pièces jointes) et permet d\'y répondre. Sans abonnement, vous voyez un aperçu limité de chaque demande. Aucune commission n\'est prélevée sur vos ventes.',
+        ],
+        [
+            'Abonnement',
+            'Quelle différence entre le mensuel et l\'annuel ?',
+            'Le mensuel se renouvelle chaque mois et vous l\'arrêtez quand vous voulez. L\'annuel coûte moins cher sur l\'année, mais il vous engage pour 12 mois : l\'annulation prend effet à la fin de l\'engagement, sans remboursement.',
+        ],
+        [
+            'Abonnement',
+            'Puis-je changer d\'offre ?',
+            'Oui, depuis « Mon abonnement ». Une offre plus haute prend effet tout de suite : seule la différence, au prorata de la période en cours, est facturée. Une offre plus basse prend effet à la prochaine échéance. Sous engagement annuel, le passage au mensuel attend la fin de l\'engagement.',
+        ],
+        [
+            'Abonnement',
+            'Comment annuler mon abonnement ?',
+            'Depuis « Mon abonnement ». Vous gardez l\'accès jusqu\'à la fin de la période déjà payée, puis vous repassez à l\'offre gratuite. Vous pouvez reprendre votre abonnement tant que cette période n\'est pas terminée.',
+        ],
+        [
+            'Abonnement',
+            'Où trouver mes factures et la date de mon prochain paiement ?',
+            'Dans « Mon abonnement » : le renouvellement, la date du prochain paiement et chaque facture, téléchargeable, y sont affichés.',
+        ],
+        [
+            'Abonnement',
+            'Que se passe-t-il si un paiement échoue ?',
+            'Vous êtes prévenu par notification et par e-mail, et Stripe réessaie de prélever. En attendant, votre accès aux demandes complètes et aux réponses est limité. Mettez à jour votre carte depuis « Moyens de paiement » pour régulariser.',
+        ],
     ];
 
     public function load(ObjectManager $manager): void
