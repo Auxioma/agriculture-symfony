@@ -617,6 +617,110 @@ final class ProducerControllerTest extends ApiTestCase
         self::assertResponseStatusCodeSame(404);
     }
 
+    // ─────────────── Pagination (?page= & ?pageSize=, en-tête X-Total-Count) ───────────────
+
+    public function testListProducersReturnsTheFirstPageByDefaultWithTheTotalInAHeader(): void
+    {
+        // * 15 producteurs actifs : la page par défaut en renvoie 12, mais le total annoncé est 15.
+        $this->makeNumberedProducers($this->makeCountry(), 15);
+
+        $names = $this->farmNamesFrom('/api/producers');
+
+        self::assertCount(12, $names);
+        self::assertSame('Ferme 01', $names[0]);
+        self::assertSame('Ferme 12', $names[11]);
+        self::assertSame('15', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testListProducersReturnsTheRequestedPage(): void
+    {
+        $this->makeNumberedProducers($this->makeCountry(), 15);
+
+        $names = $this->farmNamesFrom('/api/producers?page=2&pageSize=10');
+
+        self::assertSame(['Ferme 11', 'Ferme 12', 'Ferme 13', 'Ferme 14', 'Ferme 15'], $names);
+        self::assertSame('15', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testListProducersPagesCoverEveryProducerExactlyOnce(): void
+    {
+        $this->makeNumberedProducers($this->makeCountry(), 11);
+
+        $all = [];
+        foreach ([1, 2, 3] as $page) {
+            $all = array_merge($all, $this->farmNamesFrom('/api/producers?pageSize=5&page='.$page));
+        }
+
+        self::assertCount(11, $all);
+        self::assertCount(11, array_unique($all));
+    }
+
+    public function testListProducersPaginationIsStableForProducersWithTheSameName(): void
+    {
+        // * Même nom, mêmes notes : sans critère de départage unique (pp.id), l'ordre pourrait varier d'une page à
+        // * l'autre et un producteur apparaître deux fois, ou jamais.
+        $this->makeNumberedProducers($this->makeCountry(), 6, 'Ferme jumelle');
+
+        $ids = [];
+        foreach ([1, 2, 3] as $page) {
+            $this->client->request('GET', '/api/producers?pageSize=2&page='.$page);
+            self::assertResponseIsSuccessful();
+            $ids = array_merge($ids, array_column(json_decode($this->client->getResponse()->getContent(), true), 'id'));
+        }
+
+        self::assertCount(6, $ids);
+        self::assertCount(6, array_unique($ids));
+    }
+
+    public function testListProducersTotalCountIgnoresThePageAndFollowsTheFilters(): void
+    {
+        $country = $this->makeCountry();
+        $this->makeNumberedProducers($country, 5);
+        $pending = $this->makeProducerProfile($this->makeUser('pending-page'), $country, VerificationStatus::Pending, 'Ferme en attente');
+        $inactive = $this->makeProducerProfile($this->makeUser('inactive-page'), $country, VerificationStatus::Verified, 'Ferme désactivée');
+        $inactive->setIsActive(false);
+        $this->em->flush();
+
+        // * Sans filtre : 5 vérifiés + 1 en attente = 6 (le producteur désactivé n'est jamais compté).
+        $this->farmNamesFrom('/api/producers?pageSize=2');
+        self::assertSame('6', $this->client->getResponse()->headers->get('X-Total-Count'));
+
+        // * Avec verifiedOnly : 5, même en page 3 de 2 éléments (1 seul résultat sur cette page).
+        $names = $this->farmNamesFrom('/api/producers?verifiedOnly=true&pageSize=2&page=3');
+        self::assertCount(1, $names);
+        self::assertSame('5', $this->client->getResponse()->headers->get('X-Total-Count'));
+        self::assertNotContains($pending->getFarmName(), $names);
+    }
+
+    public function testListProducersBeyondTheLastPageReturnsAnEmptyListWithTheTotal(): void
+    {
+        $this->makeNumberedProducers($this->makeCountry(), 3);
+
+        $names = $this->farmNamesFrom('/api/producers?page=5');
+
+        self::assertSame([], $names);
+        self::assertSame('3', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    #[DataProvider('invalidPagination')]
+    public function testListProducersRejectsInvalidPagination(string $query): void
+    {
+        $this->client->request('GET', '/api/producers?'.$query);
+
+        self::assertResponseStatusCodeSame(400);
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function invalidPagination(): iterable
+    {
+        yield 'page à zéro' => ['page=0'];
+        yield 'page négative' => ['page=-1'];
+        yield 'page non numérique' => ['page=abc'];
+        yield 'pageSize à zéro' => ['pageSize=0'];
+        yield 'pageSize au-dessus du maximum' => ['pageSize=51'];
+        yield 'pageSize non numérique' => ['pageSize=abc'];
+    }
+
     public function testGetProducerReturnsFirstPublicPhotoAsPhotoUrl(): void
     {
         $country = $this->makeCountry();
@@ -857,6 +961,28 @@ final class ProducerControllerTest extends ApiTestCase
         $this->em->flush();
 
         return $producer;
+    }
+
+    /**
+     * Crée $count producteurs actifs et vérifiés. Sans $farmName, ils s'appellent « Ferme 01 », « Ferme 02 »… :
+     * l'ordre par défaut (nom) est alors prévisible. Avec $farmName, ils portent tous le même nom.
+     *
+     * @return list<ProducerProfile>
+     */
+    private function makeNumberedProducers(object $country, int $count, ?string $farmName = null): array
+    {
+        $producers = [];
+        for ($i = 1; $i <= $count; ++$i) {
+            $producers[] = $this->makeProducerProfile(
+                $this->makeUser('numbered'.$i),
+                $country,
+                VerificationStatus::Verified,
+                $farmName ?? sprintf('Ferme %02d', $i),
+            );
+        }
+        $this->em->flush();
+
+        return $producers;
     }
 
     /** @return string[] noms des fermes renvoyés par GET $uri, dans l'ordre de la réponse (qui doit être un 200) */

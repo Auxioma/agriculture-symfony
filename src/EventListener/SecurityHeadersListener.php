@@ -15,6 +15,9 @@ use Symfony\Component\HttpKernel\KernelEvents;
 
 class SecurityHeadersListener implements EventSubscriberInterface
 {
+    /** En-têtes de réponse lisibles par le front (au-delà des en-têtes CORS « simples »), séparés par une virgule. */
+    private const EXPOSED_HEADERS = 'X-Total-Count';
+
     /** @param string[] $allowedOrigins */
     public function __construct(private readonly array $allowedOrigins)
     {
@@ -69,6 +72,9 @@ class SecurityHeadersListener implements EventSubscriberInterface
         if (null !== $origin && \in_array($origin, $this->allowedOrigins, true)) {
             $response->headers->set('Access-Control-Allow-Origin', $origin);
             $response->headers->set('Access-Control-Allow-Credentials', 'true');
+            // * Sans cet en-tête, le navigateur cache X-Total-Count au JavaScript du front (liste paginée des
+            // * producteurs) : l'en-tête est bien reçu (onglet Network) mais headers.get() renverrait null.
+            $response->headers->set('Access-Control-Expose-Headers', self::EXPOSED_HEADERS);
             $response->headers->set('Vary', 'Origin');
         }
 

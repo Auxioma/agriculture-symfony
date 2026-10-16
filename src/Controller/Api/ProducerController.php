@@ -28,6 +28,9 @@ final class ProducerController extends AbstractController
     private const MAX_LABELS_FILTER = 10;
     private const MAX_RADIUS_KM = 500;
     private const MAX_FEATURED = 50;
+    // * Cahier DevOps -- "pagination obligatoire" : une page par défaut même si le client n'envoie rien.
+    private const DEFAULT_PAGE_SIZE = 12;
+    private const MAX_PAGE_SIZE = 50;
     // * Fenêtre des tris « popularité » et « réactivité » : métriques des 30 derniers jours.
     private const METRICS_WINDOW_DAYS = 30;
     // * Forme d'un slug dans l'URL publique (lettres, chiffres, tirets simples) : tout le reste est rejeté
@@ -40,6 +43,9 @@ final class ProducerController extends AbstractController
         if (($error = $this->validateListQuery($request)) !== null) {
             return $this->badRequest($error);
         }
+
+        // * Déjà validée par validateListQuery() : le tableau n'est donc jamais null ici.
+        ['page' => $page, 'pageSize' => $pageSize] = $this->parsePagination($request);
 
         $conditions = ['pp.is_active = true'];
         $params = [];
@@ -70,7 +76,7 @@ final class ProducerController extends AbstractController
                     )
                     SELECT id FROM category_tree
                 )
-SQL;
+        SQL;
             $params['categoryId'] = $categoryId;
         }
 
@@ -87,7 +93,7 @@ SQL;
                     OR (prod.season_start_month > prod.season_end_month
                         AND (CAST(:month AS integer) >= prod.season_start_month OR CAST(:month AS integer) <= prod.season_end_month))
                 )
-SQL;
+        SQL;
             // * Fuseau explicite : sinon le mois dépend de la configuration du serveur (UTC la nuit du 31 au 1er).
             $params['month'] = (int) (new \DateTimeImmutable('now', new \DateTimeZone('Europe/Paris')))->format('n');
         }
@@ -140,6 +146,8 @@ SQL;
         // * Cahier fonctionnel : tris de la liste. La valeur reçue sert uniquement de CLÉ dans cette liste blanche,
         // * jamais de morceau de SQL ; une valeur inconnue retombe sur "relevance".
         // *  - relevance      : producteurs vérifiés d'abord, puis mieux notés, puis plus d'avis, puis nom.
+        // * Chaque tri finit par pp.id : sans critère unique, deux producteurs ex aequo (même nom, mêmes notes)
+        // * pourraient changer de place d'une requête à l'autre et apparaître sur deux pages, ou sur aucune.
         // *  - distance       : seulement si une position est fournie (sinon "relevance").
         // *  - popularity     : vues du profil sur les 30 derniers jours (analytics.producer_daily_metrics).
         // *  - responsiveness : taux de réponse moyen sur 30 jours (même table).
@@ -147,11 +155,11 @@ SQL;
         // *                     n'a pas de date de création).
         $sort = $request->query->get('sort');
         $orderByBySort = [
-            'relevance' => "(pp.verification_status = 'verified') DESC, reviews.average_rating DESC NULLS LAST, reviews.review_count DESC NULLS LAST, pp.farm_name ASC",
-            'distance' => 'distance_km ASC NULLS LAST, pp.farm_name ASC',
-            'popularity' => 'metrics.profile_views DESC NULLS LAST, pp.farm_name ASC',
-            'responsiveness' => 'metrics.response_rate DESC NULLS LAST, pp.farm_name ASC',
-            'newest' => 'owner.created_at DESC, pp.farm_name ASC',
+            'relevance' => "(pp.verification_status = 'verified') DESC, reviews.average_rating DESC NULLS LAST, reviews.review_count DESC NULLS LAST, pp.farm_name ASC, pp.id ASC",
+            'distance' => 'distance_km ASC NULLS LAST, pp.farm_name ASC, pp.id ASC',
+            'popularity' => 'metrics.profile_views DESC NULLS LAST, pp.farm_name ASC, pp.id ASC',
+            'responsiveness' => 'metrics.response_rate DESC NULLS LAST, pp.farm_name ASC, pp.id ASC',
+            'newest' => 'owner.created_at DESC, pp.farm_name ASC, pp.id ASC',
         ];
         if (!is_string($sort) || !isset($orderByBySort[$sort]) || ($sort === 'distance' && !$hasLocation)) {
             $sort = 'relevance';
@@ -171,6 +179,26 @@ SQL;
         $ownerJoin = $sort === 'newest' ? 'JOIN identity.users owner ON owner.id = pp.owner_user_id' : '';
         $distanceSelect = $hasLocation ? 'ST_Distance(pp.location, ST_GeographyFromText(:point)) / 1000.0' : 'NULL';
 
+        // * Moyenne et nombre d'avis publiés : nécessaire au filtre minRating (donc au total) comme au tri et à l'affichage.
+        $reviewsJoin = "LEFT JOIN (
+                SELECT producer_id, AVG(rating)::numeric(10,2) AS average_rating, COUNT(*) AS review_count
+                FROM trust.reviews
+                WHERE status = 'published' AND rating IS NOT NULL
+                GROUP BY producer_id
+            ) reviews ON reviews.producer_id = pp.id";
+        $where = implode(' AND ', $conditions);
+
+        // * Total de TOUTES les pages, avec les mêmes filtres : seules les jointures utilisées par les conditions
+        // * sont nécessaires (les avis pour minRating) ; les jointures de tri et la distance ne servent qu'à la page.
+        $total = (int) $em->getConnection()->fetchOne(
+            "SELECT COUNT(*) FROM producer.producer_profiles pp $reviewsJoin WHERE $where",
+            $params
+        );
+
+        // * LIMIT et OFFSET sont des entiers validés par parsePagination() : pas de risque d'injection SQL.
+        $limit = $pageSize;
+        $offset = ($page - 1) * $pageSize;
+
         $sql = "
             SELECT pp.id, pp.farm_name, pp.slug, pp.city, pp.country_code, pp.verification_status,
                 $distanceSelect AS distance_km,
@@ -181,22 +209,18 @@ SQL;
                     ORDER BY pm.position ASC NULLS LAST LIMIT 1
                 ) AS photo_url
             FROM producer.producer_profiles pp
-            LEFT JOIN (
-                SELECT producer_id, AVG(rating)::numeric(10,2) AS average_rating, COUNT(*) AS review_count
-                FROM trust.reviews
-                WHERE status = 'published' AND rating IS NOT NULL
-                GROUP BY producer_id
-            ) reviews ON reviews.producer_id = pp.id
+            $reviewsJoin
             $metricsJoin
             $ownerJoin
-            WHERE ".implode(' AND ', $conditions)."
+            WHERE $where
             ORDER BY $orderBy
+            LIMIT $limit OFFSET $offset
         ";
 
         $rows = $em->getConnection()->fetchAllAssociative($sql, $params);
         $labelsByProducerId = $this->findVerifiedLabelsByProducerId($em, array_column($rows, 'id'));
 
-        return $this->json(array_map(
+        $response = $this->json(array_map(
             static fn (array $row) => [
                 'id' => $row['id'],
                 'farmName' => $row['farm_name'],
@@ -212,11 +236,38 @@ SQL;
             ],
             $rows
         ));
+        // * Le corps reste un tableau (rien ne casse pour les consommateurs existants) ; le total de toutes les pages
+        // * voyage en en-tête. SecurityHeadersListener l'expose au navigateur (Access-Control-Expose-Headers).
+        $response->headers->set('X-Total-Count', (string) $total);
+
+        return $response;
+    }
+
+    /**
+     * Pagination de listProducers : ?page=<entier ≥ 1> (défaut 1) et ?pageSize=<1 à MAX_PAGE_SIZE> (défaut 12).
+     * filter_var plutôt que getInt() : une valeur comme "abc" doit donner null (donc une 400), pas une exception.
+     *
+     * @return array{page: int, pageSize: int}|null null si "page" ou "pageSize" est invalide
+     */
+    private function parsePagination(Request $request): ?array
+    {
+        $page = filter_var($request->query->get('page', 1), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $pageSize = filter_var(
+            $request->query->get('pageSize', self::DEFAULT_PAGE_SIZE),
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1, 'max_range' => self::MAX_PAGE_SIZE]]
+        );
+
+        return $page === false || $pageSize === false ? null : ['page' => $page, 'pageSize' => $pageSize];
     }
 
     /** Message d'erreur (HTTP 400) si un paramètre de listProducers est invalide, sinon null. */
     private function validateListQuery(Request $request): ?string
     {
+        if ($this->parsePagination($request) === null) {
+            return sprintf('Paramètres "page" (entier ≥ 1) et "pageSize" (entier de 1 à %d) invalides.', self::MAX_PAGE_SIZE);
+        }
+
         foreach (['productId', 'categoryId'] as $name) {
             $value = $request->query->get($name);
             if ($value !== null && !UuidFormat::isValid($value)) {
