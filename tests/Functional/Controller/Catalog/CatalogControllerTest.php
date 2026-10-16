@@ -592,7 +592,11 @@ final class CatalogControllerTest extends ApiTestCase
         return array_values(array_filter(array_column($categories, 'id'), static fn (string $id) => in_array($id, $wantedIds, true)));
     }
 
-    /** @param array<int, array<string, mixed>> $categories réponse de GET /api/categories */
+    /**
+     * @param array<int, array<string, mixed>> $categories réponse de GET /api/categories
+     *
+     * @return array<string, mixed>
+     */
     private function categoryRow(array $categories, Category $category): array
     {
         $rows = array_filter($categories, static fn (array $c) => $c['id'] === $category->getId()->toRfc4122());
