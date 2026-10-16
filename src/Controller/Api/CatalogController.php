@@ -8,7 +8,9 @@ use App\Entity\Catalog\Label;
 use App\Entity\Catalog\LabelTranslation;
 use App\Entity\Catalog\Product;
 use App\Entity\Catalog\ProductTranslation;
+use App\Repository\Producer\ProducerProductRepository;
 use App\Service\Platform\PlatformSettings;
+use App\Service\Validation\UuidFormat;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -26,31 +28,59 @@ use Symfony\Component\Routing\Attribute\Route;
  */
 final class CatalogController extends AbstractController
 {
-    public function __construct(private readonly PlatformSettings $settings)
+    private const LOCALE_PATTERN = '/^[a-z]{2,3}(?:-[A-Za-z]{2})?$/';
+
+    public function __construct(private readonly PlatformSettings $settings, private readonly ProducerProductRepository $producerProducts,)
     {
+    }
+
+    private function resolveLocale(Request $request): string
+    {
+        $locale = $request->query->get('locale');
+
+        return is_string($locale) && preg_match(self::LOCALE_PATTERN, $locale) === 1 ? $locale : $this->settings->defaultLocale();
     }
 
     #[Route('/api/categories', methods: ['GET'])]
     public function listCategories(Request $request, EntityManagerInterface $em): JsonResponse
     {
-        $locale = $request->query->get('locale', $this->settings->defaultLocale());
+        $locale = $this->resolveLocale($request);
 
         // * Seules les catégories actives sont visibles publiquement, une catégorie désactivée
         // * est un brouillon/masquage volontaire côté back-office, pas censée apparaître ici
         $categories = $em->getRepository(Category::class)->findBy(['isActive' => true], ['position' => 'ASC']);
+        $producerCount = $this->producerProducts->countProducersByCategory();
+
+        if ($request->query->get('sort') === 'popular') {
+            $categories = array_values(array_filter($categories, fn (Category $c) => $c->getParent() === null));
+            
+            usort($categories, fn (Category $a, Category $b) => 
+                ($producerCount[$b->getId()->toRfc4122()] ?? 0) <=> (($producerCount[$a->getId()->toRfc4122()] ?? 0))
+            );
+        }
+
+        // * On lit la valeur brute et on la valide nous-mêmes : getInt() lève une 400 sur une valeur non numérique
+        $rawLimit = $request->query->all()['limit'] ?? null;
+        $limit = is_string($rawLimit) ? filter_var($rawLimit, FILTER_VALIDATE_INT) : false;
+
+        if (is_int($limit) && $limit > 0) {
+            $categories = array_slice($categories, 0, min($limit, 50));
+        }
+
         $translations = $this->indexTranslationsByParentId(
             $categories === [] ? [] : $em->getRepository(CategoryTranslation::class)->findBy(['category' => $categories, 'locale' => $locale]),
             static fn (CategoryTranslation $t) => $t->getCategory()->getId()->toRfc4122()
         );
+        $producerCounts = $this->producerProducts->countProducersByCategory();
 
         return $this->json(array_map(
-            fn (Category $c) => $this->serializeCategory($c, $translations[$c->getId()->toRfc4122()] ?? null),
+            fn (Category $c) => $this->serializeCategory($c, $translations[$c->getId()->toRfc4122()] ?? null, $producerCounts[$c->getId()->toRfc4122()] ?? 0),
             $categories
         ));
     }
 
-    /** @return array{id: string, name: string, slug: ?string, icon: ?string, imageUrl: ?string, parentId: ?string, description: ?string, seoTitle: ?string, seoDescription: ?string} */
-    private function serializeCategory(Category $c, ?CategoryTranslation $t): array
+    /** @return array{id: string, name: string, slug: ?string, icon: ?string, imageUrl: ?string, parentId: ?string, description: ?string, seoTitle: ?string, seoDescription: ?string, producerCount: int} */
+    private function serializeCategory(Category $c, ?CategoryTranslation $t, int $producerCount): array
     {
         return [
             'id' => $c->getId()->toRfc4122(),
@@ -62,13 +92,14 @@ final class CatalogController extends AbstractController
             'description' => $t?->getDescription(),
             'seoTitle' => $t?->getSeoTitle(),
             'seoDescription' => $t?->getSeoDescription(),
+            'producerCount' => $producerCount,
         ];
     }
 
     #[Route('/api/products', methods: ['GET'])]
     public function listProducts(Request $request, EntityManagerInterface $em): JsonResponse
     {
-        $locale = $request->query->get('locale', $this->settings->defaultLocale());
+        $locale = $this->resolveLocale($request);
 
         $products = $em->getRepository(Product::class)->findBy(['isActive' => true], ['name' => 'ASC']);
         $translations = $this->indexTranslationsByParentId(
@@ -85,15 +116,17 @@ final class CatalogController extends AbstractController
     #[Route('/api/products/{id}', methods: ['GET'])]
     public function getProduct(string $id, Request $request, EntityManagerInterface $em): JsonResponse
     {
-        $product = $em->find(Product::class, $id);
-        if ($product === null) {
+        // * Une colonne uuid refuse toute autre valeur : sans ce contrôle, "/api/products/abc" lève une erreur
+        // * de conversion côté base (HTTP 500). Un produit désactivé reste introuvable, comme dans la liste.
+        $product = UuidFormat::isValid($id) ? $em->find(Product::class, $id) : null;
+        if ($product === null || !$product->isActive()) {
             return $this->json(['error' => 'Produit introuvable.'], 404);
         }
 
-        $locale = $request->query->get('locale', $this->settings->defaultLocale());
+        $locale = $this->resolveLocale($request);
         $translation = $em->getRepository(ProductTranslation::class)->findOneBy(['product' => $product, 'locale' => $locale]);
 
-        return $this->json([...$this->serializeProduct($product, $translation), 'isActive' => $product->isActive()]);
+        return $this->json($this->serializeProduct($product, $translation));
     }
 
     /** @return array{id: string, name: string, slug: ?string, categoryId: string, seasonStartMonth: ?int, seasonEndMonth: ?int, description: ?string, keywords: ?array<int, string>} */
@@ -114,7 +147,7 @@ final class CatalogController extends AbstractController
     #[Route('/api/labels', methods: ['GET'])]
     public function listLabels(Request $request, EntityManagerInterface $em): JsonResponse
     {
-        $locale = $request->query->get('locale', $this->settings->defaultLocale());
+        $locale = $this->resolveLocale($request);
 
         $labels = $em->getRepository(Label::class)->findBy(['isActive' => true], ['name' => 'ASC']);
         $translations = $this->indexTranslationsByParentId(
