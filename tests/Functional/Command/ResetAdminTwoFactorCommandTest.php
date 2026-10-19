@@ -59,7 +59,8 @@ final class ResetAdminTwoFactorCommandTest extends ApiTestCase
         $tester = $this->run2faReset($user->getEmail());
 
         self::assertSame(Command::SUCCESS, $tester->getStatusCode());
-        self::assertStringContainsString('rien à réinitialiser', $tester->getDisplay());
+        $display = preg_replace('/\s+/', '', $tester->getDisplay());
+        self::assertStringContainsString('rien à réinitialiser', $display);
         $audit = $this->em->getConnection()->fetchAssociative(
             "SELECT 1 FROM audit.audit_logs WHERE action = 'admin_2fa_reset' AND record_id = :id",
             ['id' => $user->getId()->toRfc4122()]
