@@ -159,7 +159,7 @@ final class CatalogControllerTest extends ApiTestCase
 
         self::assertResponseIsSuccessful();
         $byName = array_column(json_decode($this->client->getResponse()->getContent(), true), null, 'name');
-        self::assertSame(['code' => 'kg', 'label' => 'Kilogramme'], $byName['Tomates']['unit']);
+        self::assertSame(['id' => $kg->getId()->toRfc4122(), 'code' => 'kg', 'label' => 'Kilogramme'], $byName['Tomates']['unit']);
         self::assertNull($byName['Pommes']['unit']);
     }
 

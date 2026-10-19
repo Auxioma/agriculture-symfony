@@ -5,12 +5,16 @@
  * catalogue global, jamais un produit libre). $variety précise la variété (ex. "Golden" pour le Product
  * "Pomme"), $defaultPrice/$currency portent le prix de référence affiché sur la fiche. $productAvailabilities
  * (orphanRemoval) détaille les créneaux de disponibilité réels utilisés par le matching, $media les photos
- * spécifiques à ce produit (distinctes des photos générales de ProducerMedia).
+ * spécifiques à ce produit (distinctes des photos générales de ProducerMedia). $labels : les labels que le
+ * producteur déclare pour CE produit (Bio sur ses tomates mais pas sur ses pommes), choisis dans le catalogue
+ * de labels ; ils ne sont pas vérifiés (la vérification, avec justificatif, reste celle de ProducerLabel,
+ * rattachée à l'exploitation).
  */
 
 namespace App\Entity\Producer;
 
 use App\Entity\Catalog\Currency;
+use App\Entity\Catalog\Label;
 use App\Entity\Catalog\Product;
 use App\Repository\Producer\ProducerProductRepository;
 use Doctrine\Common\Collections\ArrayCollection;
@@ -70,11 +74,19 @@ class ProducerProduct
     #[ORM\OneToMany(targetEntity: ProductAvailability::class, mappedBy: 'producerProduct', orphanRemoval: true)]
     private Collection $productAvailabilities;
 
+    /**
+     * @var Collection<int, Label>
+     */
+    #[ORM\ManyToMany(targetEntity: Label::class)]
+    #[ORM\JoinTable(name: 'producer_product_labels', schema: 'producer')]
+    private Collection $labels;
+
     public function __construct()
     {
         $this->id = Uuid::v4();
         $this->media = new ArrayCollection();
         $this->productAvailabilities = new ArrayCollection();
+        $this->labels = new ArrayCollection();
     }
 
     public function getId(): Uuid
@@ -240,6 +252,30 @@ class ProducerProduct
     public function removeProductAvailability(ProductAvailability $productAvailability): static
     {
         $this->productAvailabilities->removeElement($productAvailability);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Label>
+     */
+    public function getLabels(): Collection
+    {
+        return $this->labels;
+    }
+
+    public function addLabel(Label $label): static
+    {
+        if (!$this->labels->contains($label)) {
+            $this->labels->add($label);
+        }
+
+        return $this;
+    }
+
+    public function removeLabel(Label $label): static
+    {
+        $this->labels->removeElement($label);
 
         return $this;
     }

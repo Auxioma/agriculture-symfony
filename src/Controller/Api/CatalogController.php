@@ -107,7 +107,7 @@ final class CatalogController extends AbstractController
         return $this->json([...$this->serializeProduct($product, $translation), 'isActive' => $product->isActive()]);
     }
 
-    /** @return array{id: string, name: string, slug: ?string, categoryId: string, unit: ?array{code: string, label: string}, seasonStartMonth: ?int, seasonEndMonth: ?int, description: ?string, keywords: ?array<int, string>} */
+    /** @return array{id: string, name: string, slug: ?string, categoryId: string, unit: ?array{id: string, code: string, label: string}, seasonStartMonth: ?int, seasonEndMonth: ?int, description: ?string, keywords: ?array<int, string>} */
     private function serializeProduct(Product $p, ?ProductTranslation $t): array
     {
         $unit = $p->getDefaultUnit();
@@ -118,7 +118,7 @@ final class CatalogController extends AbstractController
             'slug' => $p->getSlug(),
             'categoryId' => $p->getCategory()->getId()->toRfc4122(),
             // * unité par défaut (kg, unité...) : sert aux formulaires qui parlent d'un volume ou d'un prix pour ce produit
-            'unit' => $unit === null ? null : ['code' => $unit->getCode(), 'label' => $unit->getLabel() ?? $unit->getCode()],
+            'unit' => $unit === null ? null : ['id' => $unit->getId()->toRfc4122(), 'code' => $unit->getCode(), 'label' => $unit->getLabel() ?? $unit->getCode()],
             'seasonStartMonth' => $p->getSeasonStartMonth(),
             'seasonEndMonth' => $p->getSeasonEndMonth(),
             'description' => $t?->getDescription(),

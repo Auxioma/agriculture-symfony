@@ -22,6 +22,13 @@ final readonly class UpdateProducerProductRequest
         public ?string $defaultPrice = null,
         public ?string $currencyCode = null,
         public bool $isActive = true,
+        // * absent = les labels du produit ne changent pas ; [] = les retire tous (leur existence est vérifiée dans le contrôleur)
+        /** @var list<string>|null */
+        #[Assert\All([new Assert\Uuid()])]
+        public ?array $labelIds = null,
+        // * absent = le créneau du produit ne change pas, voir ProductAvailabilityInput
+        #[Assert\Valid]
+        public ?ProductAvailabilityInput $availability = null,
     ) {
     }
 }
