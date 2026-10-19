@@ -18,7 +18,9 @@ final readonly class CreateProducerProductRequest
 
         public ?string $variety = null,
         public ?string $description = null,
+        #[Assert\Regex(pattern: '/^\d{1,11}(\.\d{1,3})?$/', message: 'Volume estimé invalide.')]
         public ?string $estimatedVolume = null,
+        #[Assert\Regex(pattern: '/^\d{1,10}(\.\d{1,2})?$/', message: 'Prix invalide.')]
         public ?string $defaultPrice = null,
         public ?string $currencyCode = null,
         public bool $isActive = true,

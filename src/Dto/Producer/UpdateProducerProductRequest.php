@@ -2,6 +2,8 @@
 
 namespace App\Dto\Producer;
 
+use Symfony\Component\Validator\Constraints as Assert;
+
 /**
  * Payload attendu par PUT /api/producer/products/{id}
  *
@@ -14,7 +16,9 @@ final readonly class UpdateProducerProductRequest
     public function __construct(
         public ?string $variety = null,
         public ?string $description = null,
+        #[Assert\Regex(pattern: '/^\d{1,11}(\.\d{1,3})?$/', message: 'Volume estimé invalide.')]
         public ?string $estimatedVolume = null,
+        #[Assert\Regex(pattern: '/^\d{1,10}(\.\d{1,2})?$/', message: 'Prix invalide.')]
         public ?string $defaultPrice = null,
         public ?string $currencyCode = null,
         public bool $isActive = true,

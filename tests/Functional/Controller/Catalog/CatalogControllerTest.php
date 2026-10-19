@@ -145,6 +145,24 @@ final class CatalogControllerTest extends ApiTestCase
         self::assertNotContains('Pommes', $names);
     }
 
+    // * l'unité par défaut du produit (kg, unité...) : la page "Produits et disponibilités" du producteur en fait le "kg" de ses libellés
+    public function testListProductsReturnsTheDefaultUnitWhenThereIsOne(): void
+    {
+        $category = $this->makeCategory();
+        $kg = (new Unit())->setCode('kg')->setLabel('Kilogramme');
+        $this->em->persist($kg);
+        $this->makeProduct($category, 'Tomates')->setIsActive(true)->setDefaultUnit($kg);
+        $this->makeProduct($category, 'Pommes')->setIsActive(true);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/products');
+
+        self::assertResponseIsSuccessful();
+        $byName = array_column(json_decode($this->client->getResponse()->getContent(), true), null, 'name');
+        self::assertSame(['code' => 'kg', 'label' => 'Kilogramme'], $byName['Tomates']['unit']);
+        self::assertNull($byName['Pommes']['unit']);
+    }
+
     public function testGetProductReturns404ForUnknownId(): void
     {
         $this->client->request('GET', '/api/products/'.\Symfony\Component\Uid\Uuid::v4()->toRfc4122());

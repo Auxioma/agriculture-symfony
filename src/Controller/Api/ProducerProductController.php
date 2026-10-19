@@ -18,7 +18,7 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
 /**
  * Contrôleur API pour la gestion du catalogue de produits d'un producteur.
  *
- * Permet aux producteurs authentifiés d'ajouter, de modifier et de supprimer
+ * Permet aux producteurs authentifiés de lister, d'ajouter, de modifier et de supprimer
  * des produits au sein de leur propre catalogue (entité ProducerProduct).
  *
  * Les requêtes entrantes exploite l'attribut `#[MapRequestPayload]` pour désérialiser
@@ -26,6 +26,59 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
  */
 final class ProducerProductController extends AbstractController
 {
+    /**
+     * Liste le catalogue du producteur connecté, produits désactivés compris : la page "Produits et disponibilités"
+     * les montre tous, et c'est is_active qui décide si le produit compte dans le matching (matching.find_matching_producers
+     * ne garde que les producteurs qui ont le produit demandé ET actif).
+     *
+     * ! nom de base du produit, sans traduction : l'espace producteur est en français pour l'instant.
+     * * saison et unité viennent du produit du catalogue (éditables dans l'admin), pas de la fiche du producteur.
+     *
+     * @return JsonResponse tableau des produits, triés par nom puis variété (403 sans profil producteur).
+     */
+    #[Route('/api/producer/products', methods: ['GET'])]
+    public function listProducts(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    {
+        $producer = $user->getProducerProfile();
+        if ($producer === null) {
+            return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
+        }
+
+        /** @var list<ProducerProduct> $items */
+        $items = $em->createQueryBuilder()
+            ->select('pp', 'p', 'u', 'c')
+            ->from(ProducerProduct::class, 'pp')
+            ->join('pp.product', 'p')
+            ->leftJoin('p.defaultUnit', 'u')
+            ->leftJoin('pp.currency', 'c')
+            ->where('pp.producer = :producer')
+            ->setParameter('producer', $producer)
+            ->orderBy('p.name', 'ASC')
+            ->addOrderBy('pp.variety', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        return $this->json(array_map(static function (ProducerProduct $item): array {
+            $product = $item->getProduct();
+            $unit = $product->getDefaultUnit();
+
+            return [
+                'id' => $item->getId()->toRfc4122(),
+                'productId' => $product->getId()->toRfc4122(),
+                'name' => $product->getName(),
+                'variety' => $item->getVariety(),
+                'description' => $item->getDescription(),
+                'estimatedVolume' => $item->getEstimatedVolume(),
+                'defaultPrice' => $item->getDefaultPrice(),
+                'currencyCode' => $item->getCurrency()?->getCode(),
+                'isActive' => $item->isActive(),
+                'unit' => $unit === null ? null : ['code' => $unit->getCode(), 'label' => $unit->getLabel() ?? $unit->getCode()],
+                'seasonStartMonth' => $product->getSeasonStartMonth(),
+                'seasonEndMonth' => $product->getSeasonEndMonth(),
+            ];
+        }, $items));
+    }
+
     /**
      * Ajoute un nouveau produit au catalogue du producteur connecté.
      *

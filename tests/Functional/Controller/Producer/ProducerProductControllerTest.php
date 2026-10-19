@@ -3,13 +3,15 @@
 namespace App\Tests\Functional\Controller\Producer;
 
 use App\Entity\Catalog\Country;
+use App\Entity\Catalog\Currency;
+use App\Entity\Catalog\Unit;
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerProfile;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
 /**
- * Teste POST/PUT/DELETE /api/producer/products (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf, round 3).
+ * Teste GET/POST/PUT/DELETE /api/producer/products (cdc trouvemoi_agri).
  * Gestion du catalogue produit d'un producteur -- réservé au producteur propriétaire de chaque fiche.
  */
 final class ProducerProductControllerTest extends ApiTestCase
@@ -206,5 +208,108 @@ final class ProducerProductControllerTest extends ApiTestCase
         $this->client->request('DELETE', '/api/producer/products/'.$producerProduct->getId()->toRfc4122(), server: ['HTTP_AUTHORIZATION' => 'Bearer '.$tokenB]);
 
         self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testListProductsReturnsOwnProductsWithUnitAndSeason(): void
+    {
+        $this->makeCountry();
+        $this->em->flush();
+        [$token, $producerA] = $this->registerProducerAndLogin('producerA', 'FR');
+        [, $producerB] = $this->registerProducerAndLogin('producerB', 'FR');
+        // * Même recharge que dans testUpdateProductRejectsProductOwnedByAnotherProducer : chaque login vide l'identity map.
+        $producerA = $this->em->getRepository(ProducerProfile::class)->find($producerA->getId());
+        $producerB = $this->em->getRepository(ProducerProfile::class)->find($producerB->getId());
+
+        $category = $this->makeCategory();
+        $kg = (new Unit())->setCode('kg')->setLabel('Kilogramme');
+        $this->em->persist($kg);
+        $euro = (new Currency())->setCode('EUR')->setName('Euro');
+        $this->em->persist($euro);
+
+        $tomates = $this->makeProduct($category, 'Tomates')->setDefaultUnit($kg)->setSeasonStartMonth(6)->setSeasonEndMonth(9);
+        $pommes = $this->makeProduct($category, 'Pommes');
+        $miel = $this->makeProduct($category, 'Miel');
+        $this->makeProducerProduct($producerA, $tomates)
+            ->setVariety('Cœur de bœuf')->setEstimatedVolume('90.000')->setDefaultPrice('3.50')->setCurrency($euro);
+        // * un produit désactivé reste dans la liste (c'est l'interrupteur de la page), celui de l'autre producteur non
+        $this->makeProducerProduct($producerA, $pommes, isActive: false);
+        $this->makeProducerProduct($producerB, $miel);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producer/products', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        // * trié par nom : Pommes avant Tomates
+        self::assertSame(['Pommes', 'Tomates'], array_column($data, 'name'));
+
+        [$apples, $tomatoes] = $data;
+        self::assertFalse($apples['isActive']);
+        self::assertNull($apples['unit']);
+        self::assertNull($apples['seasonStartMonth']);
+        self::assertNull($apples['variety']);
+        self::assertNull($apples['defaultPrice']);
+        self::assertNull($apples['currencyCode']);
+
+        self::assertTrue($tomatoes['isActive']);
+        self::assertSame($tomates->getId()->toRfc4122(), $tomatoes['productId']);
+        self::assertSame('Cœur de bœuf', $tomatoes['variety']);
+        self::assertEquals(90, $tomatoes['estimatedVolume']);
+        self::assertEquals(3.5, $tomatoes['defaultPrice']);
+        self::assertSame('EUR', $tomatoes['currencyCode']);
+        self::assertSame(['code' => 'kg', 'label' => 'Kilogramme'], $tomatoes['unit']);
+        self::assertSame(6, $tomatoes['seasonStartMonth']);
+        self::assertSame(9, $tomatoes['seasonEndMonth']);
+    }
+
+    public function testListProductsIsEmptyForAProducerWithoutProducts(): void
+    {
+        [$token] = $this->registerProducerAndLogin();
+
+        $this->client->request('GET', '/api/producer/products', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([], json_decode($this->client->getResponse()->getContent(), true));
+    }
+
+    public function testListProductsRejectsAccountWithoutProducerProfile(): void
+    {
+        $token = $this->registerClientAndLogin();
+
+        $this->client->request('GET', '/api/producer/products', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testListProductsRequiresAuthentication(): void
+    {
+        $this->client->request('GET', '/api/producer/products');
+
+        self::assertResponseStatusCodeSame(401);
+    }
+
+    // * "abc" ou "3,50" plantaient en 500 (Postgres refuse le numérique) : maintenant 422 avant d'écrire quoi que ce soit
+    public function testCreateAndUpdateRejectNumbersInTheWrongFormat(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $category = $this->makeCategory();
+        $product = $this->makeProduct($category, 'Tomates');
+        $producerProduct = $this->makeProducerProduct($producer, $product);
+        $this->em->flush();
+        $server = ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token];
+
+        foreach ([['estimatedVolume' => 'abc'], ['defaultPrice' => '3,50'], ['defaultPrice' => '3.505'], ['estimatedVolume' => '-4']] as $bad) {
+            $this->client->request('POST', '/api/producer/products', server: $server, content: json_encode($bad + ['productId' => $product->getId()->toRfc4122()]));
+            self::assertResponseStatusCodeSame(422, 'POST '.json_encode($bad));
+
+            $this->client->request('PUT', '/api/producer/products/'.$producerProduct->getId()->toRfc4122(), server: $server, content: json_encode($bad));
+            self::assertResponseStatusCodeSame(422, 'PUT '.json_encode($bad));
+        }
+
+        // * et des nombres bien écrits passent, avec ou sans décimales
+        $this->client->request('PUT', '/api/producer/products/'.$producerProduct->getId()->toRfc4122(), server: $server, content: json_encode([
+            'estimatedVolume' => '90', 'defaultPrice' => '3.5', 'currencyCode' => null,
+        ]));
+        self::assertResponseIsSuccessful();
     }
 }
