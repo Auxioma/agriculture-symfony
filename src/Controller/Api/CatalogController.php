@@ -8,6 +8,7 @@ use App\Entity\Catalog\Label;
 use App\Entity\Catalog\LabelTranslation;
 use App\Entity\Catalog\Product;
 use App\Entity\Catalog\ProductTranslation;
+use App\Entity\Catalog\Unit;
 use App\Repository\Producer\ProducerProductRepository;
 use App\Service\Platform\PlatformSettings;
 use App\Service\Validation\UuidFormat;
@@ -96,6 +97,16 @@ final class CatalogController extends AbstractController
         ];
     }
 
+    // * Unités de mesure (kg, unité...) : pour les formulaires qui en demandent une (réponse d'un producteur, demande client).
+    #[Route('/api/units', methods: ['GET'])]
+    public function listUnits(EntityManagerInterface $em): JsonResponse
+    {
+        return $this->json(array_map(
+            static fn (Unit $u) => ['id' => $u->getId()->toRfc4122(), 'code' => $u->getCode(), 'label' => $u->getLabel()],
+            $em->getRepository(Unit::class)->findBy([], ['code' => 'ASC'])
+        ));
+    }
+
     #[Route('/api/products', methods: ['GET'])]
     public function listProducts(Request $request, EntityManagerInterface $em): JsonResponse
     {
@@ -129,14 +140,18 @@ final class CatalogController extends AbstractController
         return $this->json($this->serializeProduct($product, $translation));
     }
 
-    /** @return array{id: string, name: string, slug: ?string, categoryId: string, seasonStartMonth: ?int, seasonEndMonth: ?int, description: ?string, keywords: ?array<int, string>} */
+    /** @return array{id: string, name: string, slug: ?string, categoryId: string, unit: ?array{id: string, code: string, label: string}, seasonStartMonth: ?int, seasonEndMonth: ?int, description: ?string, keywords: ?array<int, string>} */
     private function serializeProduct(Product $p, ?ProductTranslation $t): array
     {
+        $unit = $p->getDefaultUnit();
+
         return [
             'id' => $p->getId()->toRfc4122(),
             'name' => $t?->getName() ?? $p->getName(),
             'slug' => $p->getSlug(),
             'categoryId' => $p->getCategory()->getId()->toRfc4122(),
+            // * unité par défaut (kg, unité...) : sert aux formulaires qui parlent d'un volume ou d'un prix pour ce produit
+            'unit' => $unit === null ? null : ['id' => $unit->getId()->toRfc4122(), 'code' => $unit->getCode(), 'label' => $unit->getLabel() ?? $unit->getCode()],
             'seasonStartMonth' => $p->getSeasonStartMonth(),
             'seasonEndMonth' => $p->getSeasonEndMonth(),
             'description' => $t?->getDescription(),

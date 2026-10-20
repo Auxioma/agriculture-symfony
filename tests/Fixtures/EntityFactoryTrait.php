@@ -162,6 +162,16 @@ trait EntityFactoryTrait
         return $subscription;
     }
 
+    // * created_at n'a pas de fractions de seconde (type datetimetz) : deux abonnements créés dans la même seconde sont à égalité et
+    // * leur ordre est arbitraire. À appeler après le flush, pour qu'un abonnement soit sûrement plus récent que les autres.
+    protected function makeSubscriptionNewest(Subscription $subscription): void
+    {
+        $this->em->getConnection()->executeStatement(
+            "UPDATE billing.subscriptions SET created_at = now() + interval '1 minute' WHERE id = :id",
+            ['id' => $subscription->getId()->toRfc4122()]
+        );
+    }
+
     protected function makeCoupon(string $code, ?string $providerCouponId = 'coupon_test', ?int $maxRedemptions = null): Coupon
     {
         $coupon = new Coupon();

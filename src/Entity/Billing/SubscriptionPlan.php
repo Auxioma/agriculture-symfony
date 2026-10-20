@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Offre d'abonnement proposée aux producteurs (cahier fonctionnel : formules Standard/Premium...).
+ * Offre d'abonnement proposée aux producteurs (cahier fonctionnel : formules Essentiel, Pro et Premium).
  * $limits/$features (json) portent le contenu de l'offre affiché sur la page de tarifs, $position ordonne
  * l'affichage. $prices détaille les tarifs par cycle de facturation (voir PlanPrice) -- SubscriptionPlan
  * lui-même ne porte pas de montant.

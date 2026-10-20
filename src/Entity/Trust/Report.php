@@ -2,11 +2,13 @@
 
 /**
  * Signalement générique, créé par ConversationController::reportConversation() (payload validé par
- * ReportConversationRequest) -- $targetType/$targetId forment une référence polymorphe (comme sur
- * Favorite), ici toujours vers une Conversation dans l'usage actuel. $status (ReportStatus, défaut Open)
+ * ReportConversationRequest), et par ProducerRequestController::reportRequest() pour une demande client --
+ * $targetType/$targetId forment une référence polymorphe (comme sur Favorite) : 'conversation' ou
+ * 'client_request'. $status (ReportStatus, défaut Open)
  * suit le traitement admin, $moderationActions détaille les actions prises en réponse (voir
  * ModerationAction). À ne pas confondre avec ConversationStatus::Reported, posé sur l'entité Conversation
- * elle-même par le même contrôleur, en parallèle de la création de ce Report.
+ * elle-même par le même contrôleur, en parallèle de la création de ce Report. Même chose pour une demande :
+ * RequestStatus::Reported est posé en parallèle (voir ProducerRequestController::reportRequest()).
  */
 
 namespace App\Entity\Trust;

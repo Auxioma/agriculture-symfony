@@ -2,9 +2,8 @@
 
 /**
  * Article de FAQ (cahier fonctionnel : centre d'aide public). $locale permet une version par langue,
- * $category regroupe les articles par thème, $position ordonne l'affichage. Aucun contrôleur (admin ou
- * public) n'existe encore pour cette entité -- la table est présente dans le schéma mais pas encore
- * exploitée par l'application.
+ * $category regroupe les articles par thème, $position ordonne l'affichage. Gérée dans le back-office par
+ * FaqArticleCrudController, lue publiquement par FaqController (GET /api/faq).
  */
 
 namespace App\Entity\Content;

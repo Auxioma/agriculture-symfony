@@ -39,6 +39,22 @@ abstract class ApiTestCase extends WebTestCase
         parent::tearDown();
     }
 
+    // * Taille du journal de test : à relever avant une requête, pour lire ensuite ce qu'elle a écrit (logsSince).
+    protected function logSize(): int
+    {
+        clearstatcache();
+        $file = static::getContainer()->getParameter('kernel.logs_dir').'/test.log';
+
+        return is_file($file) ? (int) filesize($file) : 0;
+    }
+
+    protected function logsSince(int $offset): string
+    {
+        clearstatcache();
+
+        return (string) file_get_contents(static::getContainer()->getParameter('kernel.logs_dir').'/test.log', false, null, $offset);
+    }
+
     // * Déplacé depuis AuthControllerTest (était privé) : une méthode privée n'est visible que dans sa
     // * propre classe, donc ClientRequestControllerTest (et tout futur test d'API authentifié) ne pouvait
     // * pas s'en servir sans la dupliquer. Ici, elle est héritée automatiquement par toute classe qui

@@ -5,7 +5,8 @@
  * événement Stripe de souscription ($providerSubscriptionId). $status (SubscriptionStatus) reflète l'état
  * côté Stripe. Le trigger PostgreSQL trg_subscriptions_audit journalise aussi les changements de cette
  * table dans audit.audit_logs (voir la note sur AuditLog). Gérable en lecture dans le back-office via
- * SubscriptionCrudController.
+ * SubscriptionCrudController. Un producteur n'a qu'un seul abonnement en vigueur (actif, en essai ou en retard de
+ * paiement) à la fois : l'index unique partiel ci-dessous le garantit en base, les annulés et expirés s'accumulent.
  */
 
 namespace App\Entity\Billing;
@@ -25,6 +26,9 @@ use Symfony\Component\Uid\Uuid;
 // * Filtrée par DashboardController::reporting() pour le taux de churn (abonnements annulés / total) --
 // * pas une FK, donc jamais indexée automatiquement par Doctrine.
 #[ORM\Index(name: 'idx_subscriptions_status', columns: ['status'])]
+// * Doctrine relit ce prédicat reformaté par PostgreSQL et propose donc un DROP + CREATE de cet index à chaque diff : à
+// * ignorer (sans cette ligne, le diff proposerait le DROP seul, ce qui serait pire).
+#[ORM\UniqueConstraint(name: 'uniq_subscriptions_one_in_force_per_producer', columns: ['producer_id'], options: ['where' => "status IN ('active', 'trialing', 'past_due')"])]
 #[ORM\HasLifecycleCallbacks]
 class Subscription
 {

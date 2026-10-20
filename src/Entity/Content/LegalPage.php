@@ -3,8 +3,8 @@
 /**
  * Page légale versionnée (CGU, mentions légales, politique de confidentialité...) -- $code identifie la
  * page, $version et $publishedAt permettent de conserver l'historique des versions publiées par langue
- * ($locale). Aucun contrôleur n'existe encore pour cette entité -- la table est présente dans le schéma
- * mais pas encore exploitée par l'application. Aucun lien en code avec UserConsent (qui versionne aussi
+ * ($locale). Gérée dans le back-office par LegalPageCrudController et lue publiquement par LegalController
+ * (GET /api/legal/{code}). Aucun lien en code avec UserConsent (qui versionne aussi
  * ses consentements par $version, mais indépendamment, sans FK vers cette table).
  */
 

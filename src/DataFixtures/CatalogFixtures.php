@@ -38,6 +38,18 @@ class CatalogFixtures extends Fixture
         'product-miel-fleurs',
     ];
 
+    // * Unité par défaut et saison (mois 1 à 12) de démo, par produit. Sans saison = toute l'année. Dans l'admin le client les
+    // * règle lui-même (produits > unité par défaut, début et fin de saison) : ce sont des valeurs d'exemple.
+    private const PRODUCT_DETAILS = [
+        'pommes' => ['kg', 9, 12],
+        'fraises' => ['kg', 5, 7],
+        'tomates' => ['kg', 6, 9],
+        'carottes' => ['kg', null, null],
+        'fromage-chevre' => ['kg', null, null],
+        'poulet-fermier' => ['unite', null, null],
+        'miel-fleurs' => ['kg', 5, 10],
+    ];
+
     public function load(ObjectManager $manager): void
     {
         $currency = (new Currency())
@@ -71,7 +83,10 @@ class CatalogFixtures extends Fixture
             $category = (new Category())->setName($categoryName)->setIsActive(true);
             $manager->persist($category);
             foreach ($products as $slug => $productName) {
-                $product = (new Product())->setCategory($category)->setName($productName)->setIsActive(true);
+                [$unitCode, $seasonStart, $seasonEnd] = self::PRODUCT_DETAILS[$slug];
+                $product = (new Product())->setCategory($category)->setName($productName)->setIsActive(true)
+                    ->setDefaultUnit('kg' === $unitCode ? $kg : $unite)
+                    ->setSeasonStartMonth($seasonStart)->setSeasonEndMonth($seasonEnd);
                 $manager->persist($product);
                 $this->addReference('product-'.$slug, $product);
             }

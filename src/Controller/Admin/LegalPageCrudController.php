@@ -48,7 +48,10 @@ class LegalPageCrudController extends AbstractCrudController
         yield TextField::new('locale')->setHelp('Code langue ISO, ex. "fr".');
         yield IntegerField::new('version')->hideOnIndex();
         yield TextField::new('title')->setLabel('Titre');
-        yield TextareaField::new('content')->setLabel('Contenu')->hideOnIndex();
+        yield TextareaField::new('content')
+            ->setLabel('Contenu')
+            ->setHelp('Texte simple : une section = une ligne "## Titre" puis son paragraphe, avec une ligne vide entre chaque bloc.')
+            ->hideOnIndex();
         yield BooleanField::new('isActive')->setLabel('Version active');
         yield DateTimeField::new('publishedAt')->hideOnForm();
     }

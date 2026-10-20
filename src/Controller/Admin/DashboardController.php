@@ -7,6 +7,7 @@ use App\Controller\Admin\CategoryCrudController;
 use App\Controller\Admin\ClientRequestCrudController;
 use App\Controller\Admin\ConversationCrudController;
 use App\Controller\Admin\CouponCrudController;
+use App\Controller\Admin\FaqArticleCrudController;
 use App\Controller\Admin\LegalPageCrudController;
 use App\Controller\Admin\MessageCrudController;
 use App\Controller\Admin\ProducerProfileCrudController;
@@ -197,6 +198,7 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkTo(InvoiceCrudController::class, 'Paiements & factures', 'fas fa-receipt')->setPermission('ROLE_ADMIN');
         yield MenuItem::linkTo(TicketCrudController::class, 'Support', 'far fa-circle-question');
         yield MenuItem::linkTo(LegalPageCrudController::class, 'Pages légales', 'far fa-file')->setPermission('ROLE_ADMIN');
+        yield MenuItem::linkTo(FaqArticleCrudController::class, 'FAQ', 'far fa-circle-question')->setPermission('ROLE_ADMIN');
         yield MenuItem::linkToRoute('Statistiques', 'fas fa-chart-simple', 'admin_reporting')->setPermission('ROLE_ADMIN');
         yield MenuItem::linkToRoute('Paramètres', 'fas fa-sliders', 'admin_settings')->setPermission('ROLE_ADMIN');
 

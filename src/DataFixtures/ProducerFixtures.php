@@ -95,7 +95,7 @@ class ProducerFixtures extends Fixture implements DependentFixtureInterface
 
         $faker = Factory::create('fr_FR');
         $country = $this->getReference(CatalogFixtures::COUNTRY_FR, Country::class);
-        $planPrice = $this->getReference(SubscriptionPlanFixtures::PLAN_PRICE_STANDARD_MONTHLY, PlanPrice::class);
+        $planPrice = $this->getReference(SubscriptionPlanFixtures::PLAN_PRICE_PRO_MONTHLY, PlanPrice::class);
 
         for ($i = 0; $i < UserFixtures::PRODUCER_OWNER_COUNT; ++$i) {
             $owner = $this->getReference(UserFixtures::PRODUCER_OWNER_REFERENCE_PREFIX.$i, User::class);
@@ -103,11 +103,13 @@ class ProducerFixtures extends Fixture implements DependentFixtureInterface
             [$cityName, $latitude, $longitude] = self::CITIES[$i % \count(self::CITIES)];
             $verificationStatus = self::VERIFICATION_STATUSES[$i % \count(self::VERIFICATION_STATUSES)];
 
-            $farmName = 'Ferme '.$faker->lastName();
+            // * Le premier producteur est le compte de démo agri@test.com (voir UserFixtures) : vérifié, abonnement
+            // * actif, et DemoProducerFixtures lui ajoute des demandes et messages pour le dashboard producteur.
+            $farmName = 0 === $i ? 'Ferme Dupont' : 'Ferme '.$faker->lastName();
             $producer = new ProducerProfile();
             $producer->setOwner($owner);
             $producer->setFarmName($farmName);
-            $producer->setSlug($faker->slug());
+            $producer->setSlug(0 === $i ? 'ferme-dupont' : $faker->slug());
             $producer->setDescription($faker->paragraph());
             $producer->setCountry($country);
             $producer->setCity($cityName);

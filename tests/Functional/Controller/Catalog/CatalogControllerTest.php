@@ -7,6 +7,7 @@ use App\Entity\Catalog\CategoryTranslation;
 use App\Entity\Catalog\Label;
 use App\Entity\Catalog\LabelTranslation;
 use App\Entity\Catalog\ProductTranslation;
+use App\Entity\Catalog\Unit;
 use App\Enum\VerificationStatus;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
@@ -40,6 +41,19 @@ final class CatalogControllerTest extends ApiTestCase
         $names = array_column($data, 'name');
         self::assertContains('Fruits', $names);
         self::assertNotContains('Brouillon', $names);
+    }
+
+    public function testListUnitsIsPublic(): void
+    {
+        $unit = (new Unit())->setCode('kg')->setLabel('Kilogramme');
+        $this->em->persist($unit);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/units');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame([['id' => $unit->getId()->toRfc4122(), 'code' => 'kg', 'label' => 'Kilogramme']], $data);
     }
 
     public function testListCategoriesReturnsTranslatedFieldsForRequestedLocale(): void
@@ -137,6 +151,24 @@ final class CatalogControllerTest extends ApiTestCase
         $names = array_column($data, 'name');
         self::assertContains('Apples', $names);
         self::assertNotContains('Pommes', $names);
+    }
+
+    // * l'unité par défaut du produit (kg, unité...) : la page "Produits et disponibilités" du producteur en fait le "kg" de ses libellés
+    public function testListProductsReturnsTheDefaultUnitWhenThereIsOne(): void
+    {
+        $category = $this->makeCategory();
+        $kg = (new Unit())->setCode('kg')->setLabel('Kilogramme');
+        $this->em->persist($kg);
+        $this->makeProduct($category, 'Tomates')->setIsActive(true)->setDefaultUnit($kg);
+        $this->makeProduct($category, 'Pommes')->setIsActive(true);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/products');
+
+        self::assertResponseIsSuccessful();
+        $byName = array_column(json_decode($this->client->getResponse()->getContent(), true), null, 'name');
+        self::assertSame(['id' => $kg->getId()->toRfc4122(), 'code' => 'kg', 'label' => 'Kilogramme'], $byName['Tomates']['unit']);
+        self::assertNull($byName['Pommes']['unit']);
     }
 
     public function testGetProductReturns404ForUnknownId(): void
