@@ -20,6 +20,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\String\Slugger\AsciiSlugger;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 /**
@@ -67,6 +68,39 @@ class CategoryCrudController extends AbstractCrudController
         yield TextField::new('imageUrl')->hideOnIndex();
         yield IntegerField::new('position');
         yield BooleanField::new('isActive');
+    }
+
+    // * Un slug vide cassait les liens du site (accueil et navbar pointent sur /categories/{slug} et retombent sinon sur
+    // * "toutes les catégories") : on le déduit du nom à l'enregistrement. Un slug saisi à la main n'est jamais touché.
+    public function persistEntity(EntityManagerInterface $entityManager, object $entityInstance): void
+    {
+        $this->fillSlug($entityManager, $entityInstance);
+        parent::persistEntity($entityManager, $entityInstance);
+    }
+
+    public function updateEntity(EntityManagerInterface $entityManager, object $entityInstance): void
+    {
+        $this->fillSlug($entityManager, $entityInstance);
+        parent::updateEntity($entityManager, $entityInstance);
+    }
+
+    // * Le slug est unique en base (index) : s'il existe déjà, on ajoute -2, -3...
+    private function fillSlug(EntityManagerInterface $em, object $category): void
+    {
+        if (!$category instanceof Category || '' !== trim((string) $category->getSlug())) {
+            return;
+        }
+
+        $base = (new AsciiSlugger('fr'))->slug($category->getName())->lower()->toString();
+        if ('' === $base) {
+            return;
+        }
+
+        $slug = $base;
+        for ($i = 2; null !== ($other = $em->getRepository(Category::class)->findOneBy(['slug' => $slug])) && $other !== $category; ++$i) {
+            $slug = $base.'-'.$i;
+        }
+        $category->setSlug($slug);
     }
 
     public function configureActions(Actions $actions): Actions

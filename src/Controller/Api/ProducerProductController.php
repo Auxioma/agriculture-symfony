@@ -11,8 +11,9 @@ use App\Entity\Catalog\Product;
 use App\Entity\Catalog\Unit;
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerProduct;
-use App\Entity\Producer\ProducerProductMedia;
 use App\Entity\Producer\ProductAvailability;
+use App\Repository\Producer\ProducerProductRepository;
+use App\Service\Producer\ProducerProductPresenter;
 use App\Service\Producer\ProductAvailabilityWindow;
 use App\Service\Producer\ProductPhotoStorage;
 use Doctrine\ORM\EntityManagerInterface;
@@ -48,34 +49,14 @@ final class ProducerProductController extends AbstractController
      * @return JsonResponse tableau des produits, triés par nom puis variété (403 sans profil producteur).
      */
     #[Route('/api/producer/products', methods: ['GET'])]
-    public function listProducts(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    public function listProducts(#[CurrentUser] User $user, ProducerProductRepository $products, ProducerProductPresenter $presenter): JsonResponse
     {
         $producer = $user->getProducerProfile();
         if ($producer === null) {
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
         }
 
-        /** @var list<ProducerProduct> $items */
-        $items = $em->createQueryBuilder()
-            ->select('pp', 'p', 'u', 'c', 'a', 'au', 'l', 'm')
-            ->from(ProducerProduct::class, 'pp')
-            ->join('pp.product', 'p')
-            ->leftJoin('p.defaultUnit', 'u')
-            ->leftJoin('pp.currency', 'c')
-            ->leftJoin('pp.productAvailabilities', 'a')
-            ->leftJoin('a.unit', 'au')
-            ->leftJoin('pp.labels', 'l')
-            ->leftJoin('pp.media', 'm')
-            ->where('pp.producer = :producer')
-            ->setParameter('producer', $producer)
-            ->orderBy('p.name', 'ASC')
-            ->addOrderBy('pp.variety', 'ASC')
-            ->addOrderBy('l.name', 'ASC')
-            ->addOrderBy('m.position', 'ASC')
-            ->getQuery()
-            ->getResult();
-
-        return $this->json(array_map($this->serialize(...), $items));
+        return $this->json(array_map($presenter->forOwner(...), $products->findOfProducer($producer)));
     }
 
     /**
@@ -319,55 +300,5 @@ final class ProducerProductController extends AbstractController
         $slot->setQuantityEstimate($input->quantity)->setUnit($unit);
 
         return null;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function serialize(ProducerProduct $item): array
-    {
-        $product = $item->getProduct();
-        $slot = ProductAvailabilityWindow::primary($item->getProductAvailabilities());
-        [$startMonth, $endMonth] = $slot === null ? [null, null] : ProductAvailabilityWindow::monthsOf($slot);
-
-        $photos = $item->getMedia()->toArray();
-        usort($photos, static fn (ProducerProductMedia $a, ProducerProductMedia $b) => ($a->getPosition() ?? 0) <=> ($b->getPosition() ?? 0));
-
-        return [
-            'id' => $item->getId()->toRfc4122(),
-            'productId' => $product->getId()->toRfc4122(),
-            'name' => $product->getName(),
-            'variety' => $item->getVariety(),
-            'description' => $item->getDescription(),
-            'estimatedVolume' => $item->getEstimatedVolume(),
-            'defaultPrice' => $item->getDefaultPrice(),
-            'currencyCode' => $item->getCurrency()?->getCode(),
-            'isActive' => $item->isActive(),
-            'unit' => $this->serializeUnit($product->getDefaultUnit()),
-            'seasonStartMonth' => $product->getSeasonStartMonth(),
-            'seasonEndMonth' => $product->getSeasonEndMonth(),
-            'availability' => $slot === null ? null : [
-                'startMonth' => $startMonth,
-                'endMonth' => $endMonth,
-                'quantity' => $slot->getQuantityEstimate(),
-                'unit' => $this->serializeUnit($slot->getUnit()),
-            ],
-            'labels' => array_map(
-                static fn (Label $label) => ['id' => $label->getId()->toRfc4122(), 'name' => $label->getName()],
-                $item->getLabels()->toArray(),
-            ),
-            'photos' => array_map(
-                static fn (ProducerProductMedia $photo) => ['id' => $photo->getId()->toRfc4122(), 'url' => $photo->getFileUrl()],
-                $photos,
-            ),
-        ];
-    }
-
-    /**
-     * @return array{id: string, code: string, label: string}|null
-     */
-    private function serializeUnit(?Unit $unit): ?array
-    {
-        return $unit === null ? null : ['id' => $unit->getId()->toRfc4122(), 'code' => $unit->getCode(), 'label' => $unit->getLabel() ?? $unit->getCode()];
     }
 }

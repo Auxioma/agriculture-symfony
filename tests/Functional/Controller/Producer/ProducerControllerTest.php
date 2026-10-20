@@ -3,9 +3,13 @@
 namespace App\Tests\Functional\Controller\Producer;
 
 use App\Entity\Catalog\Category;
+use App\Entity\Catalog\Currency;
 use App\Entity\Catalog\Product;
+use App\Entity\Catalog\Unit;
+use App\Entity\Producer\ProducerProductMedia;
 use App\Entity\Producer\ProducerProfile;
 use App\Entity\Producer\ProducerSetting;
+use App\Entity\Producer\ProductAvailability;
 use App\Enum\VerificationStatus;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
@@ -787,6 +791,93 @@ final class ProducerControllerTest extends ApiTestCase
         // * Saison inconnue : null (le front n'affiche alors aucune période).
         self::assertNull($data['products'][0]['seasonStartMonth']);
         self::assertNull($data['products'][0]['seasonEndMonth']);
+    }
+
+    public function testGetProducerReturnsWhatTheProducerFilledInForEachProduct(): void
+    {
+        $producer = $this->makeProducerProfile($this->makeUser('detailed'), $this->makeCountry(), farmName: 'Ferme détaillée');
+        $kg = (new Unit())->setCode('kg')->setLabel('Kilogramme');
+        $piece = (new Unit())->setCode('unite')->setLabel('Unité');
+        $euro = (new Currency())->setCode('EUR')->setName('Euro');
+        $this->em->persist($kg);
+        $this->em->persist($piece);
+        $this->em->persist($euro);
+
+        $tomatoes = $this->makeProduct($this->makeCategory('Légumes'), 'Tomates');
+        $tomatoes->setIsActive(true)->setSeasonStartMonth(6)->setSeasonEndMonth(9)->setDefaultUnit($kg);
+        $item = $this->makeProducerProduct($producer, $tomatoes);
+        $item->setVariety('Cœur de bœuf')->setDescription('Plein champ')->setDefaultPrice('3.50')->setCurrency($euro);
+        $item->addLabel($this->makeLabel('bio', 'Bio'));
+        // * la période, le volume et l'unité du producteur : mars à mai l'emporte sur la saison du catalogue (juin à septembre)
+        $slot = (new ProductAvailability())
+            ->setAvailableFrom(new \DateTimeImmutable('2026-03-01'))->setAvailableTo(new \DateTimeImmutable('2026-05-31'))
+            ->setQuantityEstimate('50')->setUnit($piece);
+        $item->addProductAvailability($slot);
+        $this->em->persist($slot);
+        // * les photos sortent dans l'ordre de la galerie, pas dans l'ordre d'insertion
+        foreach ([[1, 'second.jpg'], [0, 'first.jpg']] as [$position, $file]) {
+            $photo = (new ProducerProductMedia())->setFileUrl('http://localhost/test-storage/'.$file)->setAltText('Photo '.$file)->setPosition($position);
+            $item->addMedium($photo);
+            $this->em->persist($photo);
+        }
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122());
+
+        self::assertResponseIsSuccessful();
+        $row = json_decode($this->client->getResponse()->getContent(), true)['products'][0];
+        self::assertSame($tomatoes->getId()->toRfc4122(), $row['id']);
+        self::assertSame('Cœur de bœuf', $row['variety']);
+        self::assertSame('Plein champ', $row['description']);
+        self::assertSame(3, $row['seasonStartMonth']);
+        self::assertSame(5, $row['seasonEndMonth']);
+        self::assertEquals(50, $row['quantity']);
+        self::assertSame('unite', $row['unit']['code']);
+        self::assertEquals(3.5, $row['price']);
+        self::assertSame('EUR', $row['currencyCode']);
+        self::assertSame([['code' => 'bio', 'name' => 'Bio']], $row['labels']);
+        self::assertSame(['http://localhost/test-storage/first.jpg', 'http://localhost/test-storage/second.jpg'], array_column($row['photos'], 'url'));
+        self::assertSame('Photo first.jpg', $row['photos'][0]['alt']);
+    }
+
+    public function testGetProducerFallsBackOnTheCatalogForWhatTheProducerDidNotFillIn(): void
+    {
+        $producer = $this->makeProducerProfile($this->makeUser('plain'), $this->makeCountry(), farmName: 'Ferme simple');
+        $kg = (new Unit())->setCode('kg')->setLabel('Kilogramme');
+        $this->em->persist($kg);
+        $honey = $this->makeProduct($this->makeCategory('Miel'), 'Miel');
+        $honey->setIsActive(true)->setSeasonStartMonth(5)->setSeasonEndMonth(10)->setDefaultUnit($kg);
+        $this->makeProducerProduct($producer, $honey)->setEstimatedVolume('30');
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122());
+
+        self::assertResponseIsSuccessful();
+        $row = json_decode($this->client->getResponse()->getContent(), true)['products'][0];
+        // * ni créneau, ni prix, ni label, ni photo : saison et unité du catalogue, volume de la fiche, le reste vide
+        self::assertSame(5, $row['seasonStartMonth']);
+        self::assertSame(10, $row['seasonEndMonth']);
+        self::assertSame('kg', $row['unit']['code']);
+        self::assertEquals(30, $row['quantity']);
+        self::assertNull($row['variety']);
+        self::assertNull($row['price']);
+        self::assertNull($row['currencyCode']);
+        self::assertSame([], $row['labels']);
+        self::assertSame([], $row['photos']);
+    }
+
+    public function testGetProducerExposesOnlyThePublicFieldsOfAProduct(): void
+    {
+        $producer = $this->makeProducerProfile($this->makeUser('keys'), $this->makeCountry(), farmName: 'Ferme clés');
+        $this->makeProducerProduct($producer, $this->makeProduct($this->makeCategory('Fruits'), 'Pommes')->setIsActive(true));
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122());
+
+        $keys = array_keys(json_decode($this->client->getResponse()->getContent(), true)['products'][0]);
+        sort($keys);
+        // * pas d'état actif, de créneau, ni d'identifiant de modification : ce contrat est celui que lit la fiche publique
+        self::assertSame(['currencyCode', 'description', 'id', 'labels', 'name', 'photos', 'price', 'quantity', 'seasonEndMonth', 'seasonStartMonth', 'unit', 'variety'], $keys);
     }
 
     public function testGetProducerReturnsEmptyProductsWhenNoneSold(): void

@@ -9,6 +9,8 @@ use App\Entity\Producer\ProducerLabel;
 use App\Entity\Producer\ProducerProfile;
 use App\Entity\Trust\Review;
 use App\Enum\ReviewStatus;
+use App\Repository\Producer\ProducerProductRepository;
+use App\Service\Producer\ProducerProductPresenter;
 use App\Service\Validation\UuidFormat;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -478,7 +480,7 @@ final class ProducerController extends AbstractController
     // * {identifier} = slug du producteur (ou son UUID). "featured" est déclarée plus haut :
     // * un producteur dont le slug serait "featured" ne serait donc pas joignable ici (slug à interdire à la création).
     #[Route('/api/producers/{identifier}', methods: ['GET'])]
-    public function getProducer(string $identifier, EntityManagerInterface $em): JsonResponse
+    public function getProducer(string $identifier, EntityManagerInterface $em, ProducerProductRepository $productRepository, ProducerProductPresenter $presenter): JsonResponse
     {
         $producer = $this->findActiveProducer($identifier, $em);
         if ($producer === null) {
@@ -508,16 +510,10 @@ final class ProducerController extends AbstractController
             ['producerId' => $producer->getId()->toRfc4122()]
         ) ?: null;
 
-        // * Produits proposés avec leur période de disponibilité (saison du catalogue : mois de 1 à 12, null si
-        // * inconnue). Seules les lignes actives, sur des produits actifs, comme la liste et les compteurs.
-        $products = $em->getConnection()->fetchAllAssociative(
-            'SELECT DISTINCT prod.id, prod.name, prod.season_start_month, prod.season_end_month
-             FROM producer.producer_products pr
-             JOIN catalog.products prod ON prod.id = pr.product_id
-             WHERE pr.producer_id = :producerId AND pr.is_active = true AND prod.is_active = true
-             ORDER BY prod.name ASC',
-            ['producerId' => $producer->getId()->toRfc4122()]
-        );
+        // * Produits proposés : ce que le producteur a renseigné pour chacun (variété, période, volume, prix, labels, photos),
+        // * avec la saison et l'unité du catalogue à défaut. Seules les lignes actives, sur des produits actifs, comme la
+        // * liste et les compteurs (voir ProducerProductPresenter::forPublic).
+        $products = $productRepository->findOfProducer($producer, publicOnly: true);
 
         // * Retrait / livraison : mêmes colonnes que les filtres pickupAvailable/deliveryAvailable de la liste.
         // * Sans ligne producer_settings, le producteur n'a rien configuré : les deux clés sont absentes de la
@@ -536,15 +532,7 @@ final class ProducerController extends AbstractController
             'farmName' => $producer->getFarmName(),
             'slug' => $producer->getSlug(),
             'photoUrl' => $photoUrl,
-            'products' => array_map(
-                static fn (array $row) => [
-                    'id' => $row['id'],
-                    'name' => $row['name'],
-                    'seasonStartMonth' => $row['season_start_month'] !== null ? (int) $row['season_start_month'] : null,
-                    'seasonEndMonth' => $row['season_end_month'] !== null ? (int) $row['season_end_month'] : null,
-                ],
-                $products
-            ),
+            'products' => array_map($presenter->forPublic(...), $products),
             ...($settings !== false ? [
                 'pickupAvailable' => (bool) $settings['pickup_enabled'],
                 'deliveryAvailable' => (bool) $settings['delivery_enabled'],

@@ -17,6 +17,7 @@ use App\Entity\Catalog\Product;
 use App\Entity\Catalog\Unit;
 use Doctrine\Bundle\FixturesBundle\Fixture;
 use Doctrine\Persistence\ObjectManager;
+use Symfony\Component\String\Slugger\AsciiSlugger;
 
 class CatalogFixtures extends Fixture
 {
@@ -80,7 +81,8 @@ class CatalogFixtures extends Fixture
             'Miel & Produits de la ruche' => ['miel-fleurs' => 'Miel de fleurs'],
         ];
         foreach ($catalogue as $categoryName => $products) {
-            $category = (new Category())->setName($categoryName)->setIsActive(true);
+            // * un slug par catégorie : sans lui, les liens de l'accueil et de la navbar (/categories/{slug}) ne mènent nulle part
+            $category = (new Category())->setName($categoryName)->setSlug((new AsciiSlugger('fr'))->slug($categoryName)->lower()->toString())->setIsActive(true);
             $manager->persist($category);
             foreach ($products as $slug => $productName) {
                 [$unitCode, $seasonStart, $seasonEnd] = self::PRODUCT_DETAILS[$slug];
