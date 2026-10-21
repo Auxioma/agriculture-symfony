@@ -5,6 +5,7 @@ namespace App\Controller\Admin;
 use App\Entity\Catalog\Category;
 use App\Entity\Catalog\CategoryTranslation;
 use App\Form\Admin\CategoryTranslationType;
+use App\Service\Catalog\CatalogSlugger;
 use Doctrine\ORM\EntityManagerInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
@@ -20,7 +21,6 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\String\Slugger\AsciiSlugger;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 /**
@@ -41,6 +41,10 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 class CategoryCrudController extends AbstractCrudController
 {
     private const LOCALES = ['fr' => 'Français', 'en' => 'English', 'es' => 'Español', 'it' => 'Italiano', 'de' => 'Deutsch'];
+
+    public function __construct(private readonly CatalogSlugger $slugger)
+    {
+    }
 
     public static function getEntityFqcn(): string
     {
@@ -70,37 +74,29 @@ class CategoryCrudController extends AbstractCrudController
         yield BooleanField::new('isActive');
     }
 
-    // * Un slug vide cassait les liens du site (accueil et navbar pointent sur /categories/{slug} et retombent sinon sur
-    // * "toutes les catégories") : on le déduit du nom à l'enregistrement. Un slug saisi à la main n'est jamais touché.
+    // * Un nouvel élément est actif d'emblée : inactif (le défaut de l'entité), il n'apparaît ni sur le site ni dans la liste que
+    // * le producteur peut ajouter, et on croit à un bug.
+    public function createEntity(string $entityFqcn): object
+    {
+        $entity = parent::createEntity($entityFqcn);
+        if ($entity instanceof Category) {
+            $entity->setIsActive(true);
+        }
+
+        return $entity;
+    }
+
+    // * Slug vide : déduit du nom à l'enregistrement (voir CatalogSlugger).
     public function persistEntity(EntityManagerInterface $entityManager, object $entityInstance): void
     {
-        $this->fillSlug($entityManager, $entityInstance);
+        $this->slugger->fillIfBlank($entityInstance);
         parent::persistEntity($entityManager, $entityInstance);
     }
 
     public function updateEntity(EntityManagerInterface $entityManager, object $entityInstance): void
     {
-        $this->fillSlug($entityManager, $entityInstance);
+        $this->slugger->fillIfBlank($entityInstance);
         parent::updateEntity($entityManager, $entityInstance);
-    }
-
-    // * Le slug est unique en base (index) : s'il existe déjà, on ajoute -2, -3...
-    private function fillSlug(EntityManagerInterface $em, object $category): void
-    {
-        if (!$category instanceof Category || '' !== trim((string) $category->getSlug())) {
-            return;
-        }
-
-        $base = (new AsciiSlugger('fr'))->slug($category->getName())->lower()->toString();
-        if ('' === $base) {
-            return;
-        }
-
-        $slug = $base;
-        for ($i = 2; null !== ($other = $em->getRepository(Category::class)->findOneBy(['slug' => $slug])) && $other !== $category; ++$i) {
-            $slug = $base.'-'.$i;
-        }
-        $category->setSlug($slug);
     }
 
     public function configureActions(Actions $actions): Actions
