@@ -9,6 +9,7 @@
 
 namespace App\Repository\Producer;
 
+use App\Entity\Catalog\Product;
 use App\Entity\Producer\ProducerProduct;
 use App\Entity\Producer\ProducerProfile;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
@@ -79,6 +80,30 @@ class ProducerProductRepository extends ServiceEntityRepository
         }
 
         return $query->getQuery()->getResult();
+    }
+
+    /**
+     * Le producteur a-t-il déjà ce produit avec cette variété ? Un producteur peut avoir plusieurs variétés d'un même produit
+     * (Gala et Golden pour les pommes), mais pas deux fois la même. Sans variété compte comme une variété : un seul « Pommes »
+     * sans variété. La casse et les espaces autour ne comptent pas (« Gala » et « gala » : la même), comme dans l'index
+     * uniq_producer_products_variety. $except : le produit qu'on modifie, qui ne se fait pas concurrence à lui-même.
+     */
+    public function hasVariety(ProducerProfile $producer, Product $product, ?string $variety, ?ProducerProduct $except = null): bool
+    {
+        $query = $this->createQueryBuilder('pp')
+            ->select('COUNT(pp.id)')
+            ->where('pp.producer = :producer')
+            ->andWhere('pp.product = :product')
+            ->andWhere("LOWER(TRIM(COALESCE(pp.variety, ''))) = LOWER(:variety)")
+            ->setParameter('producer', $producer)
+            ->setParameter('product', $product)
+            ->setParameter('variety', trim((string) $variety));
+
+        if (null !== $except) {
+            $query->andWhere('pp != :except')->setParameter('except', $except);
+        }
+
+        return (int) $query->getQuery()->getSingleScalarResult() > 0;
     }
 
     /** @return array<string, int>  categoryId => nombre de producteurs */

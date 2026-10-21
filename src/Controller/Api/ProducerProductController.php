@@ -37,6 +37,8 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
  */
 final class ProducerProductController extends AbstractController
 {
+    private const DUPLICATE = 'Vous avez déjà ce produit avec cette variété : indiquez une autre variété.';
+
     /**
      * Liste le catalogue du producteur connecté, produits désactivés compris : la page "Produits et disponibilités"
      * les montre tous, et c'est is_active qui décide si le produit compte dans le matching (matching.find_matching_producers
@@ -65,7 +67,7 @@ final class ProducerProductController extends AbstractController
      * Étapes de validation et traitement :
      * 1. Vérifie l'existence d'un profil producteur rattaché à l'utilisateur (403).
      * 2. Vérifie l'existence du produit générique référencé dans le DTO (422).
-     * 3. S'assure que le produit n'est pas déjà présent dans le catalogue du producteur (409).
+     * 3. S'assure que le producteur n'a pas déjà ce produit avec cette variété (409) : plusieurs variétés d'un même produit sont permises.
      * 4. Valide la devise, les labels et l'unité de la période si fournis (422).
      * 5. Instancie et persiste la nouvelle entité `ProducerProduct`, avec son créneau et ses labels.
      *
@@ -79,6 +81,7 @@ final class ProducerProductController extends AbstractController
         #[MapRequestPayload] CreateProducerProductRequest $request,
         #[CurrentUser] User $user,
         EntityManagerInterface $em,
+        ProducerProductRepository $products,
     ): JsonResponse {
         $producer = $user->getProducerProfile();
         if ($producer === null) {
@@ -90,15 +93,15 @@ final class ProducerProductController extends AbstractController
             return $this->json(['error' => 'Produit inconnu.'], 422);
         }
 
-        $existing = $em->getRepository(ProducerProduct::class)->findOneBy(['producer' => $producer, 'product' => $product]);
-        if ($existing !== null) {
-            return $this->json(['error' => 'Ce produit est déjà dans votre catalogue.'], 409);
+        $variety = $this->cleanVariety($request->variety);
+        if ($products->hasVariety($producer, $product, $variety)) {
+            return $this->json(['error' => self::DUPLICATE], 409);
         }
 
         $producerProduct = new ProducerProduct();
         $producerProduct->setProducer($producer);
         $producerProduct->setProduct($product);
-        $producerProduct->setVariety($request->variety);
+        $producerProduct->setVariety($variety);
         $producerProduct->setDescription($request->description);
         $producerProduct->setEstimatedVolume($request->estimatedVolume);
         $producerProduct->setDefaultPrice($request->defaultPrice);
@@ -132,6 +135,7 @@ final class ProducerProductController extends AbstractController
         #[MapRequestPayload] UpdateProducerProductRequest $request,
         #[CurrentUser] User $user,
         EntityManagerInterface $em,
+        ProducerProductRepository $products,
     ): JsonResponse {
         $result = $this->findOwnedProducerProduct($id, $user, $em);
         if ($result instanceof JsonResponse) {
@@ -139,7 +143,12 @@ final class ProducerProductController extends AbstractController
         }
         $producerProduct = $result;
 
-        $producerProduct->setVariety($request->variety);
+        // * changer la variété ne doit pas tomber sur celle d'un autre produit du même type (Gala et Golden ne deviennent pas deux Gala)
+        $variety = $this->cleanVariety($request->variety);
+        if ($products->hasVariety($producerProduct->getProducer(), $producerProduct->getProduct(), $variety, $producerProduct)) {
+            return $this->json(['error' => self::DUPLICATE], 409);
+        }
+        $producerProduct->setVariety($variety);
         $producerProduct->setDescription($request->description);
         $producerProduct->setEstimatedVolume($request->estimatedVolume);
         $producerProduct->setDefaultPrice($request->defaultPrice);
@@ -205,6 +214,14 @@ final class ProducerProductController extends AbstractController
         }
 
         return $producerProduct;
+    }
+
+    // * espaces autour retirés, une variété vide n'est pas une variété (null) : c'est ce que compare hasVariety()
+    private function cleanVariety(?string $variety): ?string
+    {
+        $variety = trim((string) $variety);
+
+        return '' === $variety ? null : $variety;
     }
 
     private function applyCurrency(ProducerProduct $item, ?string $currencyCode, EntityManagerInterface $em): ?JsonResponse

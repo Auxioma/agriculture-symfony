@@ -5,6 +5,7 @@ namespace App\Tests\Functional\Controller\Producer;
 use App\Entity\Catalog\Country;
 use App\Entity\Catalog\Currency;
 use App\Entity\Catalog\Unit;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerProductMedia;
 use App\Entity\Producer\ProducerProfile;
@@ -79,7 +80,7 @@ final class ProducerProductControllerTest extends ApiTestCase
         self::assertSame('3.50', $row['default_price']);
     }
 
-    public function testCreateProductRejectsDuplicateProduct(): void
+    public function testCreateProductRejectsTheSameProductWithoutVarietyTwice(): void
     {
         [$token, $producer] = $this->registerProducerAndLogin();
         $category = $this->makeCategory();
@@ -93,6 +94,109 @@ final class ProducerProductControllerTest extends ApiTestCase
         ], content: json_encode(['productId' => $product->getId()->toRfc4122()]));
 
         self::assertResponseStatusCodeSame(409);
+    }
+
+    // ---- plusieurs variétés d'un même produit : Gala et Golden pour les pommes
+
+    /** @param array<string, mixed> $payload */
+    private function postProduct(string $token, array $payload): int
+    {
+        $this->client->request('POST', '/api/producer/products', server: $this->jsonServer($token), content: json_encode($payload));
+
+        return $this->client->getResponse()->getStatusCode();
+    }
+
+    public function testAProducerCanHaveSeveralVarietiesOfTheSameProduct(): void
+    {
+        [$token] = $this->registerProducerAndLogin();
+        $apples = $this->makeProduct($this->makeCategory('Fruits'), 'Pommes');
+        $this->em->flush();
+        $productId = $apples->getId()->toRfc4122();
+
+        self::assertSame(201, $this->postProduct($token, ['productId' => $productId, 'variety' => 'Gala']));
+        self::assertSame(201, $this->postProduct($token, ['productId' => $productId, 'variety' => 'Golden']));
+        // * et la même sans variété à côté, une seule fois
+        self::assertSame(201, $this->postProduct($token, ['productId' => $productId]));
+
+        // * triées par variété, celle qui n'en a pas en dernier (PostgreSQL range les valeurs nulles à la fin)
+        $varieties = array_column($this->listProducts($token), 'variety');
+        self::assertSame(['Gala', 'Golden', null], $varieties);
+    }
+
+    public function testTheSameVarietyTwiceIsRefusedWhateverTheCaseOrTheSpaces(): void
+    {
+        [$token] = $this->registerProducerAndLogin();
+        $apples = $this->makeProduct($this->makeCategory('Fruits'), 'Pommes');
+        $this->em->flush();
+        $productId = $apples->getId()->toRfc4122();
+        self::assertSame(201, $this->postProduct($token, ['productId' => $productId, 'variety' => 'Gala']));
+
+        self::assertSame(409, $this->postProduct($token, ['productId' => $productId, 'variety' => 'Gala']));
+        self::assertSame(409, $this->postProduct($token, ['productId' => $productId, 'variety' => '  gala ']));
+        // * une variété vide, c'est « sans variété » : pas de doublon avec Gala, un seul exemplaire
+        self::assertSame(201, $this->postProduct($token, ['productId' => $productId, 'variety' => '   ']));
+        self::assertSame(409, $this->postProduct($token, ['productId' => $productId]));
+        self::assertStringContainsString('avec cette variété', json_decode($this->client->getResponse()->getContent(), true)['error']);
+    }
+
+    public function testTheVarietyIsStoredTrimmedAndEmptyBecomesNull(): void
+    {
+        [$token] = $this->registerProducerAndLogin();
+        $apples = $this->makeProduct($this->makeCategory('Fruits'), 'Pommes');
+        $tomatoes = $this->makeProduct($this->makeCategory('Légumes'), 'Tomates');
+        $this->em->flush();
+
+        self::assertSame(201, $this->postProduct($token, ['productId' => $apples->getId()->toRfc4122(), 'variety' => '  Gala  ']));
+        self::assertSame(201, $this->postProduct($token, ['productId' => $tomatoes->getId()->toRfc4122(), 'variety' => '']));
+
+        $rows = $this->em->getConnection()->fetchAllAssociative('SELECT p.name, pp.variety FROM producer.producer_products pp JOIN catalog.products p ON p.id = pp.product_id ORDER BY p.name');
+        self::assertSame([['name' => 'Pommes', 'variety' => 'Gala'], ['name' => 'Tomates', 'variety' => null]], $rows);
+    }
+
+    public function testTwoProducersCanHaveTheSameProductAndVariety(): void
+    {
+        $this->makeCountry();
+        $this->em->flush();
+        [$tokenA] = $this->registerProducerAndLogin('producerA', 'FR');
+        [$tokenB] = $this->registerProducerAndLogin('producerB', 'FR');
+        $apples = $this->makeProduct($this->makeCategory('Fruits'), 'Pommes');
+        $this->em->flush();
+
+        self::assertSame(201, $this->postProduct($tokenA, ['productId' => $apples->getId()->toRfc4122(), 'variety' => 'Gala']));
+        self::assertSame(201, $this->postProduct($tokenB, ['productId' => $apples->getId()->toRfc4122(), 'variety' => 'Gala']));
+    }
+
+    public function testUpdatingTheVarietyCannotTakeTheOneOfAnotherLineOfTheSameProduct(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $apples = $this->makeProduct($this->makeCategory('Fruits'), 'Pommes');
+        $this->makeProducerProduct($producer, $apples)->setVariety('Gala');
+        $golden = $this->makeProducerProduct($producer, $apples)->setVariety('Golden');
+        $this->em->flush();
+        $url = '/api/producer/products/'.$golden->getId()->toRfc4122();
+
+        $this->client->request('PUT', $url, server: $this->jsonServer($token), content: json_encode(['variety' => 'GALA']));
+        self::assertResponseStatusCodeSame(409);
+
+        // * enregistrer une ligne sans changer sa variété n'est pas un doublon avec elle-même
+        $this->client->request('PUT', $url, server: $this->jsonServer($token), content: json_encode(['variety' => 'Golden', 'defaultPrice' => '2.5']));
+        self::assertResponseIsSuccessful();
+
+        $this->client->request('PUT', $url, server: $this->jsonServer($token), content: json_encode(['variety' => 'Reine des reinettes']));
+        self::assertResponseIsSuccessful();
+        self::assertSame(['Gala', 'Reine des reinettes'], array_column($this->listProducts($token), 'variety'));
+    }
+
+    public function testTheDatabaseRefusesTheSameVarietyTwiceToo(): void
+    {
+        [, $producer] = $this->registerProducerAndLogin();
+        $apples = $this->makeProduct($this->makeCategory('Fruits'), 'Pommes');
+        $this->makeProducerProduct($producer, $apples)->setVariety('Gala');
+        $this->makeProducerProduct($producer, $apples)->setVariety(' gala');
+
+        // * l'index uniq_producer_products_variety : le dernier garde-fou, derrière le contrôle de l'API (deux requêtes simultanées)
+        $this->expectException(UniqueConstraintViolationException::class);
+        $this->em->flush();
     }
 
     public function testCreateProductRejectsUnknownProduct(): void

@@ -826,7 +826,8 @@ final class ProducerControllerTest extends ApiTestCase
 
         self::assertResponseIsSuccessful();
         $row = json_decode($this->client->getResponse()->getContent(), true)['products'][0];
-        self::assertSame($tomatoes->getId()->toRfc4122(), $row['id']);
+        self::assertSame($item->getId()->toRfc4122(), $row['id']);
+        self::assertSame($tomatoes->getId()->toRfc4122(), $row['productId']);
         self::assertSame('Cœur de bœuf', $row['variety']);
         self::assertSame('Plein champ', $row['description']);
         self::assertSame(3, $row['seasonStartMonth']);
@@ -866,6 +867,24 @@ final class ProducerControllerTest extends ApiTestCase
         self::assertSame([], $row['photos']);
     }
 
+    public function testGetProducerListsEachVarietyOfAProductOnItsOwnLine(): void
+    {
+        $producer = $this->makeProducerProfile($this->makeUser('varieties'), $this->makeCountry(), farmName: 'Ferme pommes');
+        $apples = $this->makeProduct($this->makeCategory('Fruits'), 'Pommes')->setIsActive(true);
+        $gala = $this->makeProducerProduct($producer, $apples)->setVariety('Gala');
+        $golden = $this->makeProducerProduct($producer, $apples)->setVariety('Golden');
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122());
+
+        self::assertResponseIsSuccessful();
+        $products = json_decode($this->client->getResponse()->getContent(), true)['products'];
+        self::assertSame(['Gala', 'Golden'], array_column($products, 'variety'));
+        // * un identifiant par ligne (le front s'en sert pour les suivre), le même produit du catalogue derrière
+        self::assertSame([$gala->getId()->toRfc4122(), $golden->getId()->toRfc4122()], array_column($products, 'id'));
+        self::assertSame([$apples->getId()->toRfc4122(), $apples->getId()->toRfc4122()], array_column($products, 'productId'));
+    }
+
     public function testGetProducerExposesOnlyThePublicFieldsOfAProduct(): void
     {
         $producer = $this->makeProducerProfile($this->makeUser('keys'), $this->makeCountry(), farmName: 'Ferme clés');
@@ -877,7 +896,7 @@ final class ProducerControllerTest extends ApiTestCase
         $keys = array_keys(json_decode($this->client->getResponse()->getContent(), true)['products'][0]);
         sort($keys);
         // * pas d'état actif, de créneau, ni d'identifiant de modification : ce contrat est celui que lit la fiche publique
-        self::assertSame(['currencyCode', 'description', 'id', 'labels', 'name', 'photos', 'price', 'quantity', 'seasonEndMonth', 'seasonStartMonth', 'unit', 'variety'], $keys);
+        self::assertSame(['currencyCode', 'description', 'id', 'labels', 'name', 'photos', 'price', 'productId', 'quantity', 'seasonEndMonth', 'seasonStartMonth', 'unit', 'variety'], $keys);
     }
 
     public function testGetProducerReturnsEmptyProductsWhenNoneSold(): void

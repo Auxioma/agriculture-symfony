@@ -51,8 +51,9 @@ final class ProducerProductPresenter
     }
 
     /**
-     * Pour GET /api/producers/{identifier}. `id` reste l'identifiant du produit du catalogue (c'est ce que renvoyait la
-     * fiche avant) et seasonStartMonth / seasonEndMonth restent la période du produit : celle du producteur si elle existe.
+     * Pour GET /api/producers/{identifier}. Une ligne par produit du producteur : un même produit du catalogue apparaît autant de
+     * fois que de variétés (Gala, Golden), donc `id` est celui de la ligne du producteur, `productId` celui du produit du catalogue.
+     * seasonStartMonth / seasonEndMonth restent la période du produit : celle du producteur si elle existe.
      * Les labels sont déclarés par le producteur pour ce produit, pas vérifiés : le front doit le dire.
      *
      * @return array<string, mixed>
@@ -65,7 +66,8 @@ final class ProducerProductPresenter
         $ownPeriod = null !== $startMonth && null !== $endMonth;
 
         return [
-            'id' => $product->getId()->toRfc4122(),
+            'id' => $item->getId()->toRfc4122(),
+            'productId' => $product->getId()->toRfc4122(),
             'name' => $product->getName(),
             'variety' => $item->getVariety(),
             'description' => $item->getDescription(),
