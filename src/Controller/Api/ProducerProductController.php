@@ -178,13 +178,18 @@ final class ProducerProductController extends AbstractController
             return $result;
         }
 
-        // * la clé étrangère des photos n'est pas en cascade : on les retire d'abord, fichier et ligne
+        // * la clé étrangère des photos n'est pas en cascade : on retire leurs lignes avec le produit. Les fichiers partent une fois la
+        // * base enregistrée : si elle échoue, aucune photo ne perd son fichier.
+        $keys = [];
         foreach ($result->getMedia()->toArray() as $media) {
-            $photos->remove($media);
+            $keys[] = $photos->keyOf($media);
             $em->remove($media);
         }
         $em->remove($result);
         $em->flush();
+        foreach ($keys as $key) {
+            $photos->delete($key);
+        }
 
         return $this->json(null, 204);
     }

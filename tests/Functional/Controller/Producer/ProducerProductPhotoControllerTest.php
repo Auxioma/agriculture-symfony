@@ -170,6 +170,44 @@ final class ProducerProductPhotoControllerTest extends ApiTestCase
         self::assertResponseStatusCodeSame(404);
     }
 
+    public function testANewPhotoTakesTheNextPositionEvenAfterADeletion(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $id = $this->newProduct($producer)->getId()->toRfc4122();
+        $server = ['HTTP_AUTHORIZATION' => 'Bearer '.$token];
+        $ids = [];
+        foreach (range(1, 3) as $ignored) {
+            $this->client->request('POST', '/api/producer/products/'.$id.'/photos', server: $server, files: ['photo' => $this->sampleJpeg()]);
+            $ids[] = json_decode($this->client->getResponse()->getContent(), true)['id'];
+        }
+
+        // * la 1re part : il reste les positions 1 et 2. Compter les photos (2) donnerait 2 à la suivante, déjà prise.
+        $this->client->request('DELETE', '/api/producer/products/'.$id.'/photos/'.$ids[0], server: $server);
+        self::assertResponseStatusCodeSame(204);
+        $this->client->request('POST', '/api/producer/products/'.$id.'/photos', server: $server, files: ['photo' => $this->sampleJpeg()]);
+        $ids[] = json_decode($this->client->getResponse()->getContent(), true)['id'];
+
+        $positions = $this->em->getConnection()->fetchFirstColumn('SELECT position FROM producer.producer_product_media WHERE producer_product_id = :id ORDER BY position', ['id' => $id]);
+        self::assertSame([1, 2, 3], array_map('intval', $positions));
+        $this->client->request('GET', '/api/producer/products', server: $server);
+        self::assertSame([$ids[1], $ids[2], $ids[3]], array_column(json_decode($this->client->getResponse()->getContent(), true)[0]['photos'], 'id'));
+    }
+
+    public function testDeletingAPhotoWorksEvenIfItsFileIsAlreadyGone(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $id = $this->newProduct($producer)->getId()->toRfc4122();
+        $server = ['HTTP_AUTHORIZATION' => 'Bearer '.$token];
+        $this->client->request('POST', '/api/producer/products/'.$id.'/photos', server: $server, files: ['photo' => $this->sampleJpeg()]);
+        $photo = json_decode($this->client->getResponse()->getContent(), true);
+        unlink(\dirname(__DIR__, 4).'/var/storage/test/'.substr($photo['url'], strlen('http://localhost/test-storage/')));
+
+        $this->client->request('DELETE', '/api/producer/products/'.$id.'/photos/'.$photo['id'], server: $server);
+
+        self::assertResponseStatusCodeSame(204);
+        self::assertFalse($this->em->getConnection()->fetchOne('SELECT id FROM producer.producer_product_media WHERE id = :id', ['id' => $photo['id']]));
+    }
+
     public function testDeletingTheProductDeletesItsPhotoFiles(): void
     {
         [$token, $producer] = $this->registerProducerAndLogin();

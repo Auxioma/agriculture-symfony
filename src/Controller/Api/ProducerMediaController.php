@@ -4,10 +4,12 @@ namespace App\Controller\Api;
 
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerMedia;
+use App\Service\Producer\PhotoUploadRules;
 use Doctrine\ORM\EntityManagerInterface;
 use League\Flysystem\FilesystemOperator;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
@@ -21,12 +23,6 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
  */
 final class ProducerMediaController extends AbstractController
 {
-    // * Types MIME d'images autorisés pour le téléversement 
-    private const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-
-    // * Taille maximale autorisée pour un fichier (5 Mo en octets)
-    private const MAX_SIZE_BYTES = 5 * 1024 * 1024;
-
     /**
      * Téléverse une photo pour le profil du producteur connecté.
      * Effectue les validations de sécurité essentielles avant l'envoi vers le stockage :
@@ -52,19 +48,12 @@ final class ProducerMediaController extends AbstractController
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
         }
 
+        // * mêmes règles que les photos de produit : jpeg, png ou webp, 5 Mo (voir PhotoUploadRules)
         $file = $request->files->get('photo');
-        if ($file === null || !$file->isValid()) {
-            return $this->json(['error' => 'Aucun fichier "photo" valide reçu.'], 422);
+        if (null !== ($error = PhotoUploadRules::error($file))) {
+            return $this->json(['error' => $error], 422);
         }
-
-        // ! Cahier devops : "Contrôle type MIME, taille maximale" avant tout envoi vers le stockage objet.
-        // ! getMimeType() lit le contenu réel du fichier (fileinfo), pas le Content-Type déclaré par le client.
-        if (!in_array($file->getMimeType(), self::ALLOWED_MIME_TYPES, true)) {
-            return $this->json(['error' => 'Format non supporté (jpeg, png ou webp uniquement).'], 422);
-        }
-        if ($file->getSize() > self::MAX_SIZE_BYTES) {
-            return $this->json(['error' => 'Fichier trop volumineux (5 Mo maximum).'], 422);
-        }
+        \assert($file instanceof UploadedFile);
 
         $media = new ProducerMedia();
         $media->setProducer($producer);
