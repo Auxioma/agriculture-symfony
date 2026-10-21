@@ -34,6 +34,9 @@ final class ProducerProfileController extends AbstractController
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
         }
 
+        // * retrait et livraison : null tant qu'il n'y a pas de ligne producer_settings (rien de configuré), pas false
+        $settings = $producer->getSettings();
+
         return $this->json([
             'id' => $producer->getId()->toRfc4122(),
             'farmName' => $producer->getFarmName(),
@@ -46,6 +49,8 @@ final class ProducerProfileController extends AbstractController
             'countryCode' => $producer->getCountry()?->getCode(),
             'verificationStatus' => $producer->getVerificationStatus()->value,
             'isActive' => $producer->isActive(),
+            'pickupAvailable' => $settings?->isPickupEnabled(),
+            'deliveryAvailable' => $settings?->isDeliveryEnabled(),
         ]);
     }
 

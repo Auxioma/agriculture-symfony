@@ -3,6 +3,8 @@
 namespace App\Tests\Functional\Controller\Producer;
 
 use App\Entity\Identity\User;
+use App\Entity\Producer\ProducerProfile;
+use App\Entity\Producer\ProducerSetting;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
@@ -44,6 +46,35 @@ final class ProducerProfileControllerTest extends ApiTestCase
         self::assertSame('Ferme Origine', $data['farmName']);
         self::assertArrayHasKey('slug', $data);
         self::assertArrayHasKey('verificationStatus', $data);
+    }
+
+    public function testGetMyProfileGivesPickupAndDeliveryFromTheSettings(): void
+    {
+        $token = $this->registerProducerAndLogin();
+        $producer = $this->em->getRepository(ProducerProfile::class)->findOneBy(['farmName' => 'Ferme Origine']);
+        $settings = (new ProducerSetting())->setPickupEnabled(true)->setDeliveryEnabled(false);
+        $producer->setSettings($settings);
+        $this->em->persist($settings);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producer/profile', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertTrue($data['pickupAvailable']);
+        self::assertFalse($data['deliveryAvailable']);
+    }
+
+    public function testGetMyProfileGivesNullPickupAndDeliveryWithoutSettings(): void
+    {
+        $token = $this->registerProducerAndLogin();
+
+        $this->client->request('GET', '/api/producer/profile', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        // * null (pas configuré) et non false : le front écrit « Non renseigné », pas « Non proposé »
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertArrayHasKey('pickupAvailable', $data);
+        self::assertNull($data['pickupAvailable']);
+        self::assertNull($data['deliveryAvailable']);
     }
 
     public function testUpdateMyProfileChangesFields(): void
