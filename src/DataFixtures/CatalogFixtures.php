@@ -51,6 +51,17 @@ class CatalogFixtures extends Fixture
         'miel-fleurs' => ['kg', 5, 10],
     ];
 
+    // * Photo de chaque catégorie --> des fichiers téléchargés (Unsplash) qui vivent dans le FRONT, dans
+    // * public/images/categories/. La base ne garde que leur chemin (image_url), sans lui l'accueil et la page des
+    // * catégories n'ont aucune image à afficher. En production, le client les règle dans l'admin (catégories).
+    private const CATEGORY_IMAGES = [
+        'Fruits' => 'fruits',
+        'Légumes' => 'legumes',
+        'Produits laitiers' => 'produits-laitiers',
+        'Viandes & Volailles' => 'viandes-volailles',
+        'Miel & Produits de la ruche' => 'miel',
+    ];
+
     public function load(ObjectManager $manager): void
     {
         $currency = (new Currency())
@@ -82,7 +93,8 @@ class CatalogFixtures extends Fixture
         ];
         foreach ($catalogue as $categoryName => $products) {
             // * un slug par catégorie : sans lui, les liens de l'accueil et de la navbar (/categories/{slug}) ne mènent nulle part
-            $category = (new Category())->setName($categoryName)->setSlug((new AsciiSlugger('fr'))->slug($categoryName)->lower()->toString())->setIsActive(true);
+            $category = (new Category())->setName($categoryName)->setSlug((new AsciiSlugger('fr'))->slug($categoryName)->lower()->toString())
+                ->setImageUrl('/images/categories/'.self::CATEGORY_IMAGES[$categoryName].'.jpg')->setIsActive(true);
             $manager->persist($category);
             foreach ($products as $slug => $productName) {
                 [$unitCode, $seasonStart, $seasonEnd] = self::PRODUCT_DETAILS[$slug];
