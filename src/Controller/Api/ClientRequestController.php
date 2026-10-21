@@ -26,6 +26,11 @@ final class ClientRequestController extends AbstractController
     // * à laquelle on a déjà répondu serait déloyal envers ce producteur. Absent du cahier, choix délibéré.
     private const EDITABLE_STATUSES = [RequestStatus::Draft, RequestStatus::Sent, RequestStatus::WaitingReplies];
 
+    // * Valeurs appliquées quand le client n'en précise pas (marché français pour l'instant) : le front du tunnel
+    // * n'envoie ni currencyCode ni countryCode. Les lignes EUR / FR doivent exister dans catalog.currencies / countries.
+    private const DEFAULT_CURRENCY = 'EUR';
+    private const DEFAULT_COUNTRY = 'FR';
+
     #[Route('/api/requests', methods: ['POST'])]
     public function createRequest(
         #[MapRequestPayload] CreateClientRequestRequest $request,
@@ -235,23 +240,18 @@ final class ClientRequestController extends AbstractController
             $clientRequest->setUnit($unit);
         }
 
-        $clientRequest->setCurrency(null);
-        if ($request->currencyCode !== null) {
-            $currency = $em->find(Currency::class, strtoupper($request->currencyCode));
-            if ($currency === null) {
-                return $this->json(['error' => 'Devise inconnue.'], 422);
-            }
-            $clientRequest->setCurrency($currency);
+        // * Devise et pays ont toujours une valeur : celle du payload, sinon le défaut ci-dessus.
+        $currency = $em->find(Currency::class, strtoupper($request->currencyCode ?? self::DEFAULT_CURRENCY));
+        if ($currency === null) {
+            return $this->json(['error' => 'Devise inconnue.'], 422);
         }
+        $clientRequest->setCurrency($currency);
 
-        $clientRequest->setCountry(null);
-        if ($request->countryCode !== null) {
-            $country = $em->find(Country::class, strtoupper($request->countryCode));
-            if ($country === null) {
-                return $this->json(['error' => 'Pays inconnu.'], 422);
-            }
-            $clientRequest->setCountry($country);
+        $country = $em->find(Country::class, strtoupper($request->countryCode ?? self::DEFAULT_COUNTRY));
+        if ($country === null) {
+            return $this->json(['error' => 'Pays inconnu.'], 422);
         }
+        $clientRequest->setCountry($country);
 
         // * Même format EWKT que pour ProducerProfile/DeliveryZone (PostGisMappingTest) : "SRID=4326;POINT(lon lat)".
         $clientRequest->setLocation(
