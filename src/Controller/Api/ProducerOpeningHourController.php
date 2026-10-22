@@ -2,6 +2,7 @@
 
 namespace App\Controller\Api;
 
+use App\Dto\Producer\ReplaceOpeningHoursRequest;
 use App\Dto\Producer\SaveOpeningHourRequest;
 use App\Entity\Identity\User;
 use App\Entity\Producer\OpeningHour;
@@ -27,7 +28,7 @@ final class ProducerOpeningHourController extends AbstractController
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
         }
 
-        $hours = $em->getRepository(OpeningHour::class)->findBy(['producer' => $producer], ['weekday' => 'ASC']);
+        $hours = $em->getRepository(OpeningHour::class)->findBy(['producer' => $producer], ['weekday' => 'ASC', 'opensAt' => 'ASC']);
 
         return $this->json(array_map($this->describe(...), $hours));
     }
@@ -51,6 +52,50 @@ final class ProducerOpeningHourController extends AbstractController
         $em->flush();
 
         return $this->json($this->describe($hour), 201);
+    }
+
+    /**
+     * Remplace tous les créneaux d'un coup : « Modifier mon profil » enregistre la semaine entière. Un jour sans créneau est un
+     * jour fermé, on ne garde donc aucune ligne is_closed.
+     */
+    #[Route('/api/producer/opening-hours', methods: ['PUT'])]
+    public function replaceOpeningHours(
+        #[MapRequestPayload] ReplaceOpeningHoursRequest $request,
+        #[CurrentUser] User $user,
+        EntityManagerInterface $em,
+    ): JsonResponse {
+        $producer = $user->getProducerProfile();
+        if ($producer === null) {
+            return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
+        }
+
+        // * "HH:MM" se compare comme du texte : le format est déjà garanti par la requête
+        foreach ($request->hours as $slot) {
+            if ($slot['opensAt'] >= $slot['closesAt']) {
+                return $this->json(['error' => "L'heure d'ouverture doit précéder l'heure de fermeture."], 422);
+            }
+        }
+
+        foreach ($em->getRepository(OpeningHour::class)->findBy(['producer' => $producer]) as $old) {
+            $em->remove($old);
+        }
+
+        $slots = $request->hours;
+        usort($slots, static fn (array $a, array $b) => [$a['weekday'], $a['opensAt']] <=> [$b['weekday'], $b['opensAt']]);
+        $created = [];
+        foreach ($slots as $slot) {
+            $hour = new OpeningHour();
+            $hour->setProducer($producer);
+            $hour->setWeekday($slot['weekday']);
+            $hour->setIsClosed(false);
+            $hour->setOpensAt($this->parseTime($slot['opensAt']));
+            $hour->setClosesAt($this->parseTime($slot['closesAt']));
+            $em->persist($hour);
+            $created[] = $hour;
+        }
+        $em->flush();
+
+        return $this->json(array_map($this->describe(...), $created));
     }
 
     #[Route('/api/producer/opening-hours/{id}', methods: ['PUT'])]

@@ -34,6 +34,11 @@ final readonly class UpdateProducerProfileRequest
 
         #[Assert\Range(min: -180, max: 180)]
         public ?float $longitude = null,
+
+        // * retrait et livraison : null = réglage inchangé (contrairement aux autres champs, qu'un PUT remet à vide s'ils manquent)
+        public ?bool $pickupAvailable = null,
+
+        public ?bool $deliveryAvailable = null,
     ) {
     }
 }

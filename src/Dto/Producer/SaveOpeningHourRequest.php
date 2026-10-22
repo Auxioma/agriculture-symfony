@@ -7,7 +7,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 /**
  * Payload attendu par POST/PUT /api/producer/opening-hours(/{id}), désérialisé et validé
  * automatiquement par #[MapRequestPayload] dans ProducerOpeningHourController. $weekday suit la
- * convention ISO-8601 déjà documentée sur OpeningHour (0=lundi). $opensAt/$closesAt sont des
+ * convention ISO-8601 documentée sur OpeningHour (1=lundi, 7=dimanche). $opensAt/$closesAt sont des
  * heures au format "HH:MM", ignorées si $isClosed est vrai.
  */
 
@@ -15,7 +15,7 @@ final readonly class SaveOpeningHourRequest
 {
     public function __construct(
         #[Assert\NotNull]
-        #[Assert\Range(min: 0, max: 6)]
+        #[Assert\Range(min: 1, max: 7)]
         public int $weekday,
 
         #[Assert\Regex(pattern: '/^\d{2}:\d{2}$/', message: 'Format attendu : HH:MM.')]

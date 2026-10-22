@@ -1,8 +1,8 @@
 <?php
 
 /**
- * Créneau d'ouverture d'un producteur pour un jour de la semaine ($weekday en smallint, 0=lundi selon la
- * convention ISO-8601 utilisée dans le reste du projet). Une ligne par créneau : un producteur ouvert
+ * Créneau d'ouverture d'un producteur pour un jour de la semaine ($weekday en smallint, 1=lundi à 7=dimanche,
+ * numérotation ISO-8601 que le front attend aussi). Une ligne par créneau : un producteur ouvert
  * matin et après-midi le même jour a donc deux lignes avec le même $weekday. $isClosed permet de marquer
  * explicitement un jour fermé plutôt que de simplement omettre la ligne.
  */

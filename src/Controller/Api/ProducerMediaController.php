@@ -55,9 +55,15 @@ final class ProducerMediaController extends AbstractController
         }
         \assert($file instanceof UploadedFile);
 
+        // * "cover" = la photo de couverture de « Modifier mon profil » --> sans champ type, photo de galerie 
+        $type = (string) $request->request->get('type', 'photo');
+        if (!\in_array($type, ['photo', 'cover'], true)) {
+            return $this->json(['error' => 'Type de photo inconnu (photo ou cover).'], 422);
+        }
+
         $media = new ProducerMedia();
         $media->setProducer($producer);
-        $media->setType('photo');
+        $media->setType($type);
         $media->setAltText($request->request->get('altText'));
         $media->setIsPublic(true);
 
@@ -66,9 +72,37 @@ final class ProducerMediaController extends AbstractController
         $storage->write($key, file_get_contents($file->getPathname()));
         $media->setFileUrl($storage->publicUrl($key));
 
+        // * une seule couverture : l'ancienne part, et la nouvelle passe devant les autres photos (position la plus basse), qui est
+        // * l'ordre de la fiche publique. Les fichiers de l'ancienne partent une fois la base enregistrée.
+        $oldKeys = [];
+        if ('cover' === $type) {
+            $positions = [0];
+            foreach ($em->getRepository(ProducerMedia::class)->findBy(['producer' => $producer]) as $other) {
+                if ('cover' === $other->getType()) {
+                    $oldKeys[] = $this->keyOf($other);
+                    $em->remove($other);
+                } else {
+                    $positions[] = $other->getPosition() ?? 0;
+                }
+            }
+            $media->setPosition(min($positions) - 1);
+        }
+
         $em->persist($media);
         $em->flush();
 
+        foreach ($oldKeys as $oldKey) {
+            $storage->delete($oldKey);
+        }
+
         return $this->json(['id' => $media->getId()->toRfc4122(), 'url' => $media->getFileUrl()], 201);
+    }
+
+    // * même clé qu'à l'envoi : producteur/photo.extension (l'extension se lit dans l'URL enregistrée)
+    private function keyOf(ProducerMedia $media): string
+    {
+        $extension = pathinfo((string) parse_url((string) $media->getFileUrl(), PHP_URL_PATH), PATHINFO_EXTENSION);
+
+        return sprintf('%s/%s.%s', $media->getProducer()->getId()->toRfc4122(), $media->getId()->toRfc4122(), $extension);
     }
 }
