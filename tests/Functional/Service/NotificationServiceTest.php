@@ -3,6 +3,7 @@
 namespace App\Tests\Functional\Service;
 
 use App\Entity\Identity\User;
+use App\Enum\UserStatus;
 use App\Service\Notification\NotificationService;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
@@ -43,6 +44,21 @@ final class NotificationServiceTest extends ApiTestCase
         self::assertSame($recipient->getEmail(), $deliveries[0]['destination']);
         self::assertSame('in_app', $deliveries[1]['channel']);
         self::assertSame('sent', $deliveries[1]['status']);
+    }
+
+    public function testADeletedAccountGetsTheInAppNotificationButNoEmail(): void
+    {
+        $recipient = $this->makeUser('supprime');
+        $recipient->setStatus(UserStatus::Deleted);
+        $this->em->flush();
+
+        $notification = static::getContainer()->get(NotificationService::class)->notify($recipient, 'new_message', 'Nouveau message', 'Vous avez reçu un nouveau message.');
+        $this->em->flush();
+
+        // * l'adresse d'un compte supprimé (deleted+...@anonymized.local) ne mène nulle part : un e-mail reviendrait en erreur
+        self::assertEmailCount(0);
+        $channels = $this->em->getConnection()->fetchFirstColumn('SELECT channel FROM notification.notification_deliveries WHERE notification_id = :id', ['id' => $notification->getId()->toRfc4122()]);
+        self::assertSame(['in_app'], $channels);
     }
 
     // * Un transport qui échoue (ex. SMTP en panne) ne doit jamais faire remonter d'exception jusqu'à

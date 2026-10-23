@@ -5,6 +5,7 @@ namespace App\Controller\Api;
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerMedia;
 use App\Service\Producer\PhotoUploadRules;
+use App\Service\Producer\ProducerMediaKey;
 use Doctrine\ORM\EntityManagerInterface;
 use League\Flysystem\FilesystemOperator;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -79,7 +80,7 @@ final class ProducerMediaController extends AbstractController
             $positions = [0];
             foreach ($em->getRepository(ProducerMedia::class)->findBy(['producer' => $producer]) as $other) {
                 if ('cover' === $other->getType()) {
-                    $oldKeys[] = $this->keyOf($other);
+                    $oldKeys[] = ProducerMediaKey::of($other);
                     $em->remove($other);
                 } else {
                     $positions[] = $other->getPosition() ?? 0;
@@ -96,13 +97,5 @@ final class ProducerMediaController extends AbstractController
         }
 
         return $this->json(['id' => $media->getId()->toRfc4122(), 'url' => $media->getFileUrl()], 201);
-    }
-
-    // * même clé qu'à l'envoi : producteur/photo.extension (l'extension se lit dans l'URL enregistrée)
-    private function keyOf(ProducerMedia $media): string
-    {
-        $extension = pathinfo((string) parse_url((string) $media->getFileUrl(), PHP_URL_PATH), PATHINFO_EXTENSION);
-
-        return sprintf('%s/%s.%s', $media->getProducer()->getId()->toRfc4122(), $media->getId()->toRfc4122(), $extension);
     }
 }
