@@ -8,6 +8,7 @@ use App\Entity\Catalog\Product;
 use App\Entity\Engagement\Favorite;
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerProfile;
+use App\Enum\VerificationStatus;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -110,7 +111,12 @@ final class FavoriteController extends AbstractController
         $target = $this->resolveTarget($targetType, $targetId->toRfc4122(), $em);
 
         return match (true) {
-            $target instanceof ProducerProfile => ['farmName' => $target->getFarmName(), 'slug' => $target->getSlug()],
+            $target instanceof ProducerProfile && $target->isActive() => [
+                'farmName' => $target->getFarmName(),
+                'slug' => $target->getSlug(),
+                'city' => $target->getCity(),
+                'verified' => $target->getVerificationStatus() === VerificationStatus::Verified,
+            ],
             $target instanceof Product => ['name' => $target->getName(), 'slug' => $target->getSlug()],
             $target instanceof Category => ['name' => $target->getName(), 'slug' => $target->getSlug()],
             default => null,
