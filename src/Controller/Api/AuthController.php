@@ -2,6 +2,7 @@
 
 namespace App\Controller\Api;
 
+use App\Dto\Auth\DeleteAccountRequest;
 use App\Dto\Auth\ForgotPasswordRequest;
 use App\Dto\Auth\RegisterClientRequest;
 use App\Dto\Auth\RegisterProducerRequest;
@@ -12,7 +13,13 @@ use App\Entity\Identity\User;
 use App\Entity\Matching\ClientRequest;
 use App\Entity\Producer\ProducerProfile;
 use App\Repository\Identity\UserRepository;
+use App\Service\Account\AccountEraser;
+use App\Service\Account\AccountExporter;
+use App\Service\Payment\PaymentGatewayInterface;
+use App\Service\Payment\StripeFailureLogger;
 use Doctrine\ORM\EntityManagerInterface;
+use Stripe\Exception\ExceptionInterface as StripeException;
+use Stripe\Exception\InvalidRequestException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -222,60 +229,58 @@ final class AuthController extends AbstractController
     }
 
     #[Route('/api/me/export', methods: ['GET'])]
-    public function exportMyData(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    public function exportMyData(#[CurrentUser] User $user, AccountExporter $exporter): JsonResponse
     {
-        $data = [
-            'user' => [
-                'id' => $user->getId()->toRfc4122(),
-                'email' => $user->getEmail(),
-                'firstName' => $user->getFirstName(),
-                'lastName' => $user->getLastName(),
-                'phone' => $user->getPhone(),
-                'locale' => $user->getLocale(),
-                'roles' => $user->getRoles(),
-                'createdAt' => $user->getCreatedAt()->format(DATE_ATOM),
-            ],
-        ];
-
-        $producer = $user->getProducerProfile();
-        if ($producer !== null) {
-            $data['producerProfile'] = [
-                'id' => $producer->getId()->toRfc4122(),
-                'farmName' => $producer->getFarmName(),
-                'slug' => $producer->getSlug(),
-                'description' => $producer->getDescription(),
-                'story' => $producer->getStory(),
-                'city' => $producer->getCity(),
-                'postalCode' => $producer->getPostalCode(),
-                'verificationStatus' => $producer->getVerificationStatus()->value,
-            ];
-        }
-
-        $clientRequests = $em->getRepository(ClientRequest::class)->findBy(['client' => $user]);
-        $data['clientRequests'] = array_map(
-            static fn (ClientRequest $r) => [
-                'id' => $r->getId()->toRfc4122(),
-                'needType' => $r->getNeedType()->value,
-                'status' => $r->getStatus()->value,
-                'customProduct' => $r->getCustomProduct(),
-                'message' => $r->getMessage(),
-                'createdAt' => $r->getCreatedAt()->format(DATE_ATOM),
-            ],
-            $clientRequests
-        );
-
-        return $this->json($data);
+        return $this->json($exporter->export($user));
     }
 
+    /**
+     * Suppression du compte : anonymisation (voir AccountEraser). Le mot de passe confirme la demande. Un abonnement en cours est
+     * résilié tout de suite, sans remboursement : tant que l'utilisateur ne l'a pas accepté (acceptSubscriptionCancellation), la
+     * réponse 409 donne de quoi écrire la carte d'avertissement et rien n'est touché.
+     */
     #[Route('/api/me', methods: ['DELETE'])]
-    public function deleteMyAccount(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
-    {
-        // ! identity.anonymize_user() existe et est testée depuis longtemps (migration + EntityPersistenceTest)
-        // ! mais n'était encore appelée par aucune route -- c'est ici qu'on la branche enfin.
-        $em->getConnection()->executeStatement(
-            'SELECT identity.anonymize_user(:userId)',
-            ['userId' => $user->getId()->toRfc4122()]
-        );
+    public function deleteMyAccount(
+        #[MapRequestPayload] DeleteAccountRequest $request,
+        #[CurrentUser] User $user,
+        UserPasswordHasherInterface $hasher,
+        AccountEraser $eraser,
+        PaymentGatewayInterface $paymentGateway,
+        StripeFailureLogger $stripeFailures,
+    ): JsonResponse {
+        if (!$hasher->isPasswordValid($user, $request->password)) {
+            return $this->json(['error' => 'Mot de passe incorrect.'], 422);
+        }
+
+        $subscription = $eraser->subscriptionInForce($user);
+        if ($subscription !== null && !$request->acceptSubscriptionCancellation) {
+            return $this->json([
+                'code' => 'subscription_active',
+                'error' => 'Votre abonnement sera résilié immédiatement, sans remboursement de la période déjà payée.',
+                'subscription' => [
+                    'planName' => $subscription->getPlanPrice()->getPlan()->getName(),
+                    'billingCycle' => $subscription->getPlanPrice()->getBillingCycle()->value,
+                    'status' => $subscription->getStatus()->value,
+                    'currentPeriodEnd' => $subscription->getCurrentPeriodEnd()->format(DATE_ATOM),
+                ],
+            ], 409);
+        }
+
+        // * Stripe d'abord : s'il échoue, rien n'est supprimé et l'utilisateur peut réessayer. Un abonnement qu'il ne connaît plus
+        // * (resource_missing) est déjà résilié, ce qui est le but.
+        if ($subscription?->getProviderSubscriptionId() !== null) {
+            try {
+                $paymentGateway->cancelSubscriptionNow($subscription->getProviderSubscriptionId());
+            } catch (StripeException $e) {
+                if (!($e instanceof InvalidRequestException && $e->getStripeCode() === 'resource_missing')) {
+                    $stripeFailures->log('delete_account', $e);
+
+                    return $this->json(['error' => "Votre abonnement n'a pas pu être résilié, donc rien n'a été supprimé. Réessayez dans un instant."], 502);
+                }
+            }
+        }
+
+        $eraser->erase($user, $subscription);
 
         return $this->json(null, 204);
     }

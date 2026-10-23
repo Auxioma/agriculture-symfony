@@ -5,6 +5,7 @@ namespace App\Service\Notification;
 use App\Entity\Identity\User;
 use App\Entity\Notification\Notification;
 use App\Entity\Notification\NotificationDelivery;
+use App\Enum\UserStatus;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
@@ -39,7 +40,10 @@ final readonly class NotificationService
         $inAppDelivery->setSentAt(new \DateTimeImmutable());
         $this->em->persist($inAppDelivery);
 
-        $this->sendEmail($notification, $recipient, $title, $body);
+        // * un compte supprimé n'a plus d'adresse (deleted+...@anonymized.local) : l'e-mail partirait dans le vide et reviendrait en erreur
+        if ($recipient->getStatus() !== UserStatus::Deleted) {
+            $this->sendEmail($notification, $recipient, $title, $body);
+        }
 
         return $notification;
     }
