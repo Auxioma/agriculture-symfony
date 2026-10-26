@@ -40,8 +40,9 @@ final readonly class NotificationService
         $inAppDelivery->setSentAt(new \DateTimeImmutable());
         $this->em->persist($inAppDelivery);
 
-        // * un compte supprimé n'a plus d'adresse (deleted+...@anonymized.local) : l'e-mail partirait dans le vide et reviendrait en erreur
-        if ($recipient->getStatus() !== UserStatus::Deleted) {
+        // * un compte supprimé n'a plus d'adresse (deleted+...@anonymized.local) : l'e-mail partirait dans le vide et reviendrait en erreur.
+        // * Un interrupteur coupé dans Paramètres (NotificationPreferences) retire l'e-mail, pas la notification dans l'application.
+        if ($recipient->getStatus() !== UserStatus::Deleted && NotificationPreferences::emailEnabled($recipient, $type)) {
             $this->sendEmail($notification, $recipient, $title, $body);
         }
 

@@ -3,6 +3,7 @@
 namespace App\Tests\Functional\Service;
 
 use App\Entity\Identity\User;
+use App\Entity\Identity\UserPreference;
 use App\Enum\UserStatus;
 use App\Service\Notification\NotificationService;
 use App\Tests\ApiTestCase;
@@ -59,6 +60,56 @@ final class NotificationServiceTest extends ApiTestCase
         self::assertEmailCount(0);
         $channels = $this->em->getConnection()->fetchFirstColumn('SELECT channel FROM notification.notification_deliveries WHERE notification_id = :id', ['id' => $notification->getId()->toRfc4122()]);
         self::assertSame(['in_app'], $channels);
+    }
+
+    /**
+     * @return iterable<string, array{0: string}>
+     */
+    public static function typesTheUserCanSwitchOff(): iterable
+    {
+        yield 'nouvelle demande pertinente' => ['new_relevant_request'];
+        yield 'paiement échoué' => ['payment_failed'];
+        yield 'abonnement bientôt renouvelé' => ['subscription_renewing_soon'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('typesTheUserCanSwitchOff')]
+    public function testASwitchedOffTypeKeepsTheInAppNotificationButSendsNoEmail(string $type): void
+    {
+        $recipient = $this->makeUser('farmer');
+        $preference = new UserPreference();
+        $preference->setIdUser($recipient);
+        $preference->setLocale('fr');
+        $preference->setNotificationSettings(['email' => [$type => false]]);
+        $recipient->setPreference($preference);
+        $this->em->persist($preference);
+        $this->em->flush();
+
+        $notification = static::getContainer()->get(NotificationService::class)->notify($recipient, $type, 'Titre', 'Corps du message.');
+        $this->em->flush();
+
+        self::assertEmailCount(0);
+        $channels = $this->em->getConnection()->fetchFirstColumn('SELECT channel FROM notification.notification_deliveries WHERE notification_id = :id', ['id' => $notification->getId()->toRfc4122()]);
+        self::assertSame(['in_app'], $channels);
+    }
+
+    public function testOtherTypesAndOtherSwitchesStillSendTheEmail(): void
+    {
+        $recipient = $this->makeUser('farmer');
+        $preference = new UserPreference();
+        $preference->setIdUser($recipient);
+        $preference->setLocale('fr');
+        $preference->setNotificationSettings(['email' => ['payment_failed' => false]]);
+        $recipient->setPreference($preference);
+        $this->em->persist($preference);
+        $this->em->flush();
+        $service = static::getContainer()->get(NotificationService::class);
+
+        // * un autre interrupteur, et un type que l'écran ne propose pas de couper : les deux partent
+        $service->notify($recipient, 'new_relevant_request', 'Nouvelle demande', 'Une demande vous correspond.');
+        $service->notify($recipient, 'new_message', 'Nouveau message', 'Vous avez reçu un nouveau message.');
+        $this->em->flush();
+
+        self::assertEmailCount(2);
     }
 
     // * Un transport qui échoue (ex. SMTP en panne) ne doit jamais faire remonter d'exception jusqu'à

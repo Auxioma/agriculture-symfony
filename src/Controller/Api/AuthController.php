@@ -247,7 +247,11 @@ final class AuthController extends AbstractController
         AccountEraser $eraser,
         PaymentGatewayInterface $paymentGateway,
         StripeFailureLogger $stripeFailures,
+        #[Autowire(service: 'limiter.password_confirmation')] RateLimiterFactory $passwordConfirmationLimiter,
     ): JsonResponse {
+        if (!$passwordConfirmationLimiter->create($user->getId()->toRfc4122())->consume()->isAccepted()) {
+            return $this->json(['error' => 'Trop de tentatives, réessayez dans quelques minutes.'], 429);
+        }
         if (!$hasher->isPasswordValid($user, $request->password)) {
             return $this->json(['error' => 'Mot de passe incorrect.'], 422);
         }

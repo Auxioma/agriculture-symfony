@@ -121,6 +121,23 @@ final class AccountPrivacyTest extends ApiTestCase
         self::assertSame(0, $this->countRows("SELECT count(*) FROM identity.data_requests WHERE user_id = :id AND request_type = 'deletion'", $user->getId()->toRfc4122()));
     }
 
+    public function testTheDeletionAcceptsOnlyFivePasswordTriesPerAccount(): void
+    {
+        $user = $this->makeUserWithPassword('client', self::PASSWORD);
+        $this->em->flush();
+        $token = $this->login($user);
+
+        for ($try = 1; $try <= 5; ++$try) {
+            $this->delete($token, ['password' => 'pas-le-bon']);
+            self::assertResponseStatusCodeSame(422, 'essai '.$try);
+        }
+        // * le sixième est refusé même avec le bon mot de passe
+        $this->delete($token, ['password' => self::PASSWORD]);
+
+        self::assertResponseStatusCodeSame(429);
+        self::assertSame($user->getEmail(), $this->userRow($user)['email']);
+    }
+
     public function testAClientAccountIsAnonymizedAndTheRequestIsTraced(): void
     {
         $user = $this->makeUserWithPassword('client', self::PASSWORD);
