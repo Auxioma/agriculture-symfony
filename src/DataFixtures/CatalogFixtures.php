@@ -29,6 +29,7 @@ class CatalogFixtures extends Fixture
     public const LABEL_HVE = 'label-hve';
     public const LABEL_AGRICULTURE_RAISONNEE = 'label-agriculture-raisonnee';
     public const LABEL_LOCAL = 'label-local';
+    public const LABEL_AOP_AOC = 'label-aop-aoc';
     public const PRODUCT_REFERENCES = [
         'product-pommes',
         'product-fraises',
@@ -108,14 +109,18 @@ class CatalogFixtures extends Fixture
 
         // * "Local" ajouté en plus des 3 labels déjà là : cahier fonctionnel, fiche producteur publique --
         // * "Badges : vérifié, bio, local, HVE, AOP/AOC ou labels locaux".
+        // * Le texte est celui de l'écran « Labels et certifications » du producteur. Les trois certifications (Bio, HVE, AOP/AOC) exigent
+        // * un justificatif, les deux pratiques (agriculture raisonnée, local) se déclarent : c'est le « Type » de l'écran Labels de l'admin
+        // * (Label::$requiresDocument).
         $labelReferences = [
-            'Bio' => ['bio', self::LABEL_BIO],
-            'Agriculture raisonnée' => ['agriculture-raisonnee', self::LABEL_AGRICULTURE_RAISONNEE],
-            'HVE' => ['hve', self::LABEL_HVE],
-            'Local' => ['local', self::LABEL_LOCAL],
+            'Bio' => ['bio', self::LABEL_BIO, 'Certification agriculture biologique (AB / EU Organic).', true],
+            'Agriculture raisonnée' => ['agriculture-raisonnee', self::LABEL_AGRICULTURE_RAISONNEE, 'Pratiques limitant les intrants.', false],
+            'HVE' => ['hve', self::LABEL_HVE, 'Haute Valeur Environnementale.', true],
+            'Local' => ['local', self::LABEL_LOCAL, 'Vente en circuit court, production locale.', false],
+            'AOP / AOC' => ['aop-aoc', self::LABEL_AOP_AOC, "Appellation d'origine protégée ou contrôlée.", true],
         ];
-        foreach ($labelReferences as $labelName => [$code, $reference]) {
-            $label = (new Label())->setCode($code)->setName($labelName);
+        foreach ($labelReferences as $labelName => [$code, $reference, $description, $requiresDocument]) {
+            $label = (new Label())->setCode($code)->setName($labelName)->setDescription($description)->setRequiresDocument($requiresDocument);
             $manager->persist($label);
             $this->addReference($reference, $label);
         }

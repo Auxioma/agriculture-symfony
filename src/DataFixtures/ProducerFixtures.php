@@ -17,6 +17,7 @@ use App\Entity\Catalog\Country;
 use App\Entity\Catalog\Label;
 use App\Entity\Catalog\Product;
 use App\Entity\Identity\User;
+use App\Entity\Audit\AuditLog;
 use App\Entity\Producer\ProducerLabel;
 use App\Entity\Producer\ProducerMedia;
 use App\Entity\Producer\ProducerProduct;
@@ -134,6 +135,17 @@ class ProducerFixtures extends Fixture implements DependentFixtureInterface
             $photo->setFileUrl($this->storage->publicUrl($key));
 
             $manager->persist($photo);
+
+            // * Créé directement « vérifié », sans passer par l'action Valider de l'admin : on écrit la trace qu'elle aurait laissée, c'est
+            // * elle qui donne sa date au « profil vérifié » (voir ProducerProfileController::getMyProfile).
+            if (VerificationStatus::Verified === $verificationStatus) {
+                $manager->persist((new AuditLog())
+                    ->setSchemaName('producer')
+                    ->setTableName('producer_profiles')
+                    ->setRecordId($producer->getId()->toRfc4122())
+                    ->setAction('producer_validated')
+                    ->setNewData(['verificationStatus' => 'verified']));
+            }
 
             // * Pas de label sur le producteur Pending : un profil pas encore validé n'a pas de raison
             // * d'afficher des badges de confiance (cf. commentaire de getProducer() sur les labels verifiedAt).

@@ -6,6 +6,7 @@ use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerMedia;
 use App\Entity\Producer\ProducerProfile;
 use App\Entity\Producer\ProducerSetting;
+use App\Enum\VerificationStatus;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 
@@ -186,6 +187,60 @@ final class ProducerProfileControllerTest extends ApiTestCase
         self::assertNull($data['pickupAvailable']);
         self::assertNull($data['deliveryAvailable']);
         self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM producer.producer_settings'));
+    }
+
+    private function validate(ProducerProfile $producer, string $at): void
+    {
+        $this->em->getConnection()->executeStatement(
+            "INSERT INTO audit.audit_logs (id, schema_name, table_name, record_id, action, created_at) VALUES (gen_random_uuid(), 'producer', 'producer_profiles', :id, 'producer_validated', :at)",
+            ['id' => $producer->getId()->toRfc4122(), 'at' => $at]
+        );
+    }
+
+    public function testGetMyProfileGivesTheDateOfTheLastValidationByTheTeam(): void
+    {
+        $token = $this->registerProducerAndLogin();
+        $producer = $this->em->getRepository(ProducerProfile::class)->findOneBy(['farmName' => 'Ferme Origine']);
+        // * validé, refusé puis validé de nouveau : c'est la dernière validation qui compte
+        $this->validate($producer, '2026-02-05 10:00:00+00');
+        $this->validate($producer, '2026-03-12 09:30:00+00');
+        // * la validation, plus récente, d'une autre exploitation ne compte pas pour celle-ci
+        $other = $this->makeProducerProfile($this->makeUser('autre'), $this->makeCountry('BE', 'Belgique'), farmName: 'Ferme Autre');
+        $this->em->flush();
+        $this->validate($other, '2026-09-01 08:00:00+00');
+
+        $this->client->request('GET', '/api/producer/profile', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame('verified', $data['verificationStatus']);
+        self::assertSame('2026-03-12', substr($data['verifiedAt'], 0, 10));
+    }
+
+    public function testGetMyProfileHasNoDateWhenNoValidationWasTraced(): void
+    {
+        $token = $this->registerProducerAndLogin();
+
+        $this->client->request('GET', '/api/producer/profile', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        // * créé déjà vérifié (comme les fixtures sans trace) : le statut est là, la date non
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame('verified', $data['verificationStatus']);
+        self::assertArrayHasKey('verifiedAt', $data);
+        self::assertNull($data['verifiedAt']);
+    }
+
+    public function testGetMyProfileHasNoDateWhileTheProfileIsNotVerified(): void
+    {
+        $token = $this->registerProducerAndLogin();
+        $producer = $this->em->getRepository(ProducerProfile::class)->findOneBy(['farmName' => 'Ferme Origine']);
+        $this->validate($producer, '2026-02-05 10:00:00+00');
+        $producer->setVerificationStatus(VerificationStatus::Pending);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producer/profile', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        // * une ancienne validation ne fait pas un profil vérifié aujourd'hui
+        self::assertNull(json_decode($this->client->getResponse()->getContent(), true)['verifiedAt']);
     }
 
     public function testUpdateMyProfileRejectsEmptyFarmName(): void
