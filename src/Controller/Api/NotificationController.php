@@ -20,13 +20,16 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
  */
 final class NotificationController extends AbstractController
 {
+    private const MAX_LIMIT = 100;
+
     /**
      * Récupère la liste des notifications de l'utilisateur connecté.
      *
      * Permet le filtrage optionnel des notifications non lues via le paramètre de requête `unreadOnly`.
-     * Les résultats sont ordonnés de la plus récente à la plus ancienne.
+     * Les résultats sont ordonnés de la plus récente à la plus ancienne ; `limit` ne garde que les N plus récentes
+     * (la cloche de la navbar n'en affiche que quelques-unes, inutile de renvoyer tout l'historique).
      *
-     * @param Request                $request Paramètres HTTP (query parameter `unreadOnly=true|false`).
+     * @param Request                $request Paramètres HTTP (query parameters `unreadOnly=true|false`, `limit=N`).
      * @param User                   $user    Utilisateur authentifié effectuant la requête.
      * @param EntityManagerInterface $em      Gestionnaire d'entités Doctrine.
      *
@@ -40,7 +43,14 @@ final class NotificationController extends AbstractController
             $criteria['readAt'] = null;
         }
 
-        $notifications = $em->getRepository(Notification::class)->findBy($criteria, ['createdAt' => 'DESC']);
+        // * limit absent, illisible, 0 ou négatif : pas de limite (comportement d'avant) ; plafonné pour qu'un grand nombre ne la contourne pas.
+        // * filter_var plutôt que getInt() : getInt() répond 400 sur "abc" au lieu de l'ignorer.
+        $limit = (int) filter_var($request->query->get('limit'), FILTER_VALIDATE_INT);
+        $notifications = $em->getRepository(Notification::class)->findBy(
+            $criteria,
+            ['createdAt' => 'DESC'],
+            $limit > 0 ? min($limit, self::MAX_LIMIT) : null,
+        );
 
         return $this->json(array_map(
             static fn (Notification $n) => [
