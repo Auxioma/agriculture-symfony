@@ -12,8 +12,18 @@ use App\Entity\Identity\User;
  */
 final class NotificationPreferences
 {
-    // * les trois notifications producteur que l'écran propose de couper ; toutes les autres partent toujours
-    public const EMAIL_TYPES = ['new_relevant_request', 'payment_failed', 'subscription_renewing_soon'];
+    // * les notifications producteur du cahier fonctionnel que le back envoie, dans l'ordre de l'écran Paramètres. Toutes les autres partent
+    // * toujours : un refus ou une demande de complément de profil, une invitation d'équipe, une réponse du support, un abonnement en double.
+    // * "Réponse client" (cahier) n'y est pas : rien ne l'envoie encore. "Avis publié" y est sous "new_review", envoyée à la création de l'avis.
+    public const EMAIL_TYPES = [
+        'new_relevant_request',
+        'request_expiring_soon',
+        'new_message',
+        'payment_failed',
+        'subscription_renewing_soon',
+        'profile_validated',
+        'new_review',
+    ];
 
     /**
      * Chaque type proposé avec son état : actif tant que l'utilisateur n'a pas dit le contraire.

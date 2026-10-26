@@ -68,8 +68,12 @@ final class NotificationServiceTest extends ApiTestCase
     public static function typesTheUserCanSwitchOff(): iterable
     {
         yield 'nouvelle demande pertinente' => ['new_relevant_request'];
+        yield 'demande expirant bientôt' => ['request_expiring_soon'];
+        yield 'nouveau message' => ['new_message'];
         yield 'paiement échoué' => ['payment_failed'];
         yield 'abonnement bientôt renouvelé' => ['subscription_renewing_soon'];
+        yield 'profil validé' => ['profile_validated'];
+        yield 'nouvel avis client' => ['new_review'];
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('typesTheUserCanSwitchOff')]
@@ -106,10 +110,42 @@ final class NotificationServiceTest extends ApiTestCase
 
         // * un autre interrupteur, et un type que l'écran ne propose pas de couper : les deux partent
         $service->notify($recipient, 'new_relevant_request', 'Nouvelle demande', 'Une demande vous correspond.');
-        $service->notify($recipient, 'new_message', 'Nouveau message', 'Vous avez reçu un nouveau message.');
+        $service->notify($recipient, 'profile_rejected', 'Profil non validé', "Votre profil producteur n'a pas été validé.");
         $this->em->flush();
 
         self::assertEmailCount(2);
+    }
+
+    /**
+     * @return iterable<string, array{0: string}>
+     */
+    public static function typesTheUserCannotSwitchOff(): iterable
+    {
+        yield 'refus du profil' => ['profile_rejected'];
+        yield 'complément de profil demandé' => ['profile_more_info_needed'];
+        yield 'réponse du support' => ['support_reply'];
+        yield 'invitation d’équipe' => ['team_invitation'];
+        yield 'abonnement en double annulé' => ['subscription_duplicate_cancelled'];
+        yield 'notification de client' => ['producer_replied'];
+    }
+
+    // * même si une valeur "false" traîne en base pour ce type (écrite à la main, ou par une version plus ancienne de l'écran)
+    #[\PHPUnit\Framework\Attributes\DataProvider('typesTheUserCannotSwitchOff')]
+    public function testATypeTheScreenDoesNotOfferAlwaysSendsTheEmail(string $type): void
+    {
+        $recipient = $this->makeUser('farmer');
+        $preference = new UserPreference();
+        $preference->setIdUser($recipient);
+        $preference->setLocale('fr');
+        $preference->setNotificationSettings(['email' => [$type => false]]);
+        $recipient->setPreference($preference);
+        $this->em->persist($preference);
+        $this->em->flush();
+
+        static::getContainer()->get(NotificationService::class)->notify($recipient, $type, 'Titre', 'Corps du message.');
+        $this->em->flush();
+
+        self::assertEmailCount(1);
     }
 
     // * Un transport qui échoue (ex. SMTP en panne) ne doit jamais faire remonter d'exception jusqu'à
