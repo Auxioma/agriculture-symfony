@@ -127,7 +127,7 @@ final class ClientDashboardController extends AbstractController
             FROM engagement.favorites f
             JOIN producer.producer_profiles pp ON pp.id = f.target_id
             WHERE f.user_id = :uid::uuid
-              AND f.target_type = 'producer'
+              AND f.target_type = 'producer_profile'
               AND pp.is_active = true
             ORDER BY f.created_at DESC
             LIMIT 3
