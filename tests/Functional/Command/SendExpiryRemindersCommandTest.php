@@ -2,6 +2,8 @@
 
 namespace App\Tests\Functional\Command;
 
+use App\Entity\Identity\User;
+use App\Entity\Identity\UserPreference;
 use App\Entity\Matching\ProducerReply;
 use App\Enum\ReplyStatus;
 use App\Tests\ApiTestCase;
@@ -60,6 +62,91 @@ final class SendExpiryRemindersCommandTest extends ApiTestCase
             ['id' => $producerOwner->getId()->toRfc4122()]
         );
         self::assertNotFalse($producerNotification);
+    }
+
+    private function switchOff(User $user, string $type): void
+    {
+        $preference = new UserPreference();
+        $preference->setIdUser($user);
+        $preference->setLocale('fr');
+        $preference->setNotificationSettings(['types' => [$type => false]]);
+        $user->setPreference($preference);
+        $this->em->persist($preference);
+    }
+
+    // * Un interrupteur coupé dans Paramètres : rien n'est créé pour lui, et le compte rendu de la commande ne compte pas ce rappel.
+    public function testDoesNotRemindWhoSwitchedTheExpiryReminderOffAndDoesNotCountIt(): void
+    {
+        $country = $this->makeCountry();
+        $category = $this->makeCategory();
+        $product = $this->makeProduct($category);
+        $client = $this->makeUser('client');
+        $request = $this->makeClientRequest($client, $product);
+        $request->setExpiresAt(new \DateTimeImmutable('+1 day'));
+        $producerOwner = $this->makeUser('producer');
+        $producer = $this->makeProducerProfile($producerOwner, $country);
+        $reply = new ProducerReply();
+        $reply->setRequest($request);
+        $reply->setProducer($producer);
+        $reply->setStatus(ReplyStatus::Sent);
+        $this->em->persist($reply);
+        $this->switchOff($producerOwner, 'request_expiring_soon');
+        $this->em->flush();
+
+        $tester = $this->executeReminderCommand();
+
+        $countFor = fn (User $user) => (int) $this->em->getConnection()->fetchOne(
+            "SELECT count(*) FROM notification.notifications WHERE user_id = :id AND type = 'request_expiring_soon'",
+            ['id' => $user->getId()->toRfc4122()]
+        );
+        self::assertSame(1, $countFor($client));
+        self::assertSame(0, $countFor($producerOwner));
+        self::assertStringContainsString('1 rappel(s) de demande', $tester->getDisplay());
+    }
+
+    // * même chose côté client : seul le rappel du producteur part et se compte
+    public function testDoesNotRemindTheClientWhoSwitchedTheExpiryReminderOffAndDoesNotCountIt(): void
+    {
+        $country = $this->makeCountry();
+        $category = $this->makeCategory();
+        $product = $this->makeProduct($category);
+        $client = $this->makeUser('client');
+        $request = $this->makeClientRequest($client, $product);
+        $request->setExpiresAt(new \DateTimeImmutable('+1 day'));
+        $producerOwner = $this->makeUser('producer');
+        $producer = $this->makeProducerProfile($producerOwner, $country);
+        $reply = new ProducerReply();
+        $reply->setRequest($request);
+        $reply->setProducer($producer);
+        $reply->setStatus(ReplyStatus::Sent);
+        $this->em->persist($reply);
+        $this->switchOff($client, 'request_expiring_soon');
+        $this->em->flush();
+
+        $tester = $this->executeReminderCommand();
+
+        $countFor = fn (User $user) => (int) $this->em->getConnection()->fetchOne(
+            "SELECT count(*) FROM notification.notifications WHERE user_id = :id AND type = 'request_expiring_soon'",
+            ['id' => $user->getId()->toRfc4122()]
+        );
+        self::assertSame(0, $countFor($client));
+        self::assertSame(1, $countFor($producerOwner));
+        self::assertStringContainsString('1 rappel(s) de demande', $tester->getDisplay());
+    }
+
+    public function testDoesNotRemindWhoSwitchedTheRenewalReminderOffAndDoesNotCountIt(): void
+    {
+        $country = $this->makeCountry();
+        $owner = $this->makeUser('renewing');
+        $producer = $this->makeProducerProfile($owner, $country);
+        $this->makeActiveSubscription($producer, periodEnd: new \DateTimeImmutable('+3 days'));
+        $this->switchOff($owner, 'subscription_renewing_soon');
+        $this->em->flush();
+
+        $tester = $this->executeReminderCommand();
+
+        self::assertSame(0, $this->countRenewalReminders($owner));
+        self::assertStringContainsString("0 rappel(s) d'abonnement", $tester->getDisplay());
     }
 
     // * Un brouillon n'est pas une réponse envoyée, et un refus ne laisse rien à "attendre" : ni l'un ni l'autre ne doit

@@ -60,9 +60,9 @@ final class AccountController extends AbstractController
         if ($request->currency !== null) {
             $preference->setCurrency($request->currency);
         }
-        if ($request->emailNotifications !== null) {
+        if ($request->notifications !== null) {
             $settings = $preference->getNotificationSettings() ?? [];
-            $settings['email'] = [...NotificationPreferences::emailSettings($settings), ...$request->emailNotifications];
+            $settings['types'] = [...NotificationPreferences::settings($settings), ...$request->notifications];
             $preference->setNotificationSettings($settings);
         }
         $em->flush();
@@ -108,7 +108,7 @@ final class AccountController extends AbstractController
     }
 
     /**
-     * @return array{locale: string, currency: string, emailNotifications: array<string, bool>, supportEmail: string}
+     * @return array{locale: string, currency: string, notifications: array<string, bool>, supportEmail: string}
      */
     private function describe(User $user, PlatformSettings $platform): array
     {
@@ -117,7 +117,7 @@ final class AccountController extends AbstractController
         return [
             'locale' => $preference?->getLocale() ?? $user->getLocale(),
             'currency' => $preference?->getCurrency() ?? $platform->get(PlatformSettings::DEFAULT_CURRENCY),
-            'emailNotifications' => NotificationPreferences::emailSettings($preference?->getNotificationSettings()),
+            'notifications' => NotificationPreferences::settings($preference?->getNotificationSettings()),
             // * l'adresse du support est un réglage de l'admin (Paramètres de la plateforme) : l'écran Paramètres la lit ici
             'supportEmail' => $platform->get(PlatformSettings::SUPPORT_EMAIL),
         ];

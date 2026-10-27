@@ -66,7 +66,7 @@ final class AccountSettingsTest extends ApiTestCase
         $data = $this->json();
         self::assertSame('fr', $data['locale']);
         self::assertSame('EUR', $data['currency']);
-        self::assertSame(['new_relevant_request' => true, 'request_expiring_soon' => true, 'new_message' => true, 'payment_failed' => true, 'subscription_renewing_soon' => true, 'profile_validated' => true, 'new_review' => true], $data['emailNotifications']);
+        self::assertSame(['new_relevant_request' => true, 'request_expiring_soon' => true, 'new_message' => true, 'payment_failed' => true, 'subscription_renewing_soon' => true, 'profile_validated' => true, 'new_review' => true], $data['notifications']);
         // * l'adresse du support vient des réglages de la plateforme (admin), pas du front
         self::assertSame('support@trouvemoi.com', $data['supportEmail']);
         self::assertFalse($this->preferenceRow($user));
@@ -79,14 +79,14 @@ final class AccountSettingsTest extends ApiTestCase
         $this->em->flush();
         $this->em->getConnection()->executeStatement(
             'INSERT INTO identity.user_preferences (user_id, locale, notification_settings) VALUES (:id, \'fr\', :settings)',
-            ['id' => $user->getId()->toRfc4122(), 'settings' => json_encode(['email' => ['payment_failed' => false]])]
+            ['id' => $user->getId()->toRfc4122(), 'settings' => json_encode(['types' => ['payment_failed' => false]])]
         );
 
         $this->client->request('GET', '/api/me/preferences', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$this->login($user)]);
 
         self::assertSame(
             ['new_relevant_request' => true, 'request_expiring_soon' => true, 'new_message' => true, 'payment_failed' => false, 'subscription_renewing_soon' => true, 'profile_validated' => true, 'new_review' => true],
-            $this->json()['emailNotifications']
+            $this->json()['notifications']
         );
     }
 
@@ -107,21 +107,21 @@ final class AccountSettingsTest extends ApiTestCase
 
         $this->put('/api/me/preferences', $token, ['currency' => 'CHF']);
         self::assertResponseIsSuccessful();
-        $this->put('/api/me/preferences', $token, ['emailNotifications' => ['payment_failed' => false]]);
+        $this->put('/api/me/preferences', $token, ['notifications' => ['payment_failed' => false]]);
         self::assertResponseIsSuccessful();
         // * le second enregistrement ne reprend pas tous les interrupteurs : les autres restent à leur état
-        $this->put('/api/me/preferences', $token, ['emailNotifications' => ['subscription_renewing_soon' => false]]);
+        $this->put('/api/me/preferences', $token, ['notifications' => ['subscription_renewing_soon' => false]]);
 
         $data = $this->json();
         self::assertSame('CHF', $data['currency']);
         self::assertSame('fr', $data['locale']);
-        self::assertSame(['new_relevant_request' => true, 'request_expiring_soon' => true, 'new_message' => true, 'payment_failed' => false, 'subscription_renewing_soon' => false, 'profile_validated' => true, 'new_review' => true], $data['emailNotifications']);
+        self::assertSame(['new_relevant_request' => true, 'request_expiring_soon' => true, 'new_message' => true, 'payment_failed' => false, 'subscription_renewing_soon' => false, 'profile_validated' => true, 'new_review' => true], $data['notifications']);
 
         $this->client->request('GET', '/api/me/preferences', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
         self::assertSame($data, $this->json());
         $row = $this->preferenceRow($user);
         self::assertSame('CHF', $row['currency']);
-        self::assertSame(['email' => ['new_relevant_request' => true, 'request_expiring_soon' => true, 'new_message' => true, 'payment_failed' => false, 'subscription_renewing_soon' => false, 'profile_validated' => true, 'new_review' => true]], json_decode($row['notification_settings'], true));
+        self::assertSame(['types' => ['new_relevant_request' => true, 'request_expiring_soon' => true, 'new_message' => true, 'payment_failed' => false, 'subscription_renewing_soon' => false, 'profile_validated' => true, 'new_review' => true]], json_decode($row['notification_settings'], true));
     }
 
     public function testTheLanguageIsKeptOnThePreferencesAndOnTheAccount(): void
@@ -145,11 +145,11 @@ final class AccountSettingsTest extends ApiTestCase
         yield 'langue inconnue' => [['locale' => 'jp']];
         yield 'devise inconnue' => [['currency' => 'JPY']];
         yield 'devise en minuscules' => [['currency' => 'eur']];
-        yield 'notification inconnue' => [['emailNotifications' => ['type_de_demain' => false]]];
+        yield 'notification inconnue' => [['notifications' => ['type_de_demain' => false]]];
         // * partent toujours : ni le refus du profil, ni une notification de client ne se coupent
-        yield 'refus du profil, qui ne se coupe pas' => [['emailNotifications' => ['profile_rejected' => false]]];
-        yield 'notification de client, qui ne se coupe pas' => [['emailNotifications' => ['request_sent' => false]]];
-        yield 'interrupteur qui n’est pas un booléen' => [['emailNotifications' => ['payment_failed' => 'non']]];
+        yield 'refus du profil, qui ne se coupe pas' => [['notifications' => ['profile_rejected' => false]]];
+        yield 'notification de client, qui ne se coupe pas' => [['notifications' => ['request_sent' => false]]];
+        yield 'interrupteur qui n’est pas un booléen' => [['notifications' => ['payment_failed' => 'non']]];
     }
 
     /**

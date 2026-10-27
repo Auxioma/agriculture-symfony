@@ -76,14 +76,15 @@ final class NotificationServiceTest extends ApiTestCase
         yield 'nouvel avis client' => ['new_review'];
     }
 
+    // * un interrupteur coupé vaut pour les deux canaux : ni notification dans l'application, ni e-mail
     #[\PHPUnit\Framework\Attributes\DataProvider('typesTheUserCanSwitchOff')]
-    public function testASwitchedOffTypeKeepsTheInAppNotificationButSendsNoEmail(string $type): void
+    public function testASwitchedOffTypeSendsNothingOnAnyChannel(string $type): void
     {
         $recipient = $this->makeUser('farmer');
         $preference = new UserPreference();
         $preference->setIdUser($recipient);
         $preference->setLocale('fr');
-        $preference->setNotificationSettings(['email' => [$type => false]]);
+        $preference->setNotificationSettings(['types' => [$type => false]]);
         $recipient->setPreference($preference);
         $this->em->persist($preference);
         $this->em->flush();
@@ -91,9 +92,10 @@ final class NotificationServiceTest extends ApiTestCase
         $notification = static::getContainer()->get(NotificationService::class)->notify($recipient, $type, 'Titre', 'Corps du message.');
         $this->em->flush();
 
+        self::assertNull($notification);
         self::assertEmailCount(0);
-        $channels = $this->em->getConnection()->fetchFirstColumn('SELECT channel FROM notification.notification_deliveries WHERE notification_id = :id', ['id' => $notification->getId()->toRfc4122()]);
-        self::assertSame(['in_app'], $channels);
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM notification.notifications WHERE user_id = :id', ['id' => $recipient->getId()->toRfc4122()]));
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM notification.notification_deliveries d JOIN notification.notifications n ON n.id = d.notification_id WHERE n.user_id = :id', ['id' => $recipient->getId()->toRfc4122()]));
     }
 
     public function testOtherTypesAndOtherSwitchesStillSendTheEmail(): void
@@ -102,18 +104,21 @@ final class NotificationServiceTest extends ApiTestCase
         $preference = new UserPreference();
         $preference->setIdUser($recipient);
         $preference->setLocale('fr');
-        $preference->setNotificationSettings(['email' => ['payment_failed' => false]]);
+        $preference->setNotificationSettings(['types' => ['payment_failed' => false]]);
         $recipient->setPreference($preference);
         $this->em->persist($preference);
         $this->em->flush();
         $service = static::getContainer()->get(NotificationService::class);
 
-        // * un autre interrupteur, et un type que l'écran ne propose pas de couper : les deux partent
-        $service->notify($recipient, 'new_relevant_request', 'Nouvelle demande', 'Une demande vous correspond.');
-        $service->notify($recipient, 'profile_rejected', 'Profil non validé', "Votre profil producteur n'a pas été validé.");
+        // * un autre interrupteur, et un type que l'écran ne propose pas de couper : les deux partent, sur les deux canaux
+        $first = $service->notify($recipient, 'new_relevant_request', 'Nouvelle demande', 'Une demande vous correspond.');
+        $second = $service->notify($recipient, 'profile_rejected', 'Profil non validé', "Votre profil producteur n'a pas été validé.");
         $this->em->flush();
 
+        self::assertNotNull($first);
+        self::assertNotNull($second);
         self::assertEmailCount(2);
+        self::assertSame(2, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM notification.notifications WHERE user_id = :id', ['id' => $recipient->getId()->toRfc4122()]));
     }
 
     /**
@@ -131,20 +136,21 @@ final class NotificationServiceTest extends ApiTestCase
 
     // * même si une valeur "false" traîne en base pour ce type (écrite à la main, ou par une version plus ancienne de l'écran)
     #[\PHPUnit\Framework\Attributes\DataProvider('typesTheUserCannotSwitchOff')]
-    public function testATypeTheScreenDoesNotOfferAlwaysSendsTheEmail(string $type): void
+    public function testATypeTheScreenDoesNotOfferAlwaysSendsOnBothChannels(string $type): void
     {
         $recipient = $this->makeUser('farmer');
         $preference = new UserPreference();
         $preference->setIdUser($recipient);
         $preference->setLocale('fr');
-        $preference->setNotificationSettings(['email' => [$type => false]]);
+        $preference->setNotificationSettings(['types' => [$type => false]]);
         $recipient->setPreference($preference);
         $this->em->persist($preference);
         $this->em->flush();
 
-        static::getContainer()->get(NotificationService::class)->notify($recipient, $type, 'Titre', 'Corps du message.');
+        $notification = static::getContainer()->get(NotificationService::class)->notify($recipient, $type, 'Titre', 'Corps du message.');
         $this->em->flush();
 
+        self::assertNotNull($notification);
         self::assertEmailCount(1);
     }
 

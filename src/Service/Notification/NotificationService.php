@@ -23,8 +23,13 @@ final readonly class NotificationService
 
     // * Ne flush pas : le contrôleur appelant décide du moment (même convention que le reste de l'API --
     // * un seul flush() en fin de méthode, après toutes les opérations).
-    public function notify(User $recipient, string $type, string $title, string $body, array $data = []): Notification
+    // * Un interrupteur coupé dans Paramètres (NotificationPreferences) coupe les deux canaux : rien n'est créé, et on rend null.
+    public function notify(User $recipient, string $type, string $title, string $body, array $data = []): ?Notification
     {
+        if (!NotificationPreferences::enabled($recipient, $type)) {
+            return null;
+        }
+
         $notification = new Notification();
         $notification->setIdUser($recipient);
         $notification->setType($type);
@@ -41,8 +46,7 @@ final readonly class NotificationService
         $this->em->persist($inAppDelivery);
 
         // * un compte supprimé n'a plus d'adresse (deleted+...@anonymized.local) : l'e-mail partirait dans le vide et reviendrait en erreur.
-        // * Un interrupteur coupé dans Paramètres (NotificationPreferences) retire l'e-mail, pas la notification dans l'application.
-        if ($recipient->getStatus() !== UserStatus::Deleted && NotificationPreferences::emailEnabled($recipient, $type)) {
+        if ($recipient->getStatus() !== UserStatus::Deleted) {
             $this->sendEmail($notification, $recipient, $title, $body);
         }
 

@@ -93,11 +93,14 @@ final class SendExpiryRemindersCommand extends Command
             $requestId = $request->getId()->toRfc4122();
 
             if (!$this->alreadyNotified($request->getClient(), 'request_expiring_soon', ['requestId' => $requestId])) {
-                $this->notificationService->notify(
+                $sent = $this->notificationService->notify(
                     $request->getClient(), 'request_expiring_soon', 'Demande expirant bientôt',
                     'Votre demande arrive bientôt à expiration.', ['requestId' => $requestId]
                 );
-                ++$count;
+                // * null : le destinataire a coupé cette notification dans Paramètres, rien n'est parti
+                if (null !== $sent) {
+                    ++$count;
+                }
             }
 
             // * Le producteur n'est concerné que s'il s'est déjà engagé (une réponse envoyée, pas un brouillon ni un
@@ -115,11 +118,13 @@ final class SendExpiryRemindersCommand extends Command
                 $notifiedProducers[$producerId] = true;
 
                 if (!$this->alreadyNotified($producer->getOwner(), 'request_expiring_soon', ['requestId' => $requestId])) {
-                    $this->notificationService->notify(
+                    $sent = $this->notificationService->notify(
                         $producer->getOwner(), 'request_expiring_soon', 'Demande expirant bientôt',
                         'Une demande à laquelle vous avez répondu arrive bientôt à expiration.', ['requestId' => $requestId]
                     );
-                    ++$count;
+                    if (null !== $sent) {
+                        ++$count;
+                    }
                 }
             }
         }
@@ -152,12 +157,14 @@ final class SendExpiryRemindersCommand extends Command
             ];
 
             if (!$this->alreadyNotified($owner, 'subscription_renewing_soon', $renewal)) {
-                $this->notificationService->notify(
+                $sent = $this->notificationService->notify(
                     $owner, 'subscription_renewing_soon', 'Abonnement bientôt renouvelé',
                     \sprintf('Votre abonnement sera renouvelé le %s.', $periodEnd->setTimezone(new \DateTimeZone(self::DISPLAY_TIMEZONE))->format('d/m/Y')),
                     $renewal
                 );
-                ++$count;
+                if (null !== $sent) {
+                    ++$count;
+                }
             }
         }
 
