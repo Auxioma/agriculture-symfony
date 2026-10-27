@@ -1057,6 +1057,12 @@ parameters:
 			path: tests/Functional/Controller/Messaging/ConversationControllerTest.php
 
 		-
+			message: '#^Method App\\Tests\\Functional\\Controller\\Messaging\\ProducerConversationControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: tests/Functional/Controller/Messaging/ProducerConversationControllerTest.php
+
+		-
 			message: '#^Method App\\Tests\\Functional\\Controller\\Notification\\NotificationControllerTest\:\:makeActiveSubscription\(\) has parameter \$features with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
