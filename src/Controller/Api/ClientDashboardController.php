@@ -2,12 +2,13 @@
 
 namespace App\Controller\Api;
 
+use App\Entity\Identity\User;
 use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
-use App\Entity\Identity\User;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 
 #[Route('/api/client')]
@@ -29,6 +30,39 @@ final class ClientDashboardController extends AbstractController
             'messages'  => $this->latestMessages($uid),
             'favorites' => $this->favorites($uid),
         ]);
+    }
+
+    #[Route('/requests', methods: ['GET'])]
+    public function listMyRequests(
+        #[CurrentUser] User $client,
+        Request $request,
+        EntityManagerInterface $em,
+    ): JsonResponse {
+        $rows = $em->getConnection()->fetchAllAssociative(<<<'SQL'
+            SELECT cr.id, cr.status, cr.created_at, cr.quantity, u.code AS unit,
+                COALESCE(pt.name, cr.custom_product) AS product_name
+            FROM matching.client_requests cr
+            LEFT JOIN catalog.product_translations pt
+                ON pt.product_id = cr.product_id AND pt.locale = :locale
+            LEFT JOIN catalog.units u ON u.id = cr.unit_id
+            WHERE cr.client_id = :uid::uuid
+            AND cr.status NOT IN ('draft', 'cancelled')
+            ORDER BY cr.created_at DESC
+        SQL, [
+            'uid'    => $client->getId()->toRfc4122(),
+            'locale' => $request->query->get('locale', 'fr'),
+        ]);
+
+        return $this->json(array_map(static function (array $r): array {
+            $qty = $r['quantity'] !== null ? rtrim(rtrim((string) $r['quantity'], '0'), '.') : null;
+
+            return [
+                'id'     => $r['id'],
+                'title'  => trim(($r['product_name'] ?? '') . ($qty ? " - {$qty}{$r['unit']}" : '')),
+                'status' => $r['status'], // statut brut : le front décide du libellé et de la couleur
+                'sentAt' => (new \DateTimeImmutable($r['created_at']))->format(DATE_ATOM),
+            ];
+        }, $rows));
     }
 
     private function counters(string $uid): array
