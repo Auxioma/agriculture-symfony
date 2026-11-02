@@ -73,6 +73,12 @@ final class ConversationControllerTest extends ApiTestCase
             ['requestId' => $requestId]
         );
 
+        // * Le texte de la réponse est le premier message du fil (voir ProducerRequestController::replyToRequest()).
+        $this->em->getConnection()->executeStatement(
+            "UPDATE messaging.messages SET created_at = created_at - interval '1 minute' WHERE conversation_id = :id",
+            ['id' => $conversationId]
+        );
+
         // * Plus simple de relire le client depuis la conversation fraîchement créée que de garder une
         // * référence à l'entité User d'origine, détachée depuis longtemps par les multiples requêtes HTTP
         // * ci-dessus (voir le commentaire ! plus haut sur $producer).
@@ -112,8 +118,8 @@ final class ConversationControllerTest extends ApiTestCase
 
         self::assertResponseIsSuccessful();
         $data = json_decode($this->client->getResponse()->getContent(), true);
-        self::assertCount(1, $data['messages']);
-        self::assertSame('Bonjour, toujours disponible ?', $data['messages'][0]['content']);
+        // * Le texte de la réponse du producteur ouvre le fil, le message du client vient après.
+        self::assertSame(['Oui disponible', 'Bonjour, toujours disponible ?'], array_column($data['messages'], 'content'));
     }
 
     public function testGetConversationRejectsNonParticipant(): void
@@ -325,7 +331,8 @@ final class ConversationControllerTest extends ApiTestCase
 
         $this->client->request('GET', '/api/conversations', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$tokenClient]);
         $asClient = json_decode($this->client->getResponse()->getContent(), true);
-        self::assertSame(1, $asClient[0]['unreadCount']);
+        // * La réponse du producteur et son message de chat : deux messages non lus.
+        self::assertSame(2, $asClient[0]['unreadCount']);
 
         // * Ouvrir la conversation marque le message comme lu : le compteur doit retomber à 0.
         $this->client->request('GET', '/api/conversations/'.$conversationId, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$tokenClient]);

@@ -13,6 +13,7 @@ use App\Entity\Matching\RequestAttachment;
 use App\Entity\Matching\RequestEvent;
 use App\Entity\Matching\RequestMatch;
 use App\Entity\Messaging\Conversation;
+use App\Entity\Messaging\Message;
 use App\Entity\Trust\Report;
 use App\Enum\MatchStatus;
 use App\Enum\ReplyStatus;
@@ -302,6 +303,8 @@ final class ProducerRequestController extends AbstractController
                 $em->persist($conversation);
             }
 
+            $this->postReplyInConversation($conversation, $reply, $producer->getOwner(), $em);
+
             $notificationService->notify(
                 $clientRequest->getClient(),
                 $requestDto->priceAmount !== null ? 'quote_received' : 'producer_replied',
@@ -314,6 +317,50 @@ final class ProducerRequestController extends AbstractController
         $em->flush();
 
         return $this->json(['id' => $reply->getId()->toRfc4122(), 'status' => $reply->getStatus()->value], 201);
+    }
+
+    /**
+     * Le texte de la réponse est le premier message du fil : le client qui ouvre le chat y trouve ce que le producteur lui a écrit
+     * (avant, la conversation s'ouvrait vide). Sans texte, avec un prix seul, un message système résume le devis ("Devis : 12 €/kg") ;
+     * la quantité, les conditions et les pièces jointes restent dans la réponse. Pas de notification "nouveau message" en plus : le
+     * client est déjà prévenu par "Devis reçu" ou "Un producteur a répondu".
+     */
+    private function postReplyInConversation(Conversation $conversation, ProducerReply $reply, User $owner, EntityManagerInterface $em): void
+    {
+        $text = trim((string) $reply->getReplyText());
+        if ($text !== '') {
+            $sender = $owner;
+            $content = $text;
+        } elseif ($reply->getPriceAmount() !== null) {
+            $sender = null;
+            $content = 'Devis : '.$this->priceSummary($reply);
+        } else {
+            return;
+        }
+
+        $message = new Message();
+        $message->setConversation($conversation);
+        $message->setSender($sender);
+        $message->setContent($content);
+        $message->setIsSystem($sender === null);
+        $em->persist($message);
+
+        // * Sans cela la conversation reste mal triée dans la liste (GET /api/conversations).
+        $conversation->setLastMessageAt(new \DateTimeImmutable());
+    }
+
+    /**
+     * "12 €/kg", "12,50 €/kg" ; sans devise ou sans unité, on n'écrit que ce qu'on sait ("12/kg", "12 €").
+     */
+    private function priceSummary(ProducerReply $reply): string
+    {
+        $amount = (float) $reply->getPriceAmount();
+        $price = floor($amount) === $amount ? (string) (int) $amount : number_format($amount, 2, ',', ' ');
+        $currency = $reply->getCurrency();
+        $symbol = $currency?->getSymbol() ?? $currency?->getCode();
+        $unit = $reply->getPriceUnit()?->getCode();
+
+        return $price.($symbol !== null ? ' '.$symbol : '').($unit !== null ? '/'.$unit : '');
     }
 
     /**
