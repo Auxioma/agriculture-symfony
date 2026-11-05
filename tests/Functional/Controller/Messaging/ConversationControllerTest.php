@@ -2,10 +2,12 @@
 
 namespace App\Tests\Functional\Controller\Messaging;
 
+use App\Entity\Catalog\Country;
 use App\Entity\Identity\User;
 use App\Entity\Messaging\BlockedUser;
 use App\Entity\Producer\ProducerProfile;
 use App\Tests\ApiTestCase;
+use App\Tests\Fixtures\DefaultReferenceDataTrait;
 use App\Tests\Fixtures\EntityFactoryTrait;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
@@ -15,7 +17,14 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
  */
 final class ConversationControllerTest extends ApiTestCase
 {
+    use DefaultReferenceDataTrait;
     use EntityFactoryTrait;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedDefaultReferenceData($this->em->getConnection());
+    }
 
     /**
      * Fait exister une conversation ouverte via le flux réel (demande, matching, réponse producteur) plutôt
@@ -28,7 +37,8 @@ final class ConversationControllerTest extends ApiTestCase
     {
         $tokenClient = $this->registerClientAndLogin('client');
 
-        $country = $this->makeCountry();
+        // * FR est déjà inséré par setUp() : makeCountry() tenterait de le recréer (clé primaire dupliquée).
+        $country = $this->em->find(Country::class, 'FR');
         $category = $this->makeCategory();
         $product = $this->makeProduct($category);
         $producerOwner = $this->makeUserWithPassword('producer', 'motdepasse123');
@@ -48,6 +58,8 @@ final class ConversationControllerTest extends ApiTestCase
             'latitude' => 48.86,
             'longitude' => 2.36,
         ]));
+        // * Garde-fou : sans lui, un échec de création ferait planter chaque test plus loin ("requests//reply").
+        self::assertResponseStatusCodeSame(201);
         $requestId = json_decode($this->client->getResponse()->getContent(), true)['id'];
 
         $this->client->request('POST', '/api/auth/login', server: ['CONTENT_TYPE' => 'application/json'], content: json_encode([

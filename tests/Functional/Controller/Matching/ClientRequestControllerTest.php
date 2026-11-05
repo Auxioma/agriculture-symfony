@@ -2,8 +2,11 @@
 
 namespace App\Tests\Functional\Controller\Matching;
 
+use App\Entity\Catalog\Country;
 use App\Tests\ApiTestCase;
+use App\Tests\Fixtures\DefaultReferenceDataTrait;
 use App\Tests\Fixtures\EntityFactoryTrait;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * Teste POST /api/requests (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf -- premier volet
@@ -13,7 +16,16 @@ use App\Tests\Fixtures\EntityFactoryTrait;
 
 final class ClientRequestControllerTest extends ApiTestCase
 {
+    use DefaultReferenceDataTrait;
     use EntityFactoryTrait;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // * Le contrôleur applique EUR / FR par défaut : sans ces lignes en base, tout POST/PUT sans
+        // * currencyCode/countryCode répond 422.
+        $this->seedDefaultReferenceData($this->em->getConnection());
+    }
 
     public function testCreateRequestWithProductSucceeds(): void
     {
@@ -48,7 +60,8 @@ final class ClientRequestControllerTest extends ApiTestCase
     {
         $token = $this->registerClientAndLogin();
 
-        $country = $this->makeCountry();
+        // * FR est déjà inséré par setUp() : makeCountry() tenterait de le recréer (clé primaire dupliquée).
+        $country = $this->em->find(Country::class, 'FR');
         $category = $this->makeCategory();
         $product = $this->makeProduct($category);
         $producer = $this->makeProducerProfile($this->makeUser('producer'), $country);
@@ -87,8 +100,8 @@ final class ClientRequestControllerTest extends ApiTestCase
     {
         $token = $this->registerClientAndLogin();
 
-        // * customProduct seul suffit : la règle du contrôleur n'exige category OU product OU customProduct,
-        // * pas les trois -- ce test vérifie spécifiquement la branche "aucun des trois autres".
+        // * customProduct seul suffit : la règle du contrôleur exige productId OU customProduct (categoryId
+        // * seul ne suffit pas, voir testCreateRequestRejectsCategoryOnly) -- ce test couvre la branche "customProduct seul".
         $this->client->request('POST', '/api/requests', server: [
             'CONTENT_TYPE' => 'application/json',
             'HTTP_AUTHORIZATION' => 'Bearer '.$token,
@@ -129,8 +142,80 @@ final class ClientRequestControllerTest extends ApiTestCase
         ], content: json_encode([
             'needType' => 'price_request',
             'customProduct' => 'Peu importe',
-            'categoryId' => \Symfony\Component\Uid\Uuid::v4()->toRfc4122(),
+            'categoryId' => Uuid::v4()->toRfc4122(),
         ]));
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testCreateRequestAppliesDefaultCurrencyAndCountry(): void
+    {
+        $token = $this->registerClientAndLogin();
+
+        $this->client->request('POST', '/api/requests', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Valeurs par défaut']));
+
+        self::assertResponseStatusCodeSame(201);
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT currency, country_code FROM matching.client_requests WHERE id = :id',
+            ['id' => $data['id']]
+        );
+        self::assertSame('EUR', $row['currency']);
+        self::assertSame('FR', $row['country_code']);
+    }
+
+    public function testCreateRequestRejectsUnknownCurrency(): void
+    {
+        $token = $this->registerClientAndLogin();
+
+        $this->client->request('POST', '/api/requests', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Test', 'currencyCode' => 'ZZZ']));
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testCreateRequestRejectsUnknownCountry(): void
+    {
+        $token = $this->registerClientAndLogin();
+
+        $this->client->request('POST', '/api/requests', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Test', 'countryCode' => 'ZZ']));
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    // * Garde-fou : categoryId seul violerait chk_client_requests_product_or_custom (500 en base).
+    // * Le contrôleur doit répondre 422 avant d'atteindre la base.
+    public function testCreateRequestRejectsCategoryOnly(): void
+    {
+        $token = $this->registerClientAndLogin();
+        $category = $this->makeCategory();
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/requests', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['needType' => 'price_request', 'categoryId' => $category->getId()->toRfc4122()]));
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testCreateRequestRejectsUnknownProduct(): void
+    {
+        $token = $this->registerClientAndLogin();
+
+        $this->client->request('POST', '/api/requests', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], content: json_encode(['needType' => 'price_request', 'productId' => Uuid::v4()->toRfc4122()]));
 
         self::assertResponseStatusCodeSame(422);
     }
@@ -193,8 +278,26 @@ final class ClientRequestControllerTest extends ApiTestCase
 
         self::assertResponseIsSuccessful();
         $data = json_decode($this->client->getResponse()->getContent(), true);
-        self::assertCount(1, $data);
-        self::assertSame('Demande B', $data[0]['customProduct']);
+        // * Format servi par ClientDashboardController::listMyRequests (qui a la priorité sur le même chemin) :
+        // * {id, title, status, sentAt}. "title" = nom du produit (ou customProduct) + quantité éventuelle.
+        // * array_column() : en cas d'échec, PHPUnit affiche le contenu réel plutôt qu'un simple "null".
+        self::assertSame(['Demande B'], array_column($data, 'title'), json_encode($data));
+        self::assertSame('sent', $data[0]['status']);
+    }
+
+    // * Le dashboard masque les brouillons et les demandes annulées (WHERE status NOT IN ('draft', 'cancelled')).
+    public function testListMyRequestsExcludesCancelledRequests(): void
+    {
+        $token = $this->registerClientAndLogin();
+        $this->client->request('POST', '/api/requests', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['needType' => 'price_request', 'customProduct' => 'À masquer']));
+        $created = json_decode($this->client->getResponse()->getContent(), true);
+
+        $this->client->request('POST', '/api/client/requests/'.$created['id'].'/cancel', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        self::assertResponseIsSuccessful();
+
+        $this->client->request('GET', '/api/client/requests', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        self::assertResponseIsSuccessful();
+        self::assertSame([], json_decode($this->client->getResponse()->getContent(), true));
     }
 
     public function testGetRequestDetailReturnsFullData(): void
@@ -233,7 +336,7 @@ final class ClientRequestControllerTest extends ApiTestCase
     {
         $token = $this->registerClientAndLogin();
 
-        $this->client->request('GET', '/api/client/requests/'.\Symfony\Component\Uid\Uuid::v4()->toRfc4122(), server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        $this->client->request('GET', '/api/client/requests/'.Uuid::v4()->toRfc4122(), server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
 
         self::assertResponseStatusCodeSame(404);
     }
@@ -364,7 +467,7 @@ final class ClientRequestControllerTest extends ApiTestCase
     {
         $token = $this->registerClientAndLogin();
 
-        $this->client->request('PUT', '/api/client/requests/'.\Symfony\Component\Uid\Uuid::v4()->toRfc4122(), server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Fantôme']));
+        $this->client->request('PUT', '/api/client/requests/'.Uuid::v4()->toRfc4122(), server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Fantôme']));
 
         self::assertResponseStatusCodeSame(404);
     }

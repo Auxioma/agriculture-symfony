@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Dto\Profile;
+namespace App\Dto\ProfileClient;
 
 use Symfony\Component\Validator\Constraints as Assert;
 

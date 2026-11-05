@@ -8,6 +8,8 @@ use App\Entity\Trust\Review;
 use App\Enum\ReviewStatus;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
+use App\Tests\Fixtures\DefaultReferenceDataTrait;
+use App\Entity\Catalog\Country;
 
 /**
  * Teste POST /api/reviews, GET /api/producers/{id}/reviews et POST /api/reviews/{id}/response
@@ -16,6 +18,13 @@ use App\Tests\Fixtures\EntityFactoryTrait;
 final class ReviewControllerTest extends ApiTestCase
 {
     use EntityFactoryTrait;
+    use DefaultReferenceDataTrait;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedDefaultReferenceData($this->em->getConnection());
+    }
 
     /**
      * Même flux réel que ConversationControllerTest::setUpOpenConversation() (demande, matching, réponse
@@ -28,7 +37,8 @@ final class ReviewControllerTest extends ApiTestCase
     {
         $tokenClient = $this->registerClientAndLogin('client');
 
-        $country = $this->makeCountry();
+        // * FR est déjà inséré par setUp() : makeCountry() tenterait de le recréer (clé primaire dupliquée).
+        $country = $this->em->find(Country::class, 'FR');
         $category = $this->makeCategory();
         $product = $this->makeProduct($category);
         $producerOwner = $this->makeUserWithPassword('producer', 'motdepasse123');

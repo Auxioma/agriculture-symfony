@@ -2,9 +2,9 @@
 
 namespace App\Controller\Api;
 
-use App\Dto\Profile\AddressRequest;
-use App\Dto\Profile\ChangePasswordRequest;
-use App\Dto\Profile\UpdatePreferencesRequest;
+use App\Dto\ProfileClient\AddressRequest;
+use App\Dto\ProfileClient\ChangePasswordRequest;
+use App\Dto\ProfileClient\UpdatePreferencesRequest;
 use App\Entity\Identity\User;
 use App\Entity\Identity\UserAddress;
 use App\Entity\Identity\UserPreference;
