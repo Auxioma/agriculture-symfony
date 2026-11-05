@@ -21,7 +21,6 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
-use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use App\Service\Audit\AuditLogger;
@@ -29,6 +28,7 @@ use App\Service\Audit\AuditLogger;
 class ConversationCrudController extends AbstractCrudController
 {
     use EagerAssociationJoinTrait;
+    use CsrfPostActionTrait;
 
     public function __construct(
         private readonly EntityManagerInterface $em,
@@ -97,12 +97,12 @@ class ConversationCrudController extends AbstractCrudController
         // * displayIf exige Reported, comme assertConversationIsReported() : une fois traitée (rouverte ou
         // * clôturée), la conversation sort du statut "signalé" et disparaît donc de cette liste (filtrée
         // * par createIndexQueryBuilder) -- elle ne peut jamais être re-présentée à ces actions après coup.
-        $reopen = Action::new('reopen', 'Rouvrir')
-            ->linkToCrudAction('reopenConversation')
+        // * Formulaires POST avec jeton (CsrfPostActionTrait), plus des liens GET.
+        $reopen = $this->postAction('reopen', 'Rouvrir', 'reopenConversation')
             ->displayIf(fn (Conversation $c) => ConversationStatus::Reported === $c->getStatus());
 
-        $close = Action::new('close', 'Clôturer')
-            ->linkToCrudAction('closeConversation')
+        $close = $this->postAction('close', 'Clôturer', 'closeConversation')
+            ->askConfirmation('Clôturer cette conversation ?', 'Clôturer')
             ->displayIf(fn (Conversation $c) => ConversationStatus::Reported === $c->getStatus());
 
         return $actions
@@ -111,9 +111,10 @@ class ConversationCrudController extends AbstractCrudController
             ->add(Crud::PAGE_INDEX, $close)->add(Crud::PAGE_DETAIL, $close);
     }
 
-    #[AdminRoute(path: '/{entityId}/reopen', name: 'reopen')]
+    #[AdminRoute(path: '/{entityId}/reopen', name: 'reopen', options: ['methods' => ['POST']])]
     public function reopenConversation(AdminContext $context): Response
     {
+        $this->assertPostWithToken($context);
         $conversation = $context->getEntity()->getInstance();
         $this->assertConversationIsReported($conversation);
         $conversation->setStatus(ConversationStatus::Open);
@@ -124,9 +125,10 @@ class ConversationCrudController extends AbstractCrudController
         return $this->redirectToIndex();
     }
 
-    #[AdminRoute(path: '/{entityId}/close', name: 'close')]
+    #[AdminRoute(path: '/{entityId}/close', name: 'close', options: ['methods' => ['POST']])]
     public function closeConversation(AdminContext $context): Response
     {
+        $this->assertPostWithToken($context);
         $conversation = $context->getEntity()->getInstance();
         $this->assertConversationIsReported($conversation);
         $conversation->setStatus(ConversationStatus::Closed);
@@ -142,16 +144,5 @@ class ConversationCrudController extends AbstractCrudController
         if (null === $conversation || ConversationStatus::Reported !== $conversation->getStatus()) {
             throw new AccessDeniedHttpException("Cette conversation n'est pas signalée.");
         }
-    }
-
-    private function redirectToIndex(): Response
-    {
-        return $this->redirect(
-            $this->container->get(AdminUrlGenerator::class)
-                ->setController(self::class)
-                ->setAction(Action::INDEX)
-                ->unset('entityId')
-                ->generateUrl()
-        );
     }
 }

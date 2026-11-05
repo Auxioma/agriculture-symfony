@@ -1,0 +1,3 @@
+{# Champ virtuel dont formatValue() fabrique le texte : on affiche field.formattedValue. Le gabarit natif de
+   EasyAdmin bascule sur son "Aucun(e)" quand field.value est null, et un champ virtuel a toujours une valeur null. #}
+{{ field.formattedValue ?? '—' }}

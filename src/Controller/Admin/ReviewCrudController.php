@@ -33,7 +33,6 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
 use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
-use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -47,6 +46,7 @@ class ReviewCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;
     use EagerAssociationJoinTrait;
+    use CsrfPostActionTrait;
 
     public function __construct(
         private readonly EntityManagerInterface $em,
@@ -114,12 +114,11 @@ class ReviewCrudController extends AbstractCrudController
     // * uniquement par Publier/Rejeter ci-dessous.
     public function configureActions(Actions $actions): Actions
     {
-        $publish = Action::new('publish', 'Publier')
-            ->linkToCrudAction('publishReview')
+        // * Formulaires POST avec jeton (CsrfPostActionTrait), plus des liens GET.
+        $publish = $this->postAction('publish', 'Publier', 'publishReview')
             ->displayIf(fn (Review $r) => ReviewStatus::Pending === $r->getStatus());
 
-        $reject = Action::new('reject', 'Rejeter')
-            ->linkToCrudAction('rejectReview')
+        $reject = $this->postAction('reject', 'Rejeter', 'rejectReview')
             ->displayIf(fn (Review $r) => ReviewStatus::Pending === $r->getStatus());
 
         return $actions
@@ -128,9 +127,10 @@ class ReviewCrudController extends AbstractCrudController
             ->add(Crud::PAGE_INDEX, $reject)->add(Crud::PAGE_DETAIL, $reject);
     }
 
-    #[AdminRoute(path: '/{entityId}/publish', name: 'publish')]
+    #[AdminRoute(path: '/{entityId}/publish', name: 'publish', options: ['methods' => ['POST']])]
     public function publishReview(AdminContext $context): Response
     {
+        $this->assertPostWithToken($context);
         $review = $context->getEntity()->getInstance();
         $this->assertReviewIsPending($review);
         $review->setStatus(ReviewStatus::Published);
@@ -141,9 +141,10 @@ class ReviewCrudController extends AbstractCrudController
         return $this->redirectToIndex();
     }
 
-    #[AdminRoute(path: '/{entityId}/reject', name: 'reject')]
+    #[AdminRoute(path: '/{entityId}/reject', name: 'reject', options: ['methods' => ['POST']])]
     public function rejectReview(AdminContext $context): Response
     {
+        $this->assertPostWithToken($context);
         $review = $context->getEntity()->getInstance();
         $this->assertReviewIsPending($review);
         $review->setStatus(ReviewStatus::Rejected);
@@ -159,16 +160,5 @@ class ReviewCrudController extends AbstractCrudController
         if (null === $review || ReviewStatus::Pending !== $review->getStatus()) {
             throw new AccessDeniedHttpException("Cet avis n'est plus en attente de modération.");
         }
-    }
-
-    private function redirectToIndex(): Response
-    {
-        return $this->redirect(
-            $this->container->get(AdminUrlGenerator::class)
-                ->setController(self::class)
-                ->setAction(Action::INDEX)
-                ->unset('entityId')
-                ->generateUrl()
-        );
     }
 }

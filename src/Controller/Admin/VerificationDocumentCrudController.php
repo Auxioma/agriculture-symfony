@@ -34,7 +34,6 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
-use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
@@ -46,6 +45,7 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 class VerificationDocumentCrudController extends AbstractCrudController
 {
     use EagerAssociationJoinTrait;
+    use CsrfPostActionTrait;
 
     public function __construct(
         private readonly EntityManagerInterface $em,
@@ -96,12 +96,11 @@ class VerificationDocumentCrudController extends AbstractCrudController
 
     public function configureActions(Actions $actions): Actions
     {
-        $approve = Action::new('approve', 'Approuver')
-            ->linkToCrudAction('approveDocument')
+        // * Formulaires POST avec jeton (CsrfPostActionTrait), plus des liens GET.
+        $approve = $this->postAction('approve', 'Approuver', 'approveDocument')
             ->displayIf(fn (VerificationDocument $d) => VerificationDocumentStatus::Pending === $d->getStatus());
 
-        $reject = Action::new('reject', 'Rejeter')
-            ->linkToCrudAction('rejectDocument')
+        $reject = $this->postAction('reject', 'Rejeter', 'rejectDocument')
             ->displayIf(fn (VerificationDocument $d) => VerificationDocumentStatus::Pending === $d->getStatus());
 
         return $actions
@@ -110,9 +109,10 @@ class VerificationDocumentCrudController extends AbstractCrudController
             ->add(Crud::PAGE_INDEX, $reject)->add(Crud::PAGE_DETAIL, $reject);
     }
 
-    #[AdminRoute(path: '/{entityId}/approve', name: 'approve')]
+    #[AdminRoute(path: '/{entityId}/approve', name: 'approve', options: ['methods' => ['POST']])]
     public function approveDocument(AdminContext $context, #[CurrentUser] User $admin): Response
     {
+        $this->assertPostWithToken($context);
         $document = $context->getEntity()->getInstance();
         $this->assertPending($document);
 
@@ -136,9 +136,10 @@ class VerificationDocumentCrudController extends AbstractCrudController
         return $this->redirectToIndex();
     }
 
-    #[AdminRoute(path: '/{entityId}/reject', name: 'reject')]
+    #[AdminRoute(path: '/{entityId}/reject', name: 'reject', options: ['methods' => ['POST']])]
     public function rejectDocument(AdminContext $context, #[CurrentUser] User $admin): Response
     {
+        $this->assertPostWithToken($context);
         $document = $context->getEntity()->getInstance();
         $this->assertPending($document);
 
@@ -158,16 +159,5 @@ class VerificationDocumentCrudController extends AbstractCrudController
         if (null === $document || VerificationDocumentStatus::Pending !== $document->getStatus()) {
             throw new AccessDeniedHttpException("Ce document n'est plus en attente de modération.");
         }
-    }
-
-    private function redirectToIndex(): Response
-    {
-        return $this->redirect(
-            $this->container->get(AdminUrlGenerator::class)
-                ->setController(self::class)
-                ->setAction(Action::INDEX)
-                ->unset('entityId')
-                ->generateUrl()
-        );
     }
 }

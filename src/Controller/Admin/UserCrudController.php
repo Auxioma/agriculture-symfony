@@ -22,14 +22,15 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\EmailField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
-use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use App\Service\Audit\AuditLogger;
 
 class UserCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;
     use EagerAssociationJoinTrait;
+    use CsrfPostActionTrait;
 
     public function __construct(private readonly AuditLogger $auditLogger)
     {
@@ -112,8 +113,9 @@ class UserCrudController extends AbstractCrudController
     // * irréversible) ni EDIT (statut, blocage de compte) -- des décisions d'admin, pas de simples consultations.
     public function configureActions(Actions $actions): Actions
     {
-        $anonymize = Action::new('anonymize', 'Anonymiser')
-            ->linkToCrudAction('anonymizeUser')
+        // * Irréversible : formulaire POST avec jeton (CsrfPostActionTrait) et fenêtre de confirmation.
+        $anonymize = $this->postAction('anonymize', 'Anonymiser', 'anonymizeUser')
+            ->askConfirmation('Anonymiser cet utilisateur ? Cette action est irréversible.', 'Anonymiser')
             ->displayIf(static fn (User $user) => $user->getStatus() !== UserStatus::Deleted);
 
         return $actions
@@ -124,10 +126,19 @@ class UserCrudController extends AbstractCrudController
             ->setPermission('anonymize', 'ROLE_ADMIN');
     }
 
-    #[AdminRoute(path: '/{entityId}/anonymize', name: 'anonymize')]
+    #[AdminRoute(path: '/{entityId}/anonymize', name: 'anonymize', options: ['methods' => ['POST']])]
     public function anonymizeUser(AdminContext $context, EntityManagerInterface $em): Response
     {
+        $this->assertPostWithToken($context);
         $user = $context->getEntity()->getInstance();
+        // * displayIf ne fait que cacher le bouton : un POST direct passait, y compris sur son propre compte.
+        $admin = $this->getUser();
+        if ($admin instanceof User && $admin->getId()->equals($user->getId())) {
+            throw new AccessDeniedHttpException('Vous ne pouvez pas anonymiser votre propre compte.');
+        }
+        if (UserStatus::Deleted === $user->getStatus()) {
+            throw new AccessDeniedHttpException('Ce compte est déjà anonymisé.');
+        }
         $userId = $user->getId()->toRfc4122();
         $em->getConnection()->executeStatement('SELECT identity.anonymize_user(:userId)', ['userId' => $userId]);
         $this->auditLogger->log('user_anonymized', 'identity', 'users', $userId);
@@ -135,13 +146,7 @@ class UserCrudController extends AbstractCrudController
 
         $this->addFlash('success', 'Utilisateur anonymisé.');
 
-        return $this->redirect(
-            $this->container->get(AdminUrlGenerator::class)
-                ->setController(self::class)
-                ->setAction(Action::INDEX)
-                ->unset('entityId')
-                ->generateUrl()
-        );
+        return $this->redirectToIndex();
     }
 
     // * Couvre le "blocage compte" (cahier DevOps) même quand il passe par le formulaire générique
