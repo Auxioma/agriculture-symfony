@@ -264,7 +264,7 @@ class AuthControllerTest extends ApiTestCase
         ]));
         $token = json_decode($this->client->getResponse()->getContent(), true)['token'];
 
-        $this->client->request('DELETE', '/api/me', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        $this->client->request('DELETE', '/api/me', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['password' => 'motdepasse123']));
 
         self::assertResponseStatusCodeSame(204);
 
@@ -294,7 +294,7 @@ class AuthControllerTest extends ApiTestCase
         ]));
         $token = json_decode($this->client->getResponse()->getContent(), true)['token'];
 
-        $this->client->request('DELETE', '/api/me', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        $this->client->request('DELETE', '/api/me', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['password' => 'motdepasse123']));
         self::assertResponseStatusCodeSame(204);
 
         $row = $this->em->getConnection()->fetchAssociative(

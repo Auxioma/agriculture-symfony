@@ -11,8 +11,9 @@ use App\Entity\Catalog\Product;
 use App\Entity\Catalog\Unit;
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerProduct;
-use App\Entity\Producer\ProducerProductMedia;
 use App\Entity\Producer\ProductAvailability;
+use App\Repository\Producer\ProducerProductRepository;
+use App\Service\Producer\ProducerProductPresenter;
 use App\Service\Producer\ProductAvailabilityWindow;
 use App\Service\Producer\ProductPhotoStorage;
 use Doctrine\ORM\EntityManagerInterface;
@@ -36,6 +37,8 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
  */
 final class ProducerProductController extends AbstractController
 {
+    private const DUPLICATE = 'Vous avez déjà ce produit avec cette variété : indiquez une autre variété.';
+
     /**
      * Liste le catalogue du producteur connecté, produits désactivés compris : la page "Produits et disponibilités"
      * les montre tous, et c'est is_active qui décide si le produit compte dans le matching (matching.find_matching_producers
@@ -48,34 +51,14 @@ final class ProducerProductController extends AbstractController
      * @return JsonResponse tableau des produits, triés par nom puis variété (403 sans profil producteur).
      */
     #[Route('/api/producer/products', methods: ['GET'])]
-    public function listProducts(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    public function listProducts(#[CurrentUser] User $user, ProducerProductRepository $products, ProducerProductPresenter $presenter): JsonResponse
     {
         $producer = $user->getProducerProfile();
         if ($producer === null) {
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
         }
 
-        /** @var list<ProducerProduct> $items */
-        $items = $em->createQueryBuilder()
-            ->select('pp', 'p', 'u', 'c', 'a', 'au', 'l', 'm')
-            ->from(ProducerProduct::class, 'pp')
-            ->join('pp.product', 'p')
-            ->leftJoin('p.defaultUnit', 'u')
-            ->leftJoin('pp.currency', 'c')
-            ->leftJoin('pp.productAvailabilities', 'a')
-            ->leftJoin('a.unit', 'au')
-            ->leftJoin('pp.labels', 'l')
-            ->leftJoin('pp.media', 'm')
-            ->where('pp.producer = :producer')
-            ->setParameter('producer', $producer)
-            ->orderBy('p.name', 'ASC')
-            ->addOrderBy('pp.variety', 'ASC')
-            ->addOrderBy('l.name', 'ASC')
-            ->addOrderBy('m.position', 'ASC')
-            ->getQuery()
-            ->getResult();
-
-        return $this->json(array_map($this->serialize(...), $items));
+        return $this->json(array_map($presenter->forOwner(...), $products->findOfProducer($producer)));
     }
 
     /**
@@ -84,7 +67,7 @@ final class ProducerProductController extends AbstractController
      * Étapes de validation et traitement :
      * 1. Vérifie l'existence d'un profil producteur rattaché à l'utilisateur (403).
      * 2. Vérifie l'existence du produit générique référencé dans le DTO (422).
-     * 3. S'assure que le produit n'est pas déjà présent dans le catalogue du producteur (409).
+     * 3. S'assure que le producteur n'a pas déjà ce produit avec cette variété (409) : plusieurs variétés d'un même produit sont permises.
      * 4. Valide la devise, les labels et l'unité de la période si fournis (422).
      * 5. Instancie et persiste la nouvelle entité `ProducerProduct`, avec son créneau et ses labels.
      *
@@ -98,6 +81,7 @@ final class ProducerProductController extends AbstractController
         #[MapRequestPayload] CreateProducerProductRequest $request,
         #[CurrentUser] User $user,
         EntityManagerInterface $em,
+        ProducerProductRepository $products,
     ): JsonResponse {
         $producer = $user->getProducerProfile();
         if ($producer === null) {
@@ -109,15 +93,15 @@ final class ProducerProductController extends AbstractController
             return $this->json(['error' => 'Produit inconnu.'], 422);
         }
 
-        $existing = $em->getRepository(ProducerProduct::class)->findOneBy(['producer' => $producer, 'product' => $product]);
-        if ($existing !== null) {
-            return $this->json(['error' => 'Ce produit est déjà dans votre catalogue.'], 409);
+        $variety = $this->cleanVariety($request->variety);
+        if ($products->hasVariety($producer, $product, $variety)) {
+            return $this->json(['error' => self::DUPLICATE], 409);
         }
 
         $producerProduct = new ProducerProduct();
         $producerProduct->setProducer($producer);
         $producerProduct->setProduct($product);
-        $producerProduct->setVariety($request->variety);
+        $producerProduct->setVariety($variety);
         $producerProduct->setDescription($request->description);
         $producerProduct->setEstimatedVolume($request->estimatedVolume);
         $producerProduct->setDefaultPrice($request->defaultPrice);
@@ -151,6 +135,7 @@ final class ProducerProductController extends AbstractController
         #[MapRequestPayload] UpdateProducerProductRequest $request,
         #[CurrentUser] User $user,
         EntityManagerInterface $em,
+        ProducerProductRepository $products,
     ): JsonResponse {
         $result = $this->findOwnedProducerProduct($id, $user, $em);
         if ($result instanceof JsonResponse) {
@@ -158,7 +143,12 @@ final class ProducerProductController extends AbstractController
         }
         $producerProduct = $result;
 
-        $producerProduct->setVariety($request->variety);
+        // * changer la variété ne doit pas tomber sur celle d'un autre produit du même type (Gala et Golden ne deviennent pas deux Gala)
+        $variety = $this->cleanVariety($request->variety);
+        if ($products->hasVariety($producerProduct->getProducer(), $producerProduct->getProduct(), $variety, $producerProduct)) {
+            return $this->json(['error' => self::DUPLICATE], 409);
+        }
+        $producerProduct->setVariety($variety);
         $producerProduct->setDescription($request->description);
         $producerProduct->setEstimatedVolume($request->estimatedVolume);
         $producerProduct->setDefaultPrice($request->defaultPrice);
@@ -188,13 +178,18 @@ final class ProducerProductController extends AbstractController
             return $result;
         }
 
-        // * la clé étrangère des photos n'est pas en cascade : on les retire d'abord, fichier et ligne
+        // * la clé étrangère des photos n'est pas en cascade : on retire leurs lignes avec le produit. Les fichiers partent une fois la
+        // * base enregistrée : si elle échoue, aucune photo ne perd son fichier.
+        $keys = [];
         foreach ($result->getMedia()->toArray() as $media) {
-            $photos->remove($media);
+            $keys[] = $photos->keyOf($media);
             $em->remove($media);
         }
         $em->remove($result);
         $em->flush();
+        foreach ($keys as $key) {
+            $photos->delete($key);
+        }
 
         return $this->json(null, 204);
     }
@@ -224,6 +219,14 @@ final class ProducerProductController extends AbstractController
         }
 
         return $producerProduct;
+    }
+
+    // * espaces autour retirés, une variété vide n'est pas une variété (null) : c'est ce que compare hasVariety()
+    private function cleanVariety(?string $variety): ?string
+    {
+        $variety = trim((string) $variety);
+
+        return '' === $variety ? null : $variety;
     }
 
     private function applyCurrency(ProducerProduct $item, ?string $currencyCode, EntityManagerInterface $em): ?JsonResponse
@@ -319,55 +322,5 @@ final class ProducerProductController extends AbstractController
         $slot->setQuantityEstimate($input->quantity)->setUnit($unit);
 
         return null;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function serialize(ProducerProduct $item): array
-    {
-        $product = $item->getProduct();
-        $slot = ProductAvailabilityWindow::primary($item->getProductAvailabilities());
-        [$startMonth, $endMonth] = $slot === null ? [null, null] : ProductAvailabilityWindow::monthsOf($slot);
-
-        $photos = $item->getMedia()->toArray();
-        usort($photos, static fn (ProducerProductMedia $a, ProducerProductMedia $b) => ($a->getPosition() ?? 0) <=> ($b->getPosition() ?? 0));
-
-        return [
-            'id' => $item->getId()->toRfc4122(),
-            'productId' => $product->getId()->toRfc4122(),
-            'name' => $product->getName(),
-            'variety' => $item->getVariety(),
-            'description' => $item->getDescription(),
-            'estimatedVolume' => $item->getEstimatedVolume(),
-            'defaultPrice' => $item->getDefaultPrice(),
-            'currencyCode' => $item->getCurrency()?->getCode(),
-            'isActive' => $item->isActive(),
-            'unit' => $this->serializeUnit($product->getDefaultUnit()),
-            'seasonStartMonth' => $product->getSeasonStartMonth(),
-            'seasonEndMonth' => $product->getSeasonEndMonth(),
-            'availability' => $slot === null ? null : [
-                'startMonth' => $startMonth,
-                'endMonth' => $endMonth,
-                'quantity' => $slot->getQuantityEstimate(),
-                'unit' => $this->serializeUnit($slot->getUnit()),
-            ],
-            'labels' => array_map(
-                static fn (Label $label) => ['id' => $label->getId()->toRfc4122(), 'name' => $label->getName()],
-                $item->getLabels()->toArray(),
-            ),
-            'photos' => array_map(
-                static fn (ProducerProductMedia $photo) => ['id' => $photo->getId()->toRfc4122(), 'url' => $photo->getFileUrl()],
-                $photos,
-            ),
-        ];
-    }
-
-    /**
-     * @return array{id: string, code: string, label: string}|null
-     */
-    private function serializeUnit(?Unit $unit): ?array
-    {
-        return $unit === null ? null : ['id' => $unit->getId()->toRfc4122(), 'code' => $unit->getCode(), 'label' => $unit->getLabel() ?? $unit->getCode()];
     }
 }

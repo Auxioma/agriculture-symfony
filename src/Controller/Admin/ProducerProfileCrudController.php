@@ -2,6 +2,7 @@
 
 namespace App\Controller\Admin;
 
+use App\Entity\Producer\ProducerLabel;
 use App\Entity\Producer\ProducerProfile;
 use App\Enum\VerificationStatus;
 use App\Service\Notification\NotificationService;
@@ -24,9 +25,9 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
-use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 use App\Service\Audit\AuditLogger;
 
@@ -39,6 +40,7 @@ class ProducerProfileCrudController extends AbstractCrudController
 {
     use StatusBadgeFieldTrait;
     use EagerAssociationJoinTrait;
+    use CsrfPostActionTrait;
 
     public function __construct(private readonly AuditLogger $auditLogger)
     {
@@ -98,8 +100,22 @@ class ProducerProfileCrudController extends AbstractCrudController
             VerificationStatus::Suspended->value => 'warning',
         ])->hideOnForm();
         yield BooleanField::new('isActive')->setLabel('Actif')->hideOnForm();
-        yield AssociationField::new('labels')->setLabel('Labels')->onlyOnDetail();
+        // * Pas AssociationField('labels') : ProducerLabel a une clé primaire composée (producteur + label) et EasyAdmin refuse
+        // * ces entités, la fiche d'un producteur plantait en 500 à chaque ouverture (labels ou pas). Champ virtuel avec les noms.
+        yield TextField::new('labelNames')
+            ->setLabel('Labels')
+            ->setVirtual(true)
+            ->onlyOnDetail()
+            ->setTemplatePath('admin/field/formatted_text.html.twig')
+            ->formatValue(fn ($value, ?ProducerProfile $producer) => $this->labelNames($producer));
         yield AssociationField::new('verificationDocuments')->setLabel('Documents')->onlyOnDetail();
+    }
+
+    private function labelNames(?ProducerProfile $producer): string
+    {
+        $names = null === $producer ? [] : $producer->getLabels()->map(fn (ProducerLabel $pl) => $pl->getLabel()->getName())->toArray();
+
+        return [] === $names ? '—' : implode(', ', $names);
     }
 
     // * Puces "En attente/Validés/Refusés" (layout.html.twig, tm_filter_chips) au lieu du bouton "+ Filtres".
@@ -113,16 +129,15 @@ class ProducerProfileCrudController extends AbstractCrudController
 
     public function configureActions(Actions $actions): Actions
     {
-        $validate = Action::new('validate', 'Valider')
-            ->linkToCrudAction('validateProducer')
+        // * Des formulaires POST avec jeton (CsrfPostActionTrait), plus des liens GET.
+        $validate = $this->postAction('validate', 'Valider', 'validateProducer')
             ->displayIf(fn (ProducerProfile $p) => $p->getVerificationStatus() !== VerificationStatus::Verified);
 
-        $reject = Action::new('reject', 'Refuser')
-            ->linkToCrudAction('rejectProducer')
+        $reject = $this->postAction('reject', 'Refuser', 'rejectProducer')
+            ->askConfirmation('Refuser ce producteur ? Il sera prévenu par notification.', 'Refuser')
             ->displayIf(fn (ProducerProfile $p) => $p->getVerificationStatus() !== VerificationStatus::Rejected);
 
-        $requestMoreInfo = Action::new('requestMoreInfo', 'Demander un complément')
-            ->linkToCrudAction('requestMoreInfo')
+        $requestMoreInfo = $this->postAction('requestMoreInfo', 'Demander un complément', 'requestMoreInfo')
             ->displayIf(fn (ProducerProfile $p) => $p->getVerificationStatus() === VerificationStatus::Pending);
 
         return $actions
@@ -132,10 +147,16 @@ class ProducerProfileCrudController extends AbstractCrudController
             ->add(Crud::PAGE_DETAIL, $requestMoreInfo);
     }
 
-    #[AdminRoute(path: '/{entityId}/validate', name: 'validate')]
+    // * Le bouton est masqué selon le statut (displayIf), mais ça ne protège rien : un POST direct passait quand même
+    // * et renvoyait la notification. Le statut est donc revérifié ici pour les trois actions.
+    #[AdminRoute(path: '/{entityId}/validate', name: 'validate', options: ['methods' => ['POST']])]
     public function validateProducer(AdminContext $context, EntityManagerInterface $em, NotificationService $notificationService): Response
     {
+        $this->assertPostWithToken($context);
         $producer = $context->getEntity()->getInstance();
+        if (VerificationStatus::Verified === $producer->getVerificationStatus()) {
+            throw new AccessDeniedHttpException('Ce profil est déjà validé.');
+        }
         $previousStatus = $producer->getVerificationStatus();
         $producer->setVerificationStatus(VerificationStatus::Verified);
         $notificationService->notify($producer->getOwner(), 'profile_validated', 'Profil validé', 'Votre profil producteur a été validé par notre équipe.');
@@ -150,10 +171,14 @@ class ProducerProfileCrudController extends AbstractCrudController
         return $this->redirectToIndex();
     }
 
-    #[AdminRoute(path: '/{entityId}/reject', name: 'reject')]
+    #[AdminRoute(path: '/{entityId}/reject', name: 'reject', options: ['methods' => ['POST']])]
     public function rejectProducer(AdminContext $context, EntityManagerInterface $em, NotificationService $notificationService): Response
     {
+        $this->assertPostWithToken($context);
         $producer = $context->getEntity()->getInstance();
+        if (VerificationStatus::Rejected === $producer->getVerificationStatus()) {
+            throw new AccessDeniedHttpException('Ce profil est déjà refusé.');
+        }
         $previousStatus = $producer->getVerificationStatus();
         $producer->setVerificationStatus(VerificationStatus::Rejected);
         $notificationService->notify($producer->getOwner(), 'profile_rejected', 'Profil non validé', "Votre profil producteur n'a pas été validé. Contactez le support pour plus d'informations.");
@@ -168,10 +193,14 @@ class ProducerProfileCrudController extends AbstractCrudController
         return $this->redirectToIndex();
     }
 
-    #[AdminRoute(path: '/{entityId}/request-more-info', name: 'request_more_info')]
+    #[AdminRoute(path: '/{entityId}/request-more-info', name: 'request_more_info', options: ['methods' => ['POST']])]
     public function requestMoreInfo(AdminContext $context, EntityManagerInterface $em, NotificationService $notificationService): Response
     {
+        $this->assertPostWithToken($context);
         $producer = $context->getEntity()->getInstance();
+        if (VerificationStatus::Pending !== $producer->getVerificationStatus()) {
+            throw new AccessDeniedHttpException('Un complément ne se demande que pour un profil en attente.');
+        }
         $notificationService->notify($producer->getOwner(), 'profile_more_info_needed', 'Complément requis', 'Merci de compléter votre profil producteur (documents ou informations manquantes) pour finaliser la vérification.');
         $this->auditLogger->log('producer_more_info_requested', 'producer', 'producer_profiles', $producer->getId()->toRfc4122());
         $em->flush();
@@ -179,19 +208,5 @@ class ProducerProfileCrudController extends AbstractCrudController
         $this->addFlash('success', 'Demande de complément envoyée.');
 
         return $this->redirectToIndex();
-    }
-
-    private function redirectToIndex(): Response
-    {
-        // ! setAction(INDEX) + unset('entityId') obligatoires : sans ça, AdminUrlGenerator réutilise les
-        // ! paramètres de la requête en cours (action=validate, entityId=<cible>) et l'URL générée repointe
-        // ! vers cette même action -- boucle de redirection infinie, déjà vécue sur UserCrudController::anonymizeUser().
-        return $this->redirect(
-            $this->container->get(AdminUrlGenerator::class)
-                ->setController(self::class)
-                ->setAction(Action::INDEX)
-                ->unset('entityId')
-                ->generateUrl()
-        );
     }
 }

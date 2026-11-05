@@ -19,6 +19,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
 use Symfony\Component\Uid\Uuid;
+use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: ProductRepository::class)]
 #[ORM\Table(name: 'products', schema: 'catalog')]
@@ -41,10 +42,13 @@ class Product
     #[ORM\ManyToOne]
     private ?Unit $defaultUnit = null;
 
+    // * Mois de 1 à 12 (la base n'impose rien) : un 13 saisi dans l'admin ferait écrire "Toute l'année" aux pages du site.
     #[ORM\Column(type: Types::SMALLINT, nullable: true)]
+    #[Assert\Range(min: 1, max: 12, notInRangeMessage: 'Le mois de début de saison doit être compris entre 1 et 12.')]
     private ?int $seasonStartMonth = null;
 
     #[ORM\Column(type: Types::SMALLINT, nullable: true)]
+    #[Assert\Range(min: 1, max: 12, notInRangeMessage: 'Le mois de fin de saison doit être compris entre 1 et 12.')]
     private ?int $seasonEndMonth = null;
 
     #[ORM\Column]
@@ -211,5 +215,13 @@ class Product
         }
 
         return $this;
+    }
+
+    // * Le filtre « de saison » du site lit les deux mois : un début sans fin (ou l'inverse) ne dit pas de quelle saison il s'agit.
+    // * Ni l'un ni l'autre = toute l'année.
+    #[Assert\IsTrue(message: 'Le début et la fin de la saison vont ensemble : renseignez les deux mois, ou aucun.')]
+    public function isSeasonComplete(): bool
+    {
+        return (null === $this->seasonStartMonth) === (null === $this->seasonEndMonth);
     }
 }

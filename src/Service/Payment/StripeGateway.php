@@ -161,6 +161,22 @@ final class StripeGateway implements PaymentGatewayInterface
         $this->stripe()->subscriptions->cancel($providerSubscriptionId);
     }
 
+    public function anonymizeCustomer(string $providerSubscriptionId): void
+    {
+        $customerId = $this->stripe()->subscriptions->retrieve($providerSubscriptionId)->customer;
+        foreach ($this->stripe()->paymentMethods->all(['customer' => $customerId, 'type' => 'card'])->data as $method) {
+            $this->stripe()->paymentMethods->detach($method->id);
+        }
+        // * une chaîne vide (ou null pour l'adresse) efface le champ chez Stripe ; l'e-mail reste une adresse valide mais ne mène nulle part
+        $this->stripe()->customers->update($customerId, [
+            'email' => 'deleted+'.$customerId.'@anonymized.local',
+            'name' => '',
+            'phone' => '',
+            'address' => null,
+            'description' => 'Compte supprimé',
+        ]);
+    }
+
     public function listPaymentMethods(string $providerSubscriptionId): array
     {
         $subscription = $this->stripe()->subscriptions->retrieve($providerSubscriptionId, ['expand' => ['customer']]);

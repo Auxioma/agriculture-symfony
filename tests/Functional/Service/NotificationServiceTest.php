@@ -3,6 +3,8 @@
 namespace App\Tests\Functional\Service;
 
 use App\Entity\Identity\User;
+use App\Entity\Identity\UserPreference;
+use App\Enum\UserStatus;
 use App\Service\Notification\NotificationService;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
@@ -43,6 +45,113 @@ final class NotificationServiceTest extends ApiTestCase
         self::assertSame($recipient->getEmail(), $deliveries[0]['destination']);
         self::assertSame('in_app', $deliveries[1]['channel']);
         self::assertSame('sent', $deliveries[1]['status']);
+    }
+
+    public function testADeletedAccountGetsTheInAppNotificationButNoEmail(): void
+    {
+        $recipient = $this->makeUser('supprime');
+        $recipient->setStatus(UserStatus::Deleted);
+        $this->em->flush();
+
+        $notification = static::getContainer()->get(NotificationService::class)->notify($recipient, 'new_message', 'Nouveau message', 'Vous avez reçu un nouveau message.');
+        $this->em->flush();
+
+        // * l'adresse d'un compte supprimé (deleted+...@anonymized.local) ne mène nulle part : un e-mail reviendrait en erreur
+        self::assertEmailCount(0);
+        $channels = $this->em->getConnection()->fetchFirstColumn('SELECT channel FROM notification.notification_deliveries WHERE notification_id = :id', ['id' => $notification->getId()->toRfc4122()]);
+        self::assertSame(['in_app'], $channels);
+    }
+
+    /**
+     * @return iterable<string, array{0: string}>
+     */
+    public static function typesTheUserCanSwitchOff(): iterable
+    {
+        yield 'nouvelle demande pertinente' => ['new_relevant_request'];
+        yield 'demande expirant bientôt' => ['request_expiring_soon'];
+        yield 'nouveau message' => ['new_message'];
+        yield 'paiement échoué' => ['payment_failed'];
+        yield 'abonnement bientôt renouvelé' => ['subscription_renewing_soon'];
+        yield 'profil validé' => ['profile_validated'];
+        yield 'nouvel avis client' => ['new_review'];
+    }
+
+    // * un interrupteur coupé vaut pour les deux canaux : ni notification dans l'application, ni e-mail
+    #[\PHPUnit\Framework\Attributes\DataProvider('typesTheUserCanSwitchOff')]
+    public function testASwitchedOffTypeSendsNothingOnAnyChannel(string $type): void
+    {
+        $recipient = $this->makeUser('farmer');
+        $preference = new UserPreference();
+        $preference->setIdUser($recipient);
+        $preference->setLocale('fr');
+        $preference->setNotificationSettings(['types' => [$type => false]]);
+        $recipient->setPreference($preference);
+        $this->em->persist($preference);
+        $this->em->flush();
+
+        $notification = static::getContainer()->get(NotificationService::class)->notify($recipient, $type, 'Titre', 'Corps du message.');
+        $this->em->flush();
+
+        self::assertNull($notification);
+        self::assertEmailCount(0);
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM notification.notifications WHERE user_id = :id', ['id' => $recipient->getId()->toRfc4122()]));
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM notification.notification_deliveries d JOIN notification.notifications n ON n.id = d.notification_id WHERE n.user_id = :id', ['id' => $recipient->getId()->toRfc4122()]));
+    }
+
+    public function testOtherTypesAndOtherSwitchesStillSendTheEmail(): void
+    {
+        $recipient = $this->makeUser('farmer');
+        $preference = new UserPreference();
+        $preference->setIdUser($recipient);
+        $preference->setLocale('fr');
+        $preference->setNotificationSettings(['types' => ['payment_failed' => false]]);
+        $recipient->setPreference($preference);
+        $this->em->persist($preference);
+        $this->em->flush();
+        $service = static::getContainer()->get(NotificationService::class);
+
+        // * un autre interrupteur, et un type que l'écran ne propose pas de couper : les deux partent, sur les deux canaux
+        $first = $service->notify($recipient, 'new_relevant_request', 'Nouvelle demande', 'Une demande vous correspond.');
+        $second = $service->notify($recipient, 'profile_rejected', 'Profil non validé', "Votre profil producteur n'a pas été validé.");
+        $this->em->flush();
+
+        self::assertNotNull($first);
+        self::assertNotNull($second);
+        self::assertEmailCount(2);
+        self::assertSame(2, (int) $this->em->getConnection()->fetchOne('SELECT count(*) FROM notification.notifications WHERE user_id = :id', ['id' => $recipient->getId()->toRfc4122()]));
+    }
+
+    /**
+     * @return iterable<string, array{0: string}>
+     */
+    public static function typesTheUserCannotSwitchOff(): iterable
+    {
+        yield 'refus du profil' => ['profile_rejected'];
+        yield 'complément de profil demandé' => ['profile_more_info_needed'];
+        yield 'réponse du support' => ['support_reply'];
+        yield 'invitation d’équipe' => ['team_invitation'];
+        yield 'abonnement en double annulé' => ['subscription_duplicate_cancelled'];
+        yield 'notification de client' => ['producer_replied'];
+    }
+
+    // * même si une valeur "false" traîne en base pour ce type (écrite à la main, ou par une version plus ancienne de l'écran)
+    #[\PHPUnit\Framework\Attributes\DataProvider('typesTheUserCannotSwitchOff')]
+    public function testATypeTheScreenDoesNotOfferAlwaysSendsOnBothChannels(string $type): void
+    {
+        $recipient = $this->makeUser('farmer');
+        $preference = new UserPreference();
+        $preference->setIdUser($recipient);
+        $preference->setLocale('fr');
+        $preference->setNotificationSettings(['types' => [$type => false]]);
+        $recipient->setPreference($preference);
+        $this->em->persist($preference);
+        $this->em->flush();
+
+        $notification = static::getContainer()->get(NotificationService::class)->notify($recipient, $type, 'Titre', 'Corps du message.');
+        $this->em->flush();
+
+        self::assertNotNull($notification);
+        self::assertEmailCount(1);
     }
 
     // * Un transport qui échoue (ex. SMTP en panne) ne doit jamais faire remonter d'exception jusqu'à

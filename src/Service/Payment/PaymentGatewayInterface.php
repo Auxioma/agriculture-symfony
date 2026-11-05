@@ -34,6 +34,10 @@ interface PaymentGatewayInterface
     // * résiliation immédiate, sans remboursement : plus aucun prélèvement (abonnement en double, voir StripeWebhookController)
     public function cancelSubscriptionNow(string $providerSubscriptionId): void;
 
+    // * suppression de compte : retire chez Stripe ce qui identifie la personne (e-mail, nom, téléphone, adresse) et détache ses
+    // * cartes. Le client et ses factures restent (obligation comptable, voir identity.anonymize_user du MLD).
+    public function anonymizeCustomer(string $providerSubscriptionId): void;
+
     /**
      * Cartes du client Stripe de l'abonnement, lues chez Stripe à chaque appel (rien n'est stocké chez nous).
      *

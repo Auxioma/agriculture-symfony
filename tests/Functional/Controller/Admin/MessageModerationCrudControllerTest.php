@@ -24,6 +24,7 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 final class MessageModerationCrudControllerTest extends ApiTestCase
 {
     use EntityFactoryTrait;
+    use RowActionTestTrait;
 
     private function loginAsAdmin(): User
     {
@@ -187,11 +188,7 @@ final class MessageModerationCrudControllerTest extends ApiTestCase
         $this->loginAsAdmin();
         [$conversation] = $this->makeReportedConversationWithMessage();
 
-        $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
-            ->setController(ConversationCrudController::class)
-            ->setAction('closeConversation')
-            ->setEntityId($conversation->getId())
-            ->generateUrl());
+        $this->postRowAction(ConversationCrudController::class, $conversation->getId()->toRfc4122(), 'close');
 
         self::assertResponseIsSuccessful();
 
@@ -213,11 +210,7 @@ final class MessageModerationCrudControllerTest extends ApiTestCase
         $admin = $this->loginAsAdmin();
         [$conversation, $message, $client] = $this->makeReportedConversationWithMessage();
 
-        $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
-            ->setController(MessageCrudController::class)
-            ->setAction('hideMessage')
-            ->setEntityId($message->getId())
-            ->generateUrl());
+        $this->postRowAction(MessageCrudController::class, $message->getId()->toRfc4122(), 'hide');
 
         self::assertResponseIsSuccessful();
 
@@ -255,11 +248,7 @@ final class MessageModerationCrudControllerTest extends ApiTestCase
         $admin = $this->loginAsAdmin();
         [, $message, $client] = $this->makeReportedConversationWithMessage();
 
-        $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
-            ->setController(MessageCrudController::class)
-            ->setAction('blockSender')
-            ->setEntityId($message->getId())
-            ->generateUrl());
+        $this->postRowAction(MessageCrudController::class, $message->getId()->toRfc4122(), 'block-sender');
 
         self::assertResponseIsSuccessful();
 
@@ -304,11 +293,7 @@ final class MessageModerationCrudControllerTest extends ApiTestCase
         $this->loginAsAdmin();
         [, $message, , $report] = $this->makeReportedConversationWithMessage();
 
-        $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
-            ->setController(MessageCrudController::class)
-            ->setAction('hideMessage')
-            ->setEntityId($message->getId())
-            ->generateUrl());
+        $this->postRowAction(MessageCrudController::class, $message->getId()->toRfc4122(), 'hide');
 
         self::assertSame(ReportStatus::InReview->value, $this->reportStatus($report));
     }
@@ -318,11 +303,7 @@ final class MessageModerationCrudControllerTest extends ApiTestCase
         $admin = $this->loginAsAdmin();
         [$conversation, $message, , $report] = $this->makeReportedConversationWithMessage();
 
-        $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
-            ->setController(MessageCrudController::class)
-            ->setAction('resolveReport')
-            ->setEntityId($message->getId())
-            ->generateUrl());
+        $this->postRowAction(MessageCrudController::class, $message->getId()->toRfc4122(), 'resolve-report');
 
         self::assertResponseIsSuccessful();
         self::assertSame(ReportStatus::Resolved->value, $this->reportStatus($report));
@@ -345,11 +326,7 @@ final class MessageModerationCrudControllerTest extends ApiTestCase
         $this->loginAsAdmin();
         [$conversation, $message, , $report] = $this->makeReportedConversationWithMessage();
 
-        $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
-            ->setController(MessageCrudController::class)
-            ->setAction('rejectReport')
-            ->setEntityId($message->getId())
-            ->generateUrl());
+        $this->postRowAction(MessageCrudController::class, $message->getId()->toRfc4122(), 'reject-report');
 
         self::assertResponseIsSuccessful();
         self::assertSame(ReportStatus::Rejected->value, $this->reportStatus($report));
@@ -374,15 +351,12 @@ final class MessageModerationCrudControllerTest extends ApiTestCase
             ->setEntityId($message->getId())
             ->generateUrl();
 
+        // * Les boutons sont des formulaires POST (plus des liens) : on compte leurs formulaires.
         $beforeCrawler = $this->client->request('GET', $detailUrl);
-        self::assertCount(1, $beforeCrawler->selectLink('Résoudre'));
-        self::assertCount(1, $beforeCrawler->selectLink('Rejeter'));
+        self::assertCount(1, $beforeCrawler->filter('form[action*="resolve-report?"]'));
+        self::assertCount(1, $beforeCrawler->filter('form[action*="reject-report?"]'));
 
-        $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
-            ->setController(MessageCrudController::class)
-            ->setAction('resolveReport')
-            ->setEntityId($message->getId())
-            ->generateUrl());
+        $this->postRowAction(MessageCrudController::class, $message->getId()->toRfc4122(), 'resolve-report');
 
         $indexCrawler = $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
             ->setController(MessageCrudController::class)
@@ -402,11 +376,7 @@ final class MessageModerationCrudControllerTest extends ApiTestCase
         $country = $this->makeCountry();
         $this->makeReportedConversationWithMessage($country);
         [, $inReviewMessage] = $this->makeReportedConversationWithMessage($country);
-        $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
-            ->setController(MessageCrudController::class)
-            ->setAction('hideMessage')
-            ->setEntityId($inReviewMessage->getId())
-            ->generateUrl());
+        $this->postRowAction(MessageCrudController::class, $inReviewMessage->getId()->toRfc4122(), 'hide');
 
         $indexUrl = self::getContainer()->get(AdminUrlGenerator::class)
             ->setController(MessageCrudController::class)
@@ -445,12 +415,79 @@ final class MessageModerationCrudControllerTest extends ApiTestCase
         $this->em->persist($message);
         $this->em->flush();
 
-        $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
-            ->setController(MessageCrudController::class)
-            ->setAction('resolveReport')
-            ->setEntityId($message->getId())
-            ->generateUrl());
+        // * Pas de bouton "Résoudre" sur cette ligne (aucun signalement, rien à trancher), donc pas de formulaire à lire :
+        // * le jeton étant lié à l'action et pas à la ligne, on prend celui d'une conversation signalée normalement.
+        [, $normalMessage] = $this->makeReportedConversationWithMessage($country);
+        $url = $this->rowActionUrl(MessageCrudController::class, $normalMessage->getId()->toRfc4122(), 'resolve-report');
+
+        $this->client->request('POST', str_replace($normalMessage->getId()->toRfc4122(), $message->getId()->toRfc4122(), $url));
 
         self::assertResponseStatusCodeSame(404);
+    }
+
+    // * Avant : Masquer, Bloquer, Résoudre, Rejeter, Rouvrir et Clôturer étaient de simples liens GET, sans jeton.
+    public function testModerationActionsRefuseGetAndABadToken(): void
+    {
+        $this->loginAsAdmin();
+        $country = $this->makeCountry();
+        [$conversation, $message, $sender, $report] = $this->makeReportedConversationWithMessage($country);
+        $messageId = $message->getId()->toRfc4122();
+        $conversationId = $conversation->getId()->toRfc4122();
+        $senderStatusBefore = $this->em->getConnection()->fetchOne('SELECT status FROM identity.users WHERE id = :id', ['id' => $sender->getId()->toRfc4122()]);
+
+        $urls = [
+            'hide' => $this->rowActionUrl(MessageCrudController::class, $messageId, 'hide'),
+            'block-sender' => $this->rowActionUrl(MessageCrudController::class, $messageId, 'block-sender'),
+            'resolve-report' => $this->rowActionUrl(MessageCrudController::class, $messageId, 'resolve-report'),
+            'reject-report' => $this->rowActionUrl(MessageCrudController::class, $messageId, 'reject-report'),
+            'reopen' => $this->rowActionUrl(ConversationCrudController::class, $conversationId, 'reopen'),
+            'close' => $this->rowActionUrl(ConversationCrudController::class, $conversationId, 'close'),
+        ];
+
+        foreach ($urls as $name => $url) {
+            $this->client->request('GET', $url);
+            self::assertResponseStatusCodeSame(405, $name.' en GET');
+
+            $this->client->request('POST', $this->withForgedToken($url));
+            self::assertResponseStatusCodeSame(403, $name.' avec un faux jeton');
+
+            $this->client->request('POST', $this->withoutToken($url));
+            self::assertResponseStatusCodeSame(403, $name.' sans jeton');
+        }
+
+        // * Rien n'a bougé.
+        self::assertSame(ReportStatus::Open->value, $this->reportStatus($report));
+        self::assertSame('reported', $this->conversationStatus($conversation));
+        self::assertSame($senderStatusBefore, $this->em->getConnection()->fetchOne('SELECT status FROM identity.users WHERE id = :id', ['id' => $sender->getId()->toRfc4122()]));
+        self::assertNull($this->em->getConnection()->fetchOne('SELECT moderated_at FROM messaging.messages WHERE id = :id', ['id' => $messageId]));
+    }
+
+    // * Rouvrir n'avait aucun test depuis le début ; il passe maintenant par le même formulaire POST que Clôturer.
+    public function testReopeningAReportedConversation(): void
+    {
+        $this->loginAsAdmin();
+        [$conversation] = $this->makeReportedConversationWithMessage();
+
+        $this->postRowAction(ConversationCrudController::class, $conversation->getId()->toRfc4122(), 'reopen');
+
+        self::assertResponseIsSuccessful();
+        self::assertSame('open', $this->conversationStatus($conversation));
+    }
+
+    // * Le statut d'avant était écrit en dur ('active') dans le journal, même pour un compte qui n'était pas actif.
+    public function testBlockSenderLogsTheRealPreviousStatus(): void
+    {
+        $this->loginAsAdmin();
+        [, $message, $sender] = $this->makeReportedConversationWithMessage();
+        $this->em->getConnection()->executeStatement("UPDATE identity.users SET status = 'pending' WHERE id = :id", ['id' => $sender->getId()->toRfc4122()]);
+
+        $this->postRowAction(MessageCrudController::class, $message->getId()->toRfc4122(), 'block-sender');
+
+        $audit = $this->em->getConnection()->fetchAssociative(
+            "SELECT old_data FROM audit.audit_logs WHERE action = 'user_blocked' AND record_id = :id",
+            ['id' => $sender->getId()->toRfc4122()]
+        );
+        self::assertNotFalse($audit);
+        self::assertStringContainsString('pending', $audit['old_data']);
     }
 }

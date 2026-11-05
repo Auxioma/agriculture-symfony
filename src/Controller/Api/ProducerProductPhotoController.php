@@ -4,9 +4,11 @@ namespace App\Controller\Api;
 
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerProduct;
+use App\Service\Producer\PhotoUploadRules;
 use App\Service\Producer\ProductPhotoStorage;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
@@ -15,7 +17,8 @@ use Symfony\Component\Uid\Uuid;
 
 /**
  * Photos d'un produit du producteur connecté (ProducerProductMedia), distinctes des photos de l'exploitation
- * (ProducerMediaController). Stockage et règles dans ProductPhotoStorage : jpeg, png ou webp, 5 Mo, 5 photos au plus.
+ * (ProducerMediaController). Stockage dans ProductPhotoStorage, règles de fichier dans PhotoUploadRules (jpeg, png ou webp, 5 Mo),
+ * 5 photos au plus par produit.
  *
  * * Une photo s'envoie après la création du produit (il faut son identifiant) : le formulaire d'ajout enregistre le
  * * produit, puis envoie ses photos une par une.
@@ -39,17 +42,10 @@ final class ProducerProductPhotoController extends AbstractController
         }
 
         $file = $request->files->get('photo');
-        if ($file === null || !$file->isValid()) {
-            return $this->json(['error' => 'Aucun fichier "photo" valide reçu.'], 422);
+        if (null !== ($error = PhotoUploadRules::error($file))) {
+            return $this->json(['error' => $error], 422);
         }
-
-        // ! comme ProducerMediaController : le type est lu dans le contenu du fichier, pas dans le Content-Type du client
-        if (!\in_array($file->getMimeType(), ProductPhotoStorage::ALLOWED_MIME_TYPES, true)) {
-            return $this->json(['error' => 'Format non supporté (jpeg, png ou webp uniquement).'], 422);
-        }
-        if ($file->getSize() > ProductPhotoStorage::MAX_SIZE_BYTES) {
-            return $this->json(['error' => 'Fichier trop volumineux (5 Mo maximum).'], 422);
-        }
+        \assert($file instanceof UploadedFile);
         if ($item->getMedia()->count() >= ProductPhotoStorage::MAX_PER_PRODUCT) {
             return $this->json(['error' => 'Cinq photos au maximum par produit.'], 422);
         }
@@ -76,10 +72,11 @@ final class ProducerProductPhotoController extends AbstractController
 
         foreach ($item->getMedia() as $media) {
             if ($media->getId()->toRfc4122() === $photoId) {
-                $photos->remove($media);
+                $key = $photos->keyOf($media);
                 $item->removeMedium($media);
                 $em->remove($media);
                 $em->flush();
+                $photos->delete($key);
 
                 return $this->json(null, 204);
             }

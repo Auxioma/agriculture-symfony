@@ -10,6 +10,7 @@ use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
+use Symfony\Component\DomCrawler\Form;
 
 /**
  * Teste le module "Catégories et produits" du back-office (cahier_des_charges_fonctionnel_trouvemoi_agri.pdf :
@@ -67,6 +68,230 @@ final class CatalogCrudControllerTest extends ApiTestCase
             "SELECT id FROM catalog.categories WHERE slug = 'legumes'"
         );
         self::assertNotFalse($row);
+    }
+
+    // ---- slug : vide, il se déduit du nom (sinon les liens de l'accueil et de la navbar retombent sur "toutes les catégories")
+
+    private function newCategoryForm(): Form
+    {
+        $crawler = $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
+            ->setController(CategoryCrudController::class)
+            ->setAction(Action::NEW)
+            ->generateUrl());
+        self::assertResponseIsSuccessful();
+
+        return $crawler->filter('form[method="post"]')->last()->form();
+    }
+
+    private function createCategory(string $name, string $slug = ''): void
+    {
+        $form = $this->newCategoryForm();
+        $values = $form->getPhpValues();
+        $rootKey = array_key_first($values);
+        $values[$rootKey]['name'] = $name;
+        $values[$rootKey]['slug'] = $slug;
+        $values[$rootKey]['isActive'] = '1';
+
+        $this->client->request($form->getMethod(), $form->getUri(), $values, $form->getPhpFiles());
+        self::assertResponseIsSuccessful();
+    }
+
+    private function slugOf(string $name): string|false
+    {
+        return $this->em->getConnection()->fetchOne('SELECT slug FROM catalog.categories WHERE name = :name ORDER BY slug', ['name' => $name]);
+    }
+
+    public function testCreatingACategoryWithoutSlugGeneratesItFromTheName(): void
+    {
+        $this->loginAsAdmin();
+
+        $this->createCategory('Fruits à coque');
+
+        self::assertSame('fruits-a-coque', $this->slugOf('Fruits à coque'));
+    }
+
+    public function testASlugTypedByHandIsKept(): void
+    {
+        $this->loginAsAdmin();
+
+        $this->createCategory('Légumes racines', 'racines');
+
+        self::assertSame('racines', $this->slugOf('Légumes racines'));
+    }
+
+    public function testTwoCategoriesWithTheSameNameGetDistinctSlugs(): void
+    {
+        $this->loginAsAdmin();
+
+        $this->createCategory('Fruits rouges');
+        $this->createCategory('Fruits rouges');
+
+        $slugs = $this->em->getConnection()->fetchFirstColumn("SELECT slug FROM catalog.categories WHERE name = 'Fruits rouges' ORDER BY slug");
+        self::assertSame(['fruits-rouges', 'fruits-rouges-2'], $slugs);
+    }
+
+    public function testSavingACategoryThatHasNoSlugFillsItIn(): void
+    {
+        $this->loginAsAdmin();
+        $category = $this->makeCategory('Produits de la mer');
+        $this->em->flush();
+        self::assertNull($this->em->getConnection()->fetchOne('SELECT slug FROM catalog.categories WHERE id = :id', ['id' => $category->getId()->toRfc4122()]));
+
+        $crawler = $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
+            ->setController(CategoryCrudController::class)
+            ->setAction(Action::EDIT)
+            ->setEntityId($category->getId())
+            ->generateUrl());
+        self::assertResponseIsSuccessful();
+        $form = $crawler->filter('form#edit-Category-form')->form();
+        $values = $form->getPhpValues();
+
+        $this->client->request($form->getMethod(), $form->getUri(), $values, $form->getPhpFiles());
+        self::assertResponseIsSuccessful();
+
+        self::assertSame('produits-de-la-mer', $this->slugOf('Produits de la mer'));
+    }
+
+    // ---- un nouvel élément est actif d'emblée (inactif, il n'apparaît nulle part et on croit à un bug)
+
+    public function testANewCategoryIsActiveWithoutTickingTheBox(): void
+    {
+        $this->loginAsAdmin();
+        $form = $this->newCategoryForm();
+        $values = $form->getPhpValues();
+        $rootKey = array_key_first($values);
+        $values[$rootKey]['name'] = 'Œufs';
+
+        $this->client->request($form->getMethod(), $form->getUri(), $values, $form->getPhpFiles());
+
+        self::assertResponseIsSuccessful();
+        self::assertTrue((bool) $this->em->getConnection()->fetchOne("SELECT is_active FROM catalog.categories WHERE name = 'Œufs'"));
+    }
+
+    // ---- produits : création, slug, saison
+
+    /** @param array<string, mixed> $fields les champs du formulaire de création d'un produit, en plus de ses valeurs par défaut */
+    private function submitNewProduct(array $fields): void
+    {
+        $crawler = $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
+            ->setController(ProductCrudController::class)
+            ->setAction(Action::NEW)
+            ->generateUrl());
+        self::assertResponseIsSuccessful();
+
+        $form = $crawler->filter('form[method="post"]')->last()->form();
+        $values = $form->getPhpValues();
+        $rootKey = array_key_first($values);
+        foreach ($fields as $name => $value) {
+            $values[$rootKey][$name] = $value;
+        }
+
+        $this->client->request($form->getMethod(), $form->getUri(), $values, $form->getPhpFiles());
+    }
+
+    /** @return array<string, mixed>|false */
+    private function productRow(string $name): array|false
+    {
+        return $this->em->getConnection()->fetchAssociative('SELECT slug, is_active, season_start_month, season_end_month FROM catalog.products WHERE name = :name ORDER BY slug', ['name' => $name]);
+    }
+
+    public function testAdminCanAddAProductToTheCatalogAndItIsActiveWithASlug(): void
+    {
+        $this->loginAsAdmin();
+        $category = $this->makeCategory('Légumes');
+        $this->em->flush();
+
+        // * ni slug ni case "actif" touchés : le slug se déduit du nom, et le produit est actif d'emblée
+        $this->submitNewProduct(['category' => $category->getId()->toRfc4122(), 'name' => 'Pommes de terre']);
+
+        self::assertResponseIsSuccessful();
+        $row = $this->productRow('Pommes de terre');
+        self::assertSame('pommes-de-terre', $row['slug']);
+        self::assertTrue((bool) $row['is_active']);
+    }
+
+    public function testAProductSlugTypedByHandIsKept(): void
+    {
+        $this->loginAsAdmin();
+        $category = $this->makeCategory('Légumes');
+        $this->em->flush();
+
+        $this->submitNewProduct(['category' => $category->getId()->toRfc4122(), 'name' => 'Pommes de terre', 'slug' => 'patates']);
+
+        self::assertSame('patates', $this->productRow('Pommes de terre')['slug']);
+    }
+
+    public function testTwoProductsWithTheSameNameGetDistinctSlugs(): void
+    {
+        $this->loginAsAdmin();
+        $category = $this->makeCategory('Fruits');
+        $this->em->flush();
+
+        $this->submitNewProduct(['category' => $category->getId()->toRfc4122(), 'name' => 'Pommes']);
+        $this->submitNewProduct(['category' => $category->getId()->toRfc4122(), 'name' => 'Pommes']);
+
+        $slugs = $this->em->getConnection()->fetchFirstColumn("SELECT slug FROM catalog.products WHERE name = 'Pommes' ORDER BY slug");
+        self::assertSame(['pommes', 'pommes-2'], $slugs);
+    }
+
+    public function testSavingAProductThatHasNoSlugFillsItIn(): void
+    {
+        $this->loginAsAdmin();
+        $product = $this->makeProduct($this->makeCategory('Fruits'), 'Fraises des bois');
+        $this->em->flush();
+        self::assertNull($this->productRow('Fraises des bois')['slug']);
+
+        $crawler = $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
+            ->setController(ProductCrudController::class)
+            ->setAction(Action::EDIT)
+            ->setEntityId($product->getId())
+            ->generateUrl());
+        $form = $crawler->filter('form#edit-Product-form')->form();
+
+        $this->client->request($form->getMethod(), $form->getUri(), $form->getPhpValues(), $form->getPhpFiles());
+
+        self::assertResponseIsSuccessful();
+        self::assertSame('fraises-des-bois', $this->productRow('Fraises des bois')['slug']);
+    }
+
+    public function testASeasonMonthMustBeBetweenOneAndTwelve(): void
+    {
+        $this->loginAsAdmin();
+        $category = $this->makeCategory('Fruits');
+        $this->em->flush();
+
+        $this->submitNewProduct(['category' => $category->getId()->toRfc4122(), 'name' => 'Cerises', 'seasonStartMonth' => '13', 'seasonEndMonth' => '5']);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('compris entre 1 et 12', $this->client->getResponse()->getContent());
+        self::assertFalse($this->productRow('Cerises'));
+    }
+
+    public function testASeasonNeedsItsTwoMonthsOrNone(): void
+    {
+        $this->loginAsAdmin();
+        $category = $this->makeCategory('Fruits');
+        $this->em->flush();
+
+        $this->submitNewProduct(['category' => $category->getId()->toRfc4122(), 'name' => 'Cerises', 'seasonStartMonth' => '6']);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('vont ensemble', $this->client->getResponse()->getContent());
+        self::assertFalse($this->productRow('Cerises'));
+    }
+
+    public function testAValidSeasonIsSaved(): void
+    {
+        $this->loginAsAdmin();
+        $category = $this->makeCategory('Fruits');
+        $this->em->flush();
+
+        // * à cheval sur deux années (novembre à février) : permis, le filtre « de saison » du site le gère
+        $this->submitNewProduct(['category' => $category->getId()->toRfc4122(), 'name' => 'Clémentines', 'seasonStartMonth' => '11', 'seasonEndMonth' => '2']);
+
+        self::assertResponseIsSuccessful();
+        $row = $this->productRow('Clémentines');
+        self::assertSame([11, 2], [(int) $row['season_start_month'], (int) $row['season_end_month']]);
     }
 
     public function testEditingProductSucceeds(): void

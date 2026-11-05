@@ -2,12 +2,15 @@
 
 namespace App\Tests\Functional\Controller\Matching;
 
+use App\Entity\Catalog\Currency;
+use App\Entity\Catalog\Unit;
 use App\Entity\Catalog\Country;
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerProfile;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\DefaultReferenceDataTrait;
 use App\Tests\Fixtures\EntityFactoryTrait;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Uid\Uuid;
 
 /**
@@ -325,6 +328,146 @@ final class ProducerRequestControllerTest extends ApiTestCase
         self::assertResponseStatusCodeSame(409);
         $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: $auth, content: json_encode(['draft' => true]));
         self::assertResponseStatusCodeSame(409);
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     */
+    private function sendReply(string $requestId, string $producerToken, array $body): void
+    {
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/reply', server: [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$producerToken,
+        ], content: json_encode($body));
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    /**
+     * Les messages du fil de la demande, du plus ancien au plus récent.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function threadOf(string $requestId): array
+    {
+        return $this->em->getConnection()->fetchAllAssociative(
+            'SELECT m.content, m.is_system, m.sender_id FROM messaging.messages m JOIN messaging.conversations c ON c.id = m.conversation_id WHERE c.request_id = :id ORDER BY m.created_at',
+            ['id' => $requestId]
+        );
+    }
+
+    // * Avant, la réponse ouvrait la conversation mais n'y postait rien : le client ouvrait un chat vide.
+    public function testTheReplyTextIsTheFirstMessageOfTheThread(): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $this->em->flush();
+
+        $this->sendReply($requestId, $producerToken, ['replyText' => '  Oui disponible, venez quand vous voulez.  ']);
+
+        $messages = $this->threadOf($requestId);
+        self::assertCount(1, $messages);
+        self::assertSame('Oui disponible, venez quand vous voulez.', $messages[0]['content']);
+        self::assertFalse($messages[0]['is_system']);
+        self::assertSame($producer->getOwner()->getId()->toRfc4122(), $messages[0]['sender_id']);
+        // * Sans cela la conversation resterait mal triée dans la liste des conversations.
+        self::assertNotNull($this->em->getConnection()->fetchOne('SELECT last_message_at FROM messaging.conversations WHERE request_id = :id', ['id' => $requestId]));
+    }
+
+    public function testAReplyWithTextAndPricePostsOnlyTheText(): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $this->em->flush();
+
+        $this->sendReply($requestId, $producerToken, ['replyText' => 'Oui disponible', 'priceAmount' => '12.50']);
+
+        // * Le prix reste dans le devis : pas de second message qui le répéterait.
+        self::assertSame(['Oui disponible'], array_column($this->threadOf($requestId), 'content'));
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function quoteSummaries(): array
+    {
+        return [
+            'prix entier' => ['12', 'Devis : 12 €/kg'],
+            'prix à décimales' => ['12.5', 'Devis : 12,50 €/kg'],
+            'prix au-dessus de mille' => ['1250.5', 'Devis : 1 250,50 €/kg'],
+        ];
+    }
+
+    // * Un prix seul : un message système résume le devis dans le fil (le cahier fonctionnel, "proposer un prix" parmi les actions du chat).
+    #[DataProvider('quoteSummaries')]
+    public function testAPriceOnlyReplyPostsASystemSummaryOfTheQuote(string $price, string $summary): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $unit = (new Unit())->setCode('kg')->setLabel('Kilogramme');
+        $currency = (new Currency())->setCode('EUR')->setName('Euro')->setSymbol('€')->setIsActive(true);
+        $this->em->persist($unit);
+        $this->em->persist($currency);
+        $this->em->flush();
+
+        $this->sendReply($requestId, $producerToken, ['priceAmount' => $price, 'priceUnitId' => $unit->getId()->toRfc4122(), 'currencyCode' => 'EUR']);
+
+        $messages = $this->threadOf($requestId);
+        self::assertCount(1, $messages);
+        self::assertSame($summary, $messages[0]['content']);
+        self::assertTrue($messages[0]['is_system']);
+        self::assertNull($messages[0]['sender_id']);
+    }
+
+    public function testTheQuoteSummaryOnlySaysWhatIsKnown(): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $this->em->flush();
+
+        $this->sendReply($requestId, $producerToken, ['priceAmount' => '9']);
+
+        self::assertSame(['Devis : 9'], array_column($this->threadOf($requestId), 'content'));
+    }
+
+    public function testABlankTextPostsNothingUnlessThereIsAPrice(): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $this->em->flush();
+
+        $this->sendReply($requestId, $producerToken, ['replyText' => '   ']);
+
+        self::assertSame([], $this->threadOf($requestId));
+        // * La conversation s'ouvre quand même : la réponse est envoyée.
+        self::assertNotFalse($this->em->getConnection()->fetchOne('SELECT 1 FROM messaging.conversations WHERE request_id = :id', ['id' => $requestId]));
+    }
+
+    public function testADraftPostsNothingAndSendingItPostsTheMessage(): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $this->em->flush();
+
+        $this->sendReply($requestId, $producerToken, ['draft' => true, 'replyText' => 'Brouillon']);
+        self::assertSame([], $this->threadOf($requestId));
+
+        $this->sendReply($requestId, $producerToken, ['replyText' => 'Version finale']);
+        self::assertSame(['Version finale'], array_column($this->threadOf($requestId), 'content'));
+    }
+
+    // * Le client est déjà prévenu par "Devis reçu" ou "Un producteur a répondu" : pas de "nouveau message" en plus.
+    public function testThePostedMessageDoesNotAddANewMessageNotification(): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $this->em->flush();
+        $clientId = $this->em->getConnection()->fetchOne('SELECT client_id FROM matching.client_requests WHERE id = :id', ['id' => $requestId]);
+
+        $this->sendReply($requestId, $producerToken, ['replyText' => 'Oui disponible', 'priceAmount' => '12']);
+
+        $types = $this->em->getConnection()->fetchFirstColumn('SELECT type FROM notification.notifications WHERE user_id = :id', ['id' => $clientId]);
+        self::assertContains('quote_received', $types);
+        self::assertNotContains('new_message', $types);
     }
 
     public function testReplyToRequestRejectsProducerWithoutFeature(): void

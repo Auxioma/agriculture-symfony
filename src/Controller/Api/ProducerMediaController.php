@@ -4,10 +4,13 @@ namespace App\Controller\Api;
 
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerMedia;
+use App\Service\Producer\PhotoUploadRules;
+use App\Service\Producer\ProducerMediaKey;
 use Doctrine\ORM\EntityManagerInterface;
 use League\Flysystem\FilesystemOperator;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
@@ -21,12 +24,6 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
  */
 final class ProducerMediaController extends AbstractController
 {
-    // * Types MIME d'images autorisés pour le téléversement 
-    private const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-
-    // * Taille maximale autorisée pour un fichier (5 Mo en octets)
-    private const MAX_SIZE_BYTES = 5 * 1024 * 1024;
-
     /**
      * Téléverse une photo pour le profil du producteur connecté.
      * Effectue les validations de sécurité essentielles avant l'envoi vers le stockage :
@@ -52,23 +49,22 @@ final class ProducerMediaController extends AbstractController
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
         }
 
+        // * mêmes règles que les photos de produit : jpeg, png ou webp, 5 Mo (voir PhotoUploadRules)
         $file = $request->files->get('photo');
-        if ($file === null || !$file->isValid()) {
-            return $this->json(['error' => 'Aucun fichier "photo" valide reçu.'], 422);
+        if (null !== ($error = PhotoUploadRules::error($file))) {
+            return $this->json(['error' => $error], 422);
         }
+        \assert($file instanceof UploadedFile);
 
-        // ! Cahier devops : "Contrôle type MIME, taille maximale" avant tout envoi vers le stockage objet.
-        // ! getMimeType() lit le contenu réel du fichier (fileinfo), pas le Content-Type déclaré par le client.
-        if (!in_array($file->getMimeType(), self::ALLOWED_MIME_TYPES, true)) {
-            return $this->json(['error' => 'Format non supporté (jpeg, png ou webp uniquement).'], 422);
-        }
-        if ($file->getSize() > self::MAX_SIZE_BYTES) {
-            return $this->json(['error' => 'Fichier trop volumineux (5 Mo maximum).'], 422);
+        // * "cover" = la photo de couverture de « Modifier mon profil » --> sans champ type, photo de galerie 
+        $type = (string) $request->request->get('type', 'photo');
+        if (!\in_array($type, ['photo', 'cover'], true)) {
+            return $this->json(['error' => 'Type de photo inconnu (photo ou cover).'], 422);
         }
 
         $media = new ProducerMedia();
         $media->setProducer($producer);
-        $media->setType('photo');
+        $media->setType($type);
         $media->setAltText($request->request->get('altText'));
         $media->setIsPublic(true);
 
@@ -77,8 +73,28 @@ final class ProducerMediaController extends AbstractController
         $storage->write($key, file_get_contents($file->getPathname()));
         $media->setFileUrl($storage->publicUrl($key));
 
+        // * une seule couverture : l'ancienne part, et la nouvelle passe devant les autres photos (position la plus basse), qui est
+        // * l'ordre de la fiche publique. Les fichiers de l'ancienne partent une fois la base enregistrée.
+        $oldKeys = [];
+        if ('cover' === $type) {
+            $positions = [0];
+            foreach ($em->getRepository(ProducerMedia::class)->findBy(['producer' => $producer]) as $other) {
+                if ('cover' === $other->getType()) {
+                    $oldKeys[] = ProducerMediaKey::of($other);
+                    $em->remove($other);
+                } else {
+                    $positions[] = $other->getPosition() ?? 0;
+                }
+            }
+            $media->setPosition(min($positions) - 1);
+        }
+
         $em->persist($media);
         $em->flush();
+
+        foreach ($oldKeys as $oldKey) {
+            $storage->delete($oldKey);
+        }
 
         return $this->json(['id' => $media->getId()->toRfc4122(), 'url' => $media->getFileUrl()], 201);
     }

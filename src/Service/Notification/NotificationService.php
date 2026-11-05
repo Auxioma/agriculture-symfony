@@ -5,6 +5,7 @@ namespace App\Service\Notification;
 use App\Entity\Identity\User;
 use App\Entity\Notification\Notification;
 use App\Entity\Notification\NotificationDelivery;
+use App\Enum\UserStatus;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
@@ -22,8 +23,13 @@ final readonly class NotificationService
 
     // * Ne flush pas : le contrôleur appelant décide du moment (même convention que le reste de l'API --
     // * un seul flush() en fin de méthode, après toutes les opérations).
-    public function notify(User $recipient, string $type, string $title, string $body, array $data = []): Notification
+    // * Un interrupteur coupé dans Paramètres (NotificationPreferences) coupe les deux canaux : rien n'est créé, et on rend null.
+    public function notify(User $recipient, string $type, string $title, string $body, array $data = []): ?Notification
     {
+        if (!NotificationPreferences::enabled($recipient, $type)) {
+            return null;
+        }
+
         $notification = new Notification();
         $notification->setIdUser($recipient);
         $notification->setType($type);
@@ -39,7 +45,10 @@ final readonly class NotificationService
         $inAppDelivery->setSentAt(new \DateTimeImmutable());
         $this->em->persist($inAppDelivery);
 
-        $this->sendEmail($notification, $recipient, $title, $body);
+        // * un compte supprimé n'a plus d'adresse (deleted+...@anonymized.local) : l'e-mail partirait dans le vide et reviendrait en erreur.
+        if ($recipient->getStatus() !== UserStatus::Deleted) {
+            $this->sendEmail($notification, $recipient, $title, $body);
+        }
 
         return $notification;
     }

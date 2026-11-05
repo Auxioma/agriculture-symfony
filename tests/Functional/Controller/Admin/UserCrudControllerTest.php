@@ -16,6 +16,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 final class UserCrudControllerTest extends ApiTestCase
 {
     use EntityFactoryTrait;
+    use RowActionTestTrait;
 
     private function loginAsAdmin(): User
     {
@@ -56,13 +57,7 @@ final class UserCrudControllerTest extends ApiTestCase
         $target = $this->makeUser('target');
         $this->em->flush();
 
-        $url = self::getContainer()->get(AdminUrlGenerator::class)
-            ->setController(UserCrudController::class)
-            ->setAction('anonymizeUser')
-            ->setEntityId($target->getId())
-            ->generateUrl();
-
-        $this->client->request('GET', $url);
+        $this->postRowAction(UserCrudController::class, $target->getId()->toRfc4122(), 'anonymize');
 
         self::assertResponseIsSuccessful();
 
@@ -78,6 +73,85 @@ final class UserCrudControllerTest extends ApiTestCase
         );
         self::assertNotFalse($audit);
         self::assertSame($target->getId()->toRfc4122(), $audit['record_id']);
+    }
+
+    // * Irréversible, et c'était un simple lien GET : un lien piégé ou un clic au mauvais endroit suffisait.
+    public function testAnonymizeRefusesGetAndABadToken(): void
+    {
+        $this->loginAsAdmin();
+        $target = $this->makeUser('target');
+        $this->em->flush();
+        $id = $target->getId()->toRfc4122();
+        $statusBefore = $this->em->getConnection()->fetchOne('SELECT status FROM identity.users WHERE id = :id', ['id' => $id]);
+        $url = $this->rowActionUrl(UserCrudController::class, $id, 'anonymize');
+
+        $this->client->request('GET', $url);
+        self::assertResponseStatusCodeSame(405);
+
+        $this->client->request('POST', $this->withForgedToken($url));
+        self::assertResponseStatusCodeSame(403);
+
+        $this->client->request('POST', $this->withoutToken($url));
+        self::assertResponseStatusCodeSame(403);
+
+        self::assertSame($statusBefore, $this->em->getConnection()->fetchOne('SELECT status FROM identity.users WHERE id = :id', ['id' => $id]));
+        self::assertStringNotContainsString('@anonymized.local', (string) $this->em->getConnection()->fetchOne('SELECT email FROM identity.users WHERE id = :id', ['id' => $id]));
+    }
+
+    // * Ce que le navigateur reçoit : un formulaire POST (vide, dans le menu de la ligne), le lien qui lui est rattaché et qui ouvre
+    // * la fenêtre de confirmation d'EasyAdmin (c'est son JavaScript qui envoie le formulaire une fois confirmé), et cette fenêtre
+    // * bien présente dans la page.
+    public function testAnonymizeButtonIsAPostFormThatAsksForConfirmation(): void
+    {
+        $this->loginAsAdmin();
+        $target = $this->makeUser('target');
+        $this->em->flush();
+        $id = $target->getId()->toRfc4122();
+
+        $crawler = $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
+            ->setController(UserCrudController::class)
+            ->setAction(Action::INDEX)
+            ->generateUrl());
+
+        $form = $crawler->filter(sprintf('form[action*="%s/anonymize?"]', $id));
+        self::assertCount(1, $form);
+        self::assertSame('post', strtolower((string) $form->attr('method')));
+        $trigger = $crawler->filter(\sprintf('a[data-ea-action-form-id="%s"]', $form->attr('id')));
+        self::assertCount(1, $trigger);
+        self::assertSame('true', $trigger->attr('data-action-confirmation'));
+        self::assertStringContainsString('irréversible', (string) $trigger->attr('data-action-confirmation-message'));
+        self::assertCount(1, $crawler->filter('#modal-action-confirmation'));
+    }
+
+    // * Le bouton est affiché pour toutes les lignes, la sienne comprise : un clic dessus supprimait son propre accès.
+    public function testAnonymizeRefusesTheAdminsOwnAccount(): void
+    {
+        $admin = $this->loginAsAdmin();
+        $id = $admin->getId()->toRfc4122();
+        $statusBefore = $this->em->getConnection()->fetchOne('SELECT status FROM identity.users WHERE id = :id', ['id' => $id]);
+
+        $this->postRowAction(UserCrudController::class, $id, 'anonymize');
+
+        self::assertResponseStatusCodeSame(403);
+        $row = $this->em->getConnection()->fetchAssociative('SELECT status, email FROM identity.users WHERE id = :id', ['id' => $id]);
+        self::assertSame($statusBefore, $row['status']);
+        self::assertStringNotContainsString('@anonymized.local', $row['email']);
+    }
+
+    public function testAnonymizeRefusesAnAccountThatIsAlreadyAnonymized(): void
+    {
+        $this->loginAsAdmin();
+        $target = $this->makeUser('target');
+        $this->em->flush();
+        $id = $target->getId()->toRfc4122();
+        $url = $this->rowActionUrl(UserCrudController::class, $id, 'anonymize');
+
+        $this->client->request('POST', $url);
+        self::assertResponseIsSuccessful();
+
+        // * Même adresse, rejouée : le bouton n'est plus affiché, mais un POST direct existe.
+        $this->client->request('POST', $url);
+        self::assertResponseStatusCodeSame(403);
     }
 
     // * Vérifie le formulaire d'édition de bout en bout : status et roles sont mappés en ChoiceField (pas

@@ -7,6 +7,8 @@ use App\Dto\Producer\UpdateProducerProfileRequest;
 use App\Entity\Catalog\Country;
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerProfile;
+use App\Entity\Producer\ProducerSetting;
+use App\Enum\VerificationStatus;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -27,12 +29,35 @@ final class ProducerProfileController extends AbstractController
      * Récupère les données du profil producteur de l'utilisateur.
      */
     #[Route('/api/producer/profile', methods: ['GET'])]
-    public function getMyProfile(#[CurrentUser] User $user): JsonResponse
+    public function getMyProfile(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
         $producer = $user->getProducerProfile();
         if ($producer === null) {
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
         }
+
+        // * retrait et livraison : null tant qu'il n'y a pas de ligne producer_settings (rien de configuré), pas false
+        $settings = $producer->getSettings();
+
+        // * couverture : la première photo publique (position, sans position en dernier), comme la fiche publique et les cartes.
+        // * fetchOne() renvoie false sans photo : "?: null" pour le JSON
+        $photoUrl = $em->getConnection()->fetchOne(
+            'SELECT file_url FROM producer.producer_media
+             WHERE producer_id = :producerId AND is_public = true
+             ORDER BY position ASC NULLS LAST
+             LIMIT 1',
+            ['producerId' => $producer->getId()->toRfc4122()]
+        ) ?: null;
+
+        // * date de vérification : la dernière validation faite par l'équipe, lue dans l'audit (MLD : « validation producteur »
+        // * est une action tracée, le profil n'a pas de colonne pour ça). null tant que le profil n'est pas vérifié, ou si aucune
+        // * validation n'a été tracée (profil créé déjà vérifié).
+        $validatedAt = VerificationStatus::Verified === $producer->getVerificationStatus()
+            ? $em->getConnection()->fetchOne(
+                "SELECT max(created_at) FROM audit.audit_logs WHERE action = 'producer_validated' AND schema_name = 'producer' AND table_name = 'producer_profiles' AND record_id = :producerId",
+                ['producerId' => $producer->getId()->toRfc4122()]
+            )
+            : null;
 
         return $this->json([
             'id' => $producer->getId()->toRfc4122(),
@@ -46,6 +71,10 @@ final class ProducerProfileController extends AbstractController
             'countryCode' => $producer->getCountry()?->getCode(),
             'verificationStatus' => $producer->getVerificationStatus()->value,
             'isActive' => $producer->isActive(),
+            'pickupAvailable' => $settings?->isPickupEnabled(),
+            'deliveryAvailable' => $settings?->isDeliveryEnabled(),
+            'photoUrl' => $photoUrl,
+            'verifiedAt' => $validatedAt ? (new \DateTimeImmutable($validatedAt))->format(DATE_ATOM) : null,
         ]);
     }
 
@@ -69,6 +98,22 @@ final class ProducerProfileController extends AbstractController
         $producer->setCity($request->city);
         $producer->setPostalCode($request->postalCode);
         $producer->setAddressVisibility($request->addressVisibility);
+
+        // * sans ligne de réglages, elle naît au premier retrait ou à la première livraison enregistrés
+        if ($request->pickupAvailable !== null || $request->deliveryAvailable !== null) {
+            $settings = $producer->getSettings();
+            if ($settings === null) {
+                $settings = new ProducerSetting();
+                $producer->setSettings($settings);
+                $em->persist($settings);
+            }
+            if ($request->pickupAvailable !== null) {
+                $settings->setPickupEnabled($request->pickupAvailable);
+            }
+            if ($request->deliveryAvailable !== null) {
+                $settings->setDeliveryEnabled($request->deliveryAvailable);
+            }
+        }
 
         // Mise à jour du point spatial (PostGIS / EWKT format SRID 4326)
         if ($request->latitude !== null && $request->longitude !== null) {

@@ -52,11 +52,13 @@ class SecurityHeadersListener implements EventSubscriberInterface
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
         $response->headers->set('Permissions-Policy', 'geolocation=(), camera=(), microphone=()');
 
-        // * EasyAdmin gère sa propre CSP (styles inline via nonce, Bootstrap depuis un CDN) pour ses pages
-        // * /admin -- un default-src 'self' générique écrase/entre en conflit avec elle et casse tout le
-        // * rendu du back-office (vérifié en navigateur : page de connexion sans CSS, CDN bloqué, styles
-        // * inline bloqués). On ne pose donc cette CSP que hors /admin, là où rien d'autre ne la gère déjà.
-        if (!str_starts_with($request->getPathInfo(), '/admin')) {
+        // * /admin : pas de default-src 'self', ça casse tout le rendu du back-office (vu en navigateur, page de connexion sans CSS).
+        // * Juste le minimum : pas d'iframe (clickjacking sur Valider, Anonymiser...), pas de <base>, pas d'<object>, formulaires vers nous.
+        // * On croyait avant qu'EasyAdmin posait sa propre CSP, c'est faux : il n'en pose aucune, /admin n'avait rien du tout.
+        if (str_starts_with($request->getPathInfo(), '/admin')) {
+            $response->headers->set('Content-Security-Policy', "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'");
+            $response->headers->set('X-Frame-Options', 'DENY');
+        } else {
             $response->headers->set('Content-Security-Policy', "default-src 'self'; frame-ancestors 'none'");
         }
 

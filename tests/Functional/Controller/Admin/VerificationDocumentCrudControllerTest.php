@@ -9,7 +9,6 @@ use App\Entity\Trust\VerificationDocument;
 use App\Enum\VerificationDocumentStatus;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\EntityFactoryTrait;
-use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 
 /**
  * Teste le module "Documents justificatifs" du back-office : Approuver/Rejeter
@@ -19,6 +18,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 final class VerificationDocumentCrudControllerTest extends ApiTestCase
 {
     use EntityFactoryTrait;
+    use RowActionTestTrait;
 
     private function loginAsAdmin(): User
     {
@@ -63,11 +63,7 @@ final class VerificationDocumentCrudControllerTest extends ApiTestCase
         $this->loginAsAdmin();
         $document = $this->makePendingDocumentWithClaimedLabel();
 
-        $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
-            ->setController(VerificationDocumentCrudController::class)
-            ->setAction('approveDocument')
-            ->setEntityId($document->getId())
-            ->generateUrl());
+        $this->postRowAction(VerificationDocumentCrudController::class, $document->getId()->toRfc4122(), 'approve');
         self::assertResponseIsSuccessful();
 
         $docRow = $this->em->getConnection()->fetchAssociative(
@@ -95,11 +91,7 @@ final class VerificationDocumentCrudControllerTest extends ApiTestCase
         $this->loginAsAdmin();
         $document = $this->makePendingDocumentWithClaimedLabel();
 
-        $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
-            ->setController(VerificationDocumentCrudController::class)
-            ->setAction('rejectDocument')
-            ->setEntityId($document->getId())
-            ->generateUrl());
+        $this->postRowAction(VerificationDocumentCrudController::class, $document->getId()->toRfc4122(), 'reject');
         self::assertResponseIsSuccessful();
 
         $row = $this->em->getConnection()->fetchAssociative(
@@ -120,14 +112,38 @@ final class VerificationDocumentCrudControllerTest extends ApiTestCase
     {
         $this->loginAsAdmin();
         $document = $this->makePendingDocumentWithClaimedLabel();
-        $document->setStatus(VerificationDocumentStatus::Approved);
-        $this->em->flush();
+        // * Adresse lue tant que le bouton est affiché, document traité ensuite, envoi en dernier. Le changement se fait en
+        // * SQL : après une requête, $this->em ne suit plus l'entité (le kernel remet Doctrine à zéro), un flush() ne ferait rien.
+        $url = $this->rowActionUrl(VerificationDocumentCrudController::class, $document->getId()->toRfc4122(), 'approve');
+        $this->em->getConnection()->executeStatement('UPDATE trust.verification_documents SET status = :status WHERE id = :id', [
+            'status' => VerificationDocumentStatus::Approved->value,
+            'id' => $document->getId()->toRfc4122(),
+        ]);
 
-        $this->client->request('GET', self::getContainer()->get(AdminUrlGenerator::class)
-            ->setController(VerificationDocumentCrudController::class)
-            ->setAction('approveDocument')
-            ->setEntityId($document->getId())
-            ->generateUrl());
+        $this->client->request('POST', $url);
         self::assertResponseStatusCodeSame(403);
+    }
+
+    // * Avant : un simple lien GET suffisait, sans jeton.
+    public function testDocumentActionsRefuseGetAndABadToken(): void
+    {
+        $this->loginAsAdmin();
+        $document = $this->makePendingDocumentWithClaimedLabel();
+        $id = $document->getId()->toRfc4122();
+
+        foreach (['approve', 'reject'] as $pathEnd) {
+            $url = $this->rowActionUrl(VerificationDocumentCrudController::class, $id, $pathEnd);
+
+            $this->client->request('GET', $url);
+            self::assertResponseStatusCodeSame(405, $pathEnd.' en GET');
+
+            $this->client->request('POST', $this->withForgedToken($url));
+            self::assertResponseStatusCodeSame(403, $pathEnd.' avec un faux jeton');
+
+            $this->client->request('POST', $this->withoutToken($url));
+            self::assertResponseStatusCodeSame(403, $pathEnd.' sans jeton');
+        }
+
+        self::assertSame('pending', $this->em->getConnection()->fetchOne('SELECT status FROM trust.verification_documents WHERE id = :id', ['id' => $id]));
     }
 }

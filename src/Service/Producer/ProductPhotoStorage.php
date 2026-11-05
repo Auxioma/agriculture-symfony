@@ -12,12 +12,10 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
  * Photos d'un produit du producteur, sur le même stockage objet que les photos de l'exploitation (producer_media.storage,
  * MinIO en local, S3 en production). Fichier rangé sous "{producteur}/products/{photo}.{extension}".
  *
- * ! Les règles (types, taille) sont celles de ProducerMediaController::uploadPhoto : jpeg, png ou webp, 5 Mo.
+ * Les règles de fichier (types, taille) sont celles de toutes les photos : voir PhotoUploadRules.
  */
 final class ProductPhotoStorage
 {
-    public const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-    public const MAX_SIZE_BYTES = 5 * 1024 * 1024;
     // * assez pour montrer le produit sans transformer la fiche en galerie
     public const MAX_PER_PRODUCT = 5;
 
@@ -33,7 +31,8 @@ final class ProductPhotoStorage
     {
         $media = new ProducerProductMedia();
         $media->setAltText($altText);
-        $media->setPosition($product->getMedia()->count());
+        // * la suivante, pas le nombre de photos : après la suppression de la 1re (positions 1, 2) le nombre donnerait 2, déjà pris
+        $media->setPosition(1 + max([-1, ...array_map(static fn (ProducerProductMedia $photo) => $photo->getPosition() ?? -1, $product->getMedia()->toArray())]));
 
         $key = $this->key($product, $media->getId()->toRfc4122(), $file->guessExtension() ?? 'bin');
         $this->storage->write($key, (string) file_get_contents($file->getPathname()));
@@ -44,18 +43,23 @@ final class ProductPhotoStorage
     }
 
     /**
-     * Supprime le fichier (sans erreur s'il n'existe plus). La photo en base est retirée par l'appelant.
+     * L'emplacement du fichier d'une photo, à relever AVANT de la retirer du produit (il en dépend). null si on ne le retrouve pas.
      */
-    public function remove(ProducerProductMedia $media): void
+    public function keyOf(ProducerProductMedia $media): ?string
     {
         $product = $media->getProducerProduct();
-        $path = (string) parse_url((string) $media->getFileUrl(), PHP_URL_PATH);
-        if (null === $product || '' === pathinfo($path, PATHINFO_EXTENSION)) {
-            return;
-        }
+        $extension = pathinfo((string) parse_url((string) $media->getFileUrl(), PHP_URL_PATH), PATHINFO_EXTENSION);
 
-        $key = $this->key($product, $media->getId()->toRfc4122(), pathinfo($path, PATHINFO_EXTENSION));
-        if ($this->storage->fileExists($key)) {
+        return null === $product || '' === $extension ? null : $this->key($product, $media->getId()->toRfc4122(), $extension);
+    }
+
+    /**
+     * Supprime un fichier (sans erreur s'il n'existe plus). À appeler APRÈS l'enregistrement en base : si celui-ci échoue, aucune
+     * photo n'a perdu son fichier ; dans l'autre sens, un fichier orphelin ne coûte que de la place.
+     */
+    public function delete(?string $key): void
+    {
+        if (null !== $key) {
             $this->storage->delete($key);
         }
     }

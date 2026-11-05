@@ -5,6 +5,7 @@ namespace App\Controller\Admin;
 use App\Entity\Catalog\Category;
 use App\Entity\Catalog\CategoryTranslation;
 use App\Form\Admin\CategoryTranslationType;
+use App\Service\Catalog\CatalogSlugger;
 use Doctrine\ORM\EntityManagerInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
@@ -41,6 +42,10 @@ class CategoryCrudController extends AbstractCrudController
 {
     private const LOCALES = ['fr' => 'Français', 'en' => 'English', 'es' => 'Español', 'it' => 'Italiano', 'de' => 'Deutsch'];
 
+    public function __construct(private readonly CatalogSlugger $slugger)
+    {
+    }
+
     public static function getEntityFqcn(): string
     {
         return Category::class;
@@ -67,6 +72,31 @@ class CategoryCrudController extends AbstractCrudController
         yield TextField::new('imageUrl')->hideOnIndex();
         yield IntegerField::new('position');
         yield BooleanField::new('isActive');
+    }
+
+    // * Un nouvel élément est actif d'emblée : inactif (le défaut de l'entité), il n'apparaît ni sur le site ni dans la liste que
+    // * le producteur peut ajouter, et on croit à un bug.
+    public function createEntity(string $entityFqcn): object
+    {
+        $entity = parent::createEntity($entityFqcn);
+        if ($entity instanceof Category) {
+            $entity->setIsActive(true);
+        }
+
+        return $entity;
+    }
+
+    // * Slug vide : déduit du nom à l'enregistrement (voir CatalogSlugger).
+    public function persistEntity(EntityManagerInterface $entityManager, object $entityInstance): void
+    {
+        $this->slugger->fillIfBlank($entityInstance);
+        parent::persistEntity($entityManager, $entityInstance);
+    }
+
+    public function updateEntity(EntityManagerInterface $entityManager, object $entityInstance): void
+    {
+        $this->slugger->fillIfBlank($entityInstance);
+        parent::updateEntity($entityManager, $entityInstance);
     }
 
     public function configureActions(Actions $actions): Actions

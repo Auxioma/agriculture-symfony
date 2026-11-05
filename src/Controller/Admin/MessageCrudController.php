@@ -29,19 +29,27 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\Field;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
-use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
+use Symfony\Contracts\Service\ResetInterface;
 use App\Service\Audit\AuditLogger;
 
-class MessageCrudController extends AbstractCrudController
+class MessageCrudController extends AbstractCrudController implements ResetInterface
 {
     use EagerAssociationJoinTrait;
+    use CsrfPostActionTrait;
 
     /** @var array<string, Report>|null identifiant de conversation => signalement */
     private ?array $reportsByConversationId = null;
+
+    // * Sans ça, un processus qui sert plusieurs requêtes (les tests, un worker) garde les Report de la requête d'avant, et le
+    // * flush suivant plante ("nouvelle entité" sur ModerationAction). En prod un kernel par requête, donc rien à voir.
+    public function reset(): void
+    {
+        $this->reportsByConversationId = null;
+    }
 
     public function __construct(
         private readonly EntityManagerInterface $em,
@@ -157,12 +165,12 @@ class MessageCrudController extends AbstractCrudController
     // * Pas d'EDIT ici : un admin ne réécrit jamais le contenu d'un message, il le masque (hideMessage).
     public function configureActions(Actions $actions): Actions
     {
-        $hide = Action::new('hide', 'Masquer')
-            ->linkToCrudAction('hideMessage')
+        // * Formulaires POST avec jeton (CsrfPostActionTrait), plus des liens GET.
+        $hide = $this->postAction('hide', 'Masquer', 'hideMessage')
             ->displayIf(fn (Message $m) => null === $m->getModeratedAt());
 
-        $block = Action::new('blockSender', "Bloquer l'expéditeur")
-            ->linkToCrudAction('blockSender')
+        $block = $this->postAction('blockSender', "Bloquer l'expéditeur", 'blockSender')
+            ->askConfirmation("Suspendre le compte de l'expéditeur ?", 'Suspendre')
             ->displayIf(fn (Message $m) => null !== $m->getSender());
 
         // * Masquées une fois le signalement Résolu/Rejeté (voir resolveReport()/rejectReport()) : un signalement
@@ -172,8 +180,8 @@ class MessageCrudController extends AbstractCrudController
             [ReportStatus::Open, ReportStatus::InReview],
             true,
         );
-        $resolve = Action::new('resolveReport', 'Résoudre')->linkToCrudAction('resolveReport')->displayIf($isDecidable);
-        $reject = Action::new('rejectReport', 'Rejeter')->linkToCrudAction('rejectReport')->displayIf($isDecidable);
+        $resolve = $this->postAction('resolveReport', 'Résoudre', 'resolveReport')->displayIf($isDecidable);
+        $reject = $this->postAction('rejectReport', 'Rejeter', 'rejectReport')->displayIf($isDecidable);
 
         return $actions
             ->disable(Action::NEW, Action::EDIT, Action::DELETE)
@@ -202,9 +210,10 @@ class MessageCrudController extends AbstractCrudController
         return $responseParameters;
     }
 
-    #[AdminRoute(path: '/{entityId}/hide', name: 'hide')]
+    #[AdminRoute(path: '/{entityId}/hide', name: 'hide', options: ['methods' => ['POST']])]
     public function hideMessage(AdminContext $context, #[CurrentUser] User $admin): Response
     {
+        $this->assertPostWithToken($context);
         $message = $context->getEntity()->getInstance();
         $this->assertMessageIsReported($message);
         $message->setModeratedAt(new \DateTimeImmutable());
@@ -221,16 +230,19 @@ class MessageCrudController extends AbstractCrudController
     // * inversement) : sa clé primaire composite exige un blocker non nul, ce qu'un admin n'est pas ici.
     // * Le "blocage" côté modération back-office réutilise donc la suspension déjà en place sur Utilisateurs
     // * (User.status), mécanisme réellement conçu pour une décision administrative sur un compte.
-    #[AdminRoute(path: '/{entityId}/block-sender', name: 'block_sender')]
+    #[AdminRoute(path: '/{entityId}/block-sender', name: 'block_sender', options: ['methods' => ['POST']])]
     public function blockSender(AdminContext $context, #[CurrentUser] User $admin): Response
     {
+        $this->assertPostWithToken($context);
         $message = $context->getEntity()->getInstance();
         $this->assertMessageIsReported($message);
         $sender = $message->getSender();
+        // * Le statut d'avant était écrit en dur ('active') dans le journal, même pour un compte déjà en attente.
+        $previousStatus = $sender->getStatus();
         $sender->setStatus(UserStatus::Suspended);
 
         $this->recordModerationAction($message->getConversation(), $admin, 'block_user', ['userId' => $sender->getId()->toRfc4122()]);
-        $this->auditLogger->log('user_blocked', 'identity', 'users', $sender->getId()->toRfc4122(), ['status' => 'active'], ['status' => UserStatus::Suspended->value]);
+        $this->auditLogger->log('user_blocked', 'identity', 'users', $sender->getId()->toRfc4122(), ['status' => $previousStatus->value], ['status' => UserStatus::Suspended->value]);
 
         $this->em->flush();
         $this->addFlash('success', 'Utilisateur suspendu.');
@@ -238,9 +250,6 @@ class MessageCrudController extends AbstractCrudController
         return $this->redirectToIndex();
     }
 
-    // * ModerationAction.report n'est pas nullable : sans Report retrouvé (ne devrait pas arriver puisque
-    // * la liste est déjà filtrée aux conversations signalées), on masque/bloque quand même mais sans trace --
-    // * mieux vaut agir sans trace que ne pas agir du tout, mais ce cas ne devrait jamais se produire en pratique.
     // * ModerationAction.report n'est pas nullable : sans Report retrouvé (ne devrait pas arriver puisque la liste
     // * est déjà filtrée aux conversations signalées), on masque/bloque quand même mais sans trace -- mieux vaut
     // * agir sans trace que ne pas agir du tout, mais ce cas ne devrait jamais se produire en pratique.
@@ -271,7 +280,7 @@ class MessageCrudController extends AbstractCrudController
     /**
      * @param AdminContext<Message> $context
      */
-    #[AdminRoute(path: '/{entityId}/resolve-report', name: 'resolve_report')]
+    #[AdminRoute(path: '/{entityId}/resolve-report', name: 'resolve_report', options: ['methods' => ['POST']])]
     public function resolveReport(AdminContext $context, #[CurrentUser] User $admin): Response
     {
         return $this->decideReport($context, $admin, ReportStatus::Resolved, 'report_resolved', 'Signalement résolu, conversation clôturée.');
@@ -280,7 +289,7 @@ class MessageCrudController extends AbstractCrudController
     /**
      * @param AdminContext<Message> $context
      */
-    #[AdminRoute(path: '/{entityId}/reject-report', name: 'reject_report')]
+    #[AdminRoute(path: '/{entityId}/reject-report', name: 'reject_report', options: ['methods' => ['POST']])]
     public function rejectReport(AdminContext $context, #[CurrentUser] User $admin): Response
     {
         return $this->decideReport($context, $admin, ReportStatus::Rejected, 'report_rejected', 'Signalement rejeté, conversation clôturée.');
@@ -291,6 +300,7 @@ class MessageCrudController extends AbstractCrudController
      */
     private function decideReport(AdminContext $context, User $admin, ReportStatus $newStatus, string $auditAction, string $flashMessage): Response
     {
+        $this->assertPostWithToken($context);
         $message = $context->getEntity()->getInstance();
         $this->assertMessageIsReported($message);
         $conversation = $message->getConversation();
@@ -316,16 +326,5 @@ class MessageCrudController extends AbstractCrudController
         $this->addFlash('success', $flashMessage);
 
         return $this->redirectToIndex();
-    }
-
-    private function redirectToIndex(): Response
-    {
-        return $this->redirect(
-            $this->container->get(AdminUrlGenerator::class)
-                ->setController(self::class)
-                ->setAction(Action::INDEX)
-                ->unset('entityId')
-                ->generateUrl()
-        );
     }
 }

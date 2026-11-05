@@ -75,6 +75,81 @@ final class NotificationControllerTest extends ApiTestCase
         self::assertSame($unread->getId()->toRfc4122(), $data[0]['id']);
     }
 
+    // * date forcée en SQL : le constructeur de Notification pose createdAt, et deux lignes créées à la suite pourraient s'ex aequo
+    private function setCreatedAt(Notification $notification, string $at): void
+    {
+        $this->em->getConnection()->executeStatement(
+            'UPDATE notification.notifications SET created_at = :at WHERE id = :id',
+            ['at' => $at, 'id' => $notification->getId()->toRfc4122()]
+        );
+    }
+
+    public function testListNotificationsKeepsOnlyTheMostRecentOnesWhenLimited(): void
+    {
+        $me = $this->makeUser('me');
+        $oldest = $this->makeNotification($me, 'La plus ancienne');
+        $middle = $this->makeNotification($me, 'Au milieu');
+        $newest = $this->makeNotification($me, 'La plus récente');
+        $this->em->flush();
+        $this->setCreatedAt($oldest, '2026-10-01 08:00:00+00');
+        $this->setCreatedAt($newest, '2026-10-03 08:00:00+00');
+        $this->setCreatedAt($middle, '2026-10-02 08:00:00+00');
+
+        $token = $this->loginAs($me);
+
+        $this->client->request('GET', '/api/notifications?limit=2', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame(['La plus récente', 'Au milieu'], array_column($data, 'body'));
+    }
+
+    public function testListNotificationsLimitAppliesAfterTheUnreadFilter(): void
+    {
+        $me = $this->makeUser('me');
+        $this->makeNotification($me, 'Lue, plus récente', new \DateTimeImmutable());
+        $unread = $this->makeNotification($me, 'Non lue, plus ancienne');
+        $this->em->flush();
+        $this->setCreatedAt($unread, '2026-10-01 08:00:00+00');
+
+        $token = $this->loginAs($me);
+
+        $this->client->request('GET', '/api/notifications?unreadOnly=true&limit=1', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame([$unread->getId()->toRfc4122()], array_column($data, 'id'));
+    }
+
+    public function testListNotificationsIgnoresAnEmptyOrNegativeLimit(): void
+    {
+        $me = $this->makeUser('me');
+        $this->makeNotification($me, 'Une');
+        $this->makeNotification($me, 'Deux');
+        $this->em->flush();
+
+        $token = $this->loginAs($me);
+
+        foreach (['0', '-3', 'abc', ''] as $limit) {
+            $this->client->request('GET', '/api/notifications?limit='.$limit, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+            self::assertCount(2, json_decode($this->client->getResponse()->getContent(), true), 'limit='.$limit);
+        }
+    }
+
+    public function testListNotificationsCapsTheLimit(): void
+    {
+        $me = $this->makeUser('me');
+        for ($i = 0; $i < 105; ++$i) {
+            $this->makeNotification($me, 'Notification '.$i);
+        }
+        $this->em->flush();
+
+        $token = $this->loginAs($me);
+
+        $this->client->request('GET', '/api/notifications?limit=1000', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertCount(100, json_decode($this->client->getResponse()->getContent(), true));
+    }
+
     public function testMarkAsReadSucceeds(): void
     {
         $me = $this->makeUser('me');

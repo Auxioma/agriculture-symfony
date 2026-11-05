@@ -26,6 +26,8 @@ final class StripeGatewayTest extends TestCase
 
     private const PRICE = '{"id":"price_new","object":"price","recurring":{"interval":"year","interval_count":1}}';
 
+    private const CUSTOMER_SUBSCRIPTION = '{"id":"sub_1","object":"subscription","customer":"cus_1","status":"canceled"}';
+
     private const SUBSCRIPTION = '{"id":"sub_1","object":"subscription","status":"past_due","cancel_at_period_end":true,"schedule":null,"items":{"object":"list","data":[{"id":"si_1","object":"subscription_item","current_period_start":1700000000,"current_period_end":1702592000,"price":{"id":"price_old","object":"price"}}],"has_more":false,"url":"/v1/subscription_items"}}';
 
     /** @var \ArrayObject<int, array{string, string, array<string, mixed>}> méthode, chemin et paramètres de chaque appel */
@@ -51,6 +53,10 @@ final class StripeGatewayTest extends TestCase
             '/v1/subscription_schedules/sub_sched_1' => self::SCHEDULE,
             '/v1/prices/price_new' => self::PRICE,
             '/v1/subscription_schedules/sub_sched_old' => self::SCHEDULE_PLANNED,
+            '/v1/payment_methods' => '{"object":"list","data":[{"id":"pm_1","object":"payment_method"},{"id":"pm_2","object":"payment_method"}],"has_more":false,"url":"/v1/payment_methods"}',
+            '/v1/payment_methods/pm_1/detach' => '{"id":"pm_1","object":"payment_method"}',
+            '/v1/payment_methods/pm_2/detach' => '{"id":"pm_2","object":"payment_method"}',
+            '/v1/customers/cus_1' => '{"id":"cus_1","object":"customer"}',
         ];
 
         ApiRequestor::setHttpClient(new class($this->requests, $bodies, $subscription, $statuses) implements ClientInterface {
@@ -130,6 +136,27 @@ final class StripeGatewayTest extends TestCase
         $this->gateway()->cancelSubscriptionNow('sub_1');
 
         self::assertSame(['DELETE', '/v1/subscriptions/sub_1'], [$this->requests[0][0], $this->requests[0][1]]);
+    }
+
+    public function testAnonymizingACustomerDetachesItsCardsThenEmptiesItsIdentity(): void
+    {
+        $this->answerWith(self::CUSTOMER_SUBSCRIPTION);
+
+        $this->gateway()->anonymizeCustomer('sub_1');
+
+        $calls = array_map(static fn (array $r) => [$r[0], $r[1]], $this->requests->getArrayCopy());
+        self::assertSame([
+            ['GET', '/v1/subscriptions/sub_1'],
+            ['GET', '/v1/payment_methods'],
+            ['POST', '/v1/payment_methods/pm_1/detach'],
+            ['POST', '/v1/payment_methods/pm_2/detach'],
+            ['POST', '/v1/customers/cus_1'],
+        ], $calls);
+        self::assertSame(['customer' => 'cus_1', 'type' => 'card'], $this->requests[1][2]);
+        $update = $this->requests[4][2];
+        self::assertSame('deleted+cus_1@anonymized.local', $update['email']);
+        // * le SDK envoie null comme une chaîne vide, ce qui efface le champ chez Stripe
+        self::assertSame(['', '', ''], [$update['name'], $update['phone'], $update['address']]);
     }
 
     public function testACheckoutSessionExpiresAfterHalfAnHourToLimitParallelPayments(): void
