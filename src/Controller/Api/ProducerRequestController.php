@@ -316,7 +316,9 @@ final class ProducerRequestController extends AbstractController
                 $clientRequest->getClient(),
                 $requestDto->priceAmount !== null ? 'quote_received' : 'producer_replied',
                 $requestDto->priceAmount !== null ? 'Devis reçu' : 'Un producteur a répondu',
-                'Vous avez une nouvelle réponse à votre demande.'
+                'Vous avez une nouvelle réponse à votre demande.',
+                // * de quoi mener le client droit à la demande ou au fil depuis la notification
+                ['requestId' => $clientRequest->getId()->toRfc4122(), 'conversationId' => $conversation->getId()->toRfc4122()],
             );
         }
 

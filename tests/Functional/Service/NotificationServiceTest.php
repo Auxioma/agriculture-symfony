@@ -76,6 +76,7 @@ final class NotificationServiceTest extends ApiTestCase
         yield 'nouvel avis client' => ['new_review'];
         yield 'producteur ayant répondu' => ['producer_replied'];
         yield 'devis reçu' => ['quote_received'];
+        yield 'réponse client' => ['client_replied'];
     }
 
     // * un interrupteur coupé vaut pour les deux canaux : ni notification dans l'application, ni e-mail

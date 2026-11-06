@@ -2,6 +2,7 @@
 
 namespace App\Service\Messaging;
 
+use App\Entity\Identity\User;
 use App\Entity\Messaging\Conversation;
 use App\Entity\Messaging\Message;
 use Doctrine\ORM\EntityManagerInterface;
@@ -14,6 +15,28 @@ final class LastMessageFinder
 {
     public function __construct(private readonly EntityManagerInterface $em)
     {
+    }
+
+    private const PREVIEW_LENGTH = 120;
+
+    /**
+     * La ligne d'aperçu d'une conversation dans une liste (celle du producteur comme celle du client) : texte coupé, qui a écrit, pièce jointe.
+     *
+     * @return array{preview: ?string, moderated: bool, fromMe: bool, isSystem: bool, hasAttachment: bool, createdAt: string}
+     */
+    public function preview(Message $message, User $user): array
+    {
+        $moderated = null !== $message->getModeratedAt();
+
+        return [
+            // * Un message modéré ne montre plus son texte, ici comme dans le fil.
+            'preview' => $moderated || null === $message->getContent() ? null : mb_strimwidth($message->getContent(), 0, self::PREVIEW_LENGTH, '…'),
+            'moderated' => $moderated,
+            'fromMe' => $message->getSender()?->getId()->equals($user->getId()) ?? false,
+            'isSystem' => $message->isSystem(),
+            'hasAttachment' => !$message->getAttachments()->isEmpty(),
+            'createdAt' => $message->getCreatedAt()->format(DATE_ATOM),
+        ];
     }
 
     /**

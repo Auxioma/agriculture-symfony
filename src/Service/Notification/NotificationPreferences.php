@@ -16,8 +16,9 @@ final class NotificationPreferences
     // * client (producer_replied, quote_received ; request_expiring_soon et new_message servent aux deux). Toutes les autres partent
     // * toujours : un refus ou une demande de complément de profil, une invitation d'équipe, une réponse du support, un abonnement en double,
     // * et "Demande envoyée" (la confirmation de sa propre action).
-    // * Pas proposées, rien ne les envoie encore : "Réponse client" (producteur), "Producteur favori avec nouvelle disponibilité" et
-    // * "Avis à laisser" (client). "Avis publié" y est sous "new_review", envoyée à la création de l'avis.
+    // * Pas proposées, rien ne les envoie encore : "Producteur favori avec nouvelle disponibilité" et "Avis à laisser" (client).
+    // * "Avis publié" y est sous "new_review", envoyée à la création de l'avis ; "Réponse client" sous "client_replied", quand le client
+    // * accepte ou refuse un devis (ClientReplyController).
     public const SWITCHABLE_TYPES = [
         'new_relevant_request',
         'request_expiring_soon',
@@ -28,6 +29,7 @@ final class NotificationPreferences
         'new_review',
         'producer_replied',
         'quote_received',
+        'client_replied',
     ];
 
     /**
