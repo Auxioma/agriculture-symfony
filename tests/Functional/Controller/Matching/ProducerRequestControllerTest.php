@@ -2,7 +2,6 @@
 
 namespace App\Tests\Functional\Controller\Matching;
 
-use App\Entity\Catalog\Currency;
 use App\Entity\Catalog\Unit;
 use App\Entity\Catalog\Country;
 use App\Entity\Identity\User;
@@ -404,9 +403,8 @@ final class ProducerRequestControllerTest extends ApiTestCase
         [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
         $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
         $unit = (new Unit())->setCode('kg')->setLabel('Kilogramme');
-        $currency = (new Currency())->setCode('EUR')->setName('Euro')->setSymbol('€')->setIsActive(true);
+        // * pas de Currency à créer : l'EUR est déjà en base, semée par setUp()
         $this->em->persist($unit);
-        $this->em->persist($currency);
         $this->em->flush();
 
         $this->sendReply($requestId, $producerToken, ['priceAmount' => $price, 'priceUnitId' => $unit->getId()->toRfc4122(), 'currencyCode' => 'EUR']);
