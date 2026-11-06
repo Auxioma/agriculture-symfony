@@ -74,6 +74,8 @@ final class NotificationServiceTest extends ApiTestCase
         yield 'abonnement bientôt renouvelé' => ['subscription_renewing_soon'];
         yield 'profil validé' => ['profile_validated'];
         yield 'nouvel avis client' => ['new_review'];
+        yield 'producteur ayant répondu' => ['producer_replied'];
+        yield 'devis reçu' => ['quote_received'];
     }
 
     // * un interrupteur coupé vaut pour les deux canaux : ni notification dans l'application, ni e-mail
@@ -131,7 +133,7 @@ final class NotificationServiceTest extends ApiTestCase
         yield 'réponse du support' => ['support_reply'];
         yield 'invitation d’équipe' => ['team_invitation'];
         yield 'abonnement en double annulé' => ['subscription_duplicate_cancelled'];
-        yield 'notification de client' => ['producer_replied'];
+        yield 'demande envoyée' => ['request_sent'];
     }
 
     // * même si une valeur "false" traîne en base pour ce type (écrite à la main, ou par une version plus ancienne de l'écran)

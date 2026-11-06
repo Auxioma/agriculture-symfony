@@ -66,7 +66,7 @@ final class AccountSettingsTest extends ApiTestCase
         $data = $this->json();
         self::assertSame('fr', $data['locale']);
         self::assertSame('EUR', $data['currency']);
-        self::assertSame(['new_relevant_request' => true, 'request_expiring_soon' => true, 'new_message' => true, 'payment_failed' => true, 'subscription_renewing_soon' => true, 'profile_validated' => true, 'new_review' => true], $data['notifications']);
+        self::assertSame(['new_relevant_request' => true, 'request_expiring_soon' => true, 'new_message' => true, 'payment_failed' => true, 'subscription_renewing_soon' => true, 'profile_validated' => true, 'new_review' => true, 'producer_replied' => true, 'quote_received' => true], $data['notifications']);
         // * l'adresse du support vient des réglages de la plateforme (admin), pas du front
         self::assertSame('support@trouvemoi.com', $data['supportEmail']);
         self::assertFalse($this->preferenceRow($user));
@@ -85,7 +85,7 @@ final class AccountSettingsTest extends ApiTestCase
         $this->client->request('GET', '/api/me/preferences', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$this->login($user)]);
 
         self::assertSame(
-            ['new_relevant_request' => true, 'request_expiring_soon' => true, 'new_message' => true, 'payment_failed' => false, 'subscription_renewing_soon' => true, 'profile_validated' => true, 'new_review' => true],
+            ['new_relevant_request' => true, 'request_expiring_soon' => true, 'new_message' => true, 'payment_failed' => false, 'subscription_renewing_soon' => true, 'profile_validated' => true, 'new_review' => true, 'producer_replied' => true, 'quote_received' => true],
             $this->json()['notifications']
         );
     }
@@ -115,13 +115,32 @@ final class AccountSettingsTest extends ApiTestCase
         $data = $this->json();
         self::assertSame('CHF', $data['currency']);
         self::assertSame('fr', $data['locale']);
-        self::assertSame(['new_relevant_request' => true, 'request_expiring_soon' => true, 'new_message' => true, 'payment_failed' => false, 'subscription_renewing_soon' => false, 'profile_validated' => true, 'new_review' => true], $data['notifications']);
+        self::assertSame(['new_relevant_request' => true, 'request_expiring_soon' => true, 'new_message' => true, 'payment_failed' => false, 'subscription_renewing_soon' => false, 'profile_validated' => true, 'new_review' => true, 'producer_replied' => true, 'quote_received' => true], $data['notifications']);
 
         $this->client->request('GET', '/api/me/preferences', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
         self::assertSame($data, $this->json());
         $row = $this->preferenceRow($user);
         self::assertSame('CHF', $row['currency']);
-        self::assertSame(['types' => ['new_relevant_request' => true, 'request_expiring_soon' => true, 'new_message' => true, 'payment_failed' => false, 'subscription_renewing_soon' => false, 'profile_validated' => true, 'new_review' => true]], json_decode($row['notification_settings'], true));
+        self::assertSame(['types' => ['new_relevant_request' => true, 'request_expiring_soon' => true, 'new_message' => true, 'payment_failed' => false, 'subscription_renewing_soon' => false, 'profile_validated' => true, 'new_review' => true, 'producer_replied' => true, 'quote_received' => true]], json_decode($row['notification_settings'], true));
+    }
+
+    // * cahier fonctionnel, notifications client : "Producteur ayant répondu" et "Devis reçu" se coupent comme les autres
+    public function testAClientSwitchesOffTheReplyAndQuoteNotificationsAlone(): void
+    {
+        $user = $this->makeUserWithPassword('buyer', self::PASSWORD);
+        $this->em->flush();
+        $token = $this->login($user);
+
+        $this->put('/api/me/preferences', $token, ['notifications' => ['producer_replied' => false]]);
+        self::assertResponseIsSuccessful();
+        $this->put('/api/me/preferences', $token, ['notifications' => ['quote_received' => false]]);
+        self::assertResponseIsSuccessful();
+
+        $notifications = $this->json()['notifications'];
+        self::assertFalse($notifications['producer_replied']);
+        self::assertFalse($notifications['quote_received']);
+        self::assertTrue($notifications['new_message']);
+        self::assertTrue($notifications['request_expiring_soon']);
     }
 
     public function testTheLanguageIsKeptOnThePreferencesAndOnTheAccount(): void

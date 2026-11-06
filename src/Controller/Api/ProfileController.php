@@ -3,95 +3,23 @@
 namespace App\Controller\Api;
 
 use App\Dto\ProfileClient\AddressRequest;
-use App\Dto\ProfileClient\ChangePasswordRequest;
-use App\Dto\ProfileClient\UpdatePreferencesRequest;
 use App\Entity\Identity\User;
 use App\Entity\Identity\UserAddress;
-use App\Entity\Identity\UserPreference;
-use App\Repository\Identity\UserRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
-use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 
 /**
- * Page "Profil" du dashboard client : préférences (langue, devise, notifications), carnet d'adresses
- * et changement de mot de passe. Export et suppression du compte restent dans AuthController.
+ * Page "Profil" du dashboard client : carnet d'adresses. Langue, devise, notifications et mot de passe sont dans
+ * AccountController (GET/PUT /api/me/preferences, PUT /api/me/password), les mêmes que pour le producteur ; export et
+ * suppression du compte restent dans AuthController.
  */
 final class ProfileController extends AbstractController
 {
-    private const DEFAULT_NOTIFICATIONS = [
-        'producerReply' => true,
-        'newMessage' => true,
-        'requestExpiring' => false,
-    ];
-
-    // ---------------------------------------------------------------- Préférences
-
-    #[Route('/api/me/preferences', methods: ['GET'])]
-    public function getPreferences(#[CurrentUser] User $user): JsonResponse
-    {
-        // * Une requête GET ne doit rien écrire en base : sans ligne, on renvoie les valeurs par défaut.
-        return $this->json($this->serializePreferences($user));
-    }
-
-    #[Route('/api/me/preferences', methods: ['PATCH'])]
-    public function updatePreferences(
-        #[CurrentUser] User $user,
-        #[MapRequestPayload] UpdatePreferencesRequest $request,
-        EntityManagerInterface $em,
-    ): JsonResponse {
-        $preference = $user->getPreference();
-
-        if ($preference === null) {
-            $preference = new UserPreference();
-            // ! Ordre important : $idUser est une propriété typée non initialisée, donc la lire avant
-            // ! de l'avoir définie lève une Error. setPreference() la lit, on définit donc l'user d'abord.
-            $preference->setIdUser($user);
-            $preference->setLocale($user->getLocale());
-            $user->setPreference($preference);
-            $em->persist($preference);
-        }
-
-        if ($request->locale !== null) {
-            $preference->setLocale($request->locale);
-            $user->setLocale($request->locale); // garde User::$locale (utilisé ailleurs) synchronisé
-        }
-        if ($request->currency !== null) {
-            $preference->setCurrency($request->currency);
-        }
-        if ($request->notificationSettings !== null) {
-            $preference->setNotificationSettings(array_merge(
-                self::DEFAULT_NOTIFICATIONS,
-                $preference->getNotificationSettings() ?? [],
-                $request->notificationSettings,
-            ));
-        }
-
-        $em->flush();
-
-        return $this->json($this->serializePreferences($user));
-    }
-
-    /** @return array{locale: string, currency: string, notificationSettings: array<string, bool>} */
-    private function serializePreferences(User $user): array
-    {
-        $preference = $user->getPreference();
-
-        return [
-            'locale' => $preference?->getLocale() ?? $user->getLocale(),
-            'currency' => $preference?->getCurrency() ?? 'EUR',
-            'notificationSettings' => array_merge(
-                self::DEFAULT_NOTIFICATIONS,
-                $preference?->getNotificationSettings() ?? [],
-            ),
-        ];
-    }
-
     // ---------------------------------------------------------------- Adresses
 
     #[Route('/api/me/addresses', methods: ['GET'])]
@@ -211,24 +139,5 @@ final class ProfileController extends AbstractController
             'countryCode' => $address->getCountryCode(),
             'isDefault' => $address->isDefault(),
         ];
-    }
-
-    // ---------------------------------------------------------------- Sécurité
-
-    #[Route('/api/me/password', methods: ['PUT'])]
-    public function changePassword(
-        #[CurrentUser] User $user,
-        #[MapRequestPayload] ChangePasswordRequest $request,
-        UserPasswordHasherInterface $hasher,
-        UserRepository $userRepository,
-    ): JsonResponse {
-        if (!$hasher->isPasswordValid($user, $request->currentPassword)) {
-            return $this->json(['error' => 'Mot de passe actuel incorrect.'], 422);
-        }
-
-        // * Même méthode que reset-password (déjà testée) : hash + flush
-        $userRepository->upgradePassword($user, $hasher->hashPassword($user, $request->newPassword));
-
-        return $this->json(null, 204);
     }
 }
