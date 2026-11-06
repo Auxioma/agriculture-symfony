@@ -305,6 +305,13 @@ final class ProducerRequestController extends AbstractController
 
             $this->postReplyInConversation($conversation, $reply, $producer->getOwner(), $em);
 
+            // * Cahier fonctionnel, statuts de demande : "Réponses reçues" dès qu'un producteur a répondu. Seulement depuis "Envoyée" ou "En attente" :
+            // * une conversation déjà ouverte ou un statut terminal ne revient pas en arrière (même règle que ConversationController::sendMessage()).
+            // * C'est aussi ce qui ferme la modification de la demande par le client (ClientRequestController::EDITABLE_STATUSES).
+            if (\in_array($clientRequest->getStatus(), [RequestStatus::Sent, RequestStatus::WaitingReplies], true)) {
+                $clientRequest->setStatus(RequestStatus::RepliesReceived);
+            }
+
             $notificationService->notify(
                 $clientRequest->getClient(),
                 $requestDto->priceAmount !== null ? 'quote_received' : 'producer_replied',

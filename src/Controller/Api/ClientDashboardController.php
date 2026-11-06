@@ -65,6 +65,9 @@ final class ClientDashboardController extends AbstractController
         }, $rows));
     }
 
+    /**
+     * @return array{activeRequests: int, receivedReplies: int, unreadMessages: int}
+     */
     private function counters(string $uid): array
     {
         $row = $this->db->fetchAssociative(<<<'SQL'
@@ -94,6 +97,9 @@ final class ClientDashboardController extends AbstractController
         ];
     }
 
+    /**
+     * @return list<array{id: mixed, title: string, sentAt: string, status: string}>
+     */
     private function latestRequests(string $uid, string $locale): array
     {
         $rows = $this->db->fetchAllAssociative(<<<'SQL'
@@ -123,6 +129,9 @@ final class ClientDashboardController extends AbstractController
         }, $rows);
     }
 
+    /**
+     * @return list<array{id: mixed, producerName: mixed, initials: string, subtitle: string, unreadCount: int}>
+     */
     private function latestMessages(string $uid): array
     {
         $rows = $this->db->fetchAllAssociative(<<<'SQL'
@@ -154,6 +163,9 @@ final class ClientDashboardController extends AbstractController
         ], $rows);
     }
 
+    /**
+     * @return list<array{id: mixed, slug: mixed, name: mixed, initials: string}>
+     */
     private function favorites(string $uid): array
     {
         $rows = $this->db->fetchAllAssociative(<<<'SQL'

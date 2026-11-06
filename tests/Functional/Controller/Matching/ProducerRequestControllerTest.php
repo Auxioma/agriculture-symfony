@@ -216,6 +216,58 @@ final class ProducerRequestControllerTest extends ApiTestCase
         self::assertSame('open', $row['status']);
     }
 
+    private function requestStatus(string $requestId): string
+    {
+        return (string) $this->em->getConnection()->fetchOne('SELECT status FROM matching.client_requests WHERE id = :id', ['id' => $requestId]);
+    }
+
+    // * Cahier fonctionnel, statuts de demande : "Réponses reçues - un ou plusieurs producteurs ont répondu". La demande reste "Envoyée" jusque-là.
+    public function testSendingAReplyMovesTheRequestToRepliesReceived(): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $this->em->flush();
+        self::assertSame('sent', $this->requestStatus($requestId));
+
+        $this->sendReply($requestId, $producerToken, ['replyText' => 'Oui disponible']);
+
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame('replies_received', $this->requestStatus($requestId));
+    }
+
+    public function testADraftDoesNotChangeTheRequestStatus(): void
+    {
+        [$requestId, $producerToken] = $this->setUpMatchedRequestAndProducer();
+
+        $this->sendReply($requestId, $producerToken, ['draft' => true, 'replyText' => 'Premier jet']);
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame('sent', $this->requestStatus($requestId));
+    }
+
+    public function testDecliningDoesNotChangeTheRequestStatus(): void
+    {
+        [$requestId, $producerToken] = $this->setUpMatchedRequestAndProducer();
+
+        $this->client->request('POST', '/api/producer/requests/'.$requestId.'/decline', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$producerToken]);
+
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame('sent', $this->requestStatus($requestId));
+    }
+
+    // * même règle que ConversationController : jamais de retour en arrière depuis une conversation ouverte (ni depuis un statut terminal)
+    public function testAReplyDoesNotTakeAnOpenConversationBackToRepliesReceived(): void
+    {
+        [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
+        $this->makeActiveSubscription($producer, features: ['reply_to_requests' => true]);
+        $this->em->flush();
+        $this->em->getConnection()->executeStatement("UPDATE matching.client_requests SET status = 'conversation_open' WHERE id = :id", ['id' => $requestId]);
+
+        $this->sendReply($requestId, $producerToken, ['replyText' => 'Oui disponible']);
+
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame('conversation_open', $this->requestStatus($requestId));
+    }
+
     public function testReplyToRequestNotifiesClient(): void
     {
         [$requestId, $producerToken, $producer] = $this->setUpMatchedRequestAndProducer();
