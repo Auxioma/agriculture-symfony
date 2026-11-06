@@ -1149,4 +1149,115 @@ final class ProducerControllerTest extends ApiTestCase
             ['id' => $producer->getId()->toRfc4122(), 'daysAgo' => $daysAgo, 'views' => $views],
         );
     }
+
+    // * Recherche texte (?q=) : cahier fonctionnel, MVP « recherche produit / localisation ».
+    /**
+     * @return list<string> les noms de ferme renvoyés pour cette recherche
+     */
+    private function searchFarmNames(string $query): array
+    {
+        $this->client->request('GET', '/api/producers?q='.rawurlencode($query));
+        self::assertResponseIsSuccessful();
+
+        return array_column(json_decode($this->client->getResponse()->getContent(), true), 'farmName');
+    }
+
+    /**
+     * Trois producteurs : un maraîcher lyonnais (tomates, Légumes), un arboriculteur bordelais (pêches, Fruits) et un apiculteur sans ville.
+     */
+    private function makeSearchableProducers(): void
+    {
+        $country = $this->makeCountry();
+        $vegetables = $this->makeCategory('Légumes');
+        $fruits = $this->makeCategory('Fruits');
+        $gardener = $this->makeProducerProfile($this->makeUser('gardener'), $country, farmName: 'Jardin du Rhône');
+        $gardener->setCity('Lyon');
+        $orchard = $this->makeProducerProfile($this->makeUser('orchard'), $country, farmName: 'Verger des Lilas');
+        $orchard->setCity('Bordeaux');
+        $this->makeProducerProfile($this->makeUser('bees'), $country, farmName: 'Rucher Sauvage');
+        $this->makeProducerProduct($gardener, $this->makeProduct($vegetables, 'Tomates'), true);
+        $this->makeProducerProduct($orchard, $this->makeProduct($fruits, 'Pêches'), true);
+        $this->em->flush();
+    }
+
+    public function testSearchFindsAProducerByFarmNameOrCity(): void
+    {
+        $this->makeSearchableProducers();
+
+        self::assertSame(['Verger des Lilas'], $this->searchFarmNames('lilas'));
+        self::assertSame(['Jardin du Rhône'], $this->searchFarmNames('lyon'));
+    }
+
+    public function testSearchFindsAProducerByProductOrCategoryName(): void
+    {
+        $this->makeSearchableProducers();
+
+        self::assertSame(['Jardin du Rhône'], $this->searchFarmNames('tomate'));
+        self::assertSame(['Verger des Lilas'], $this->searchFarmNames('fruits'));
+    }
+
+    public function testSearchIgnoresAccentsAndCase(): void
+    {
+        $this->makeSearchableProducers();
+
+        self::assertSame(['Verger des Lilas'], $this->searchFarmNames('PECHES'));
+        self::assertSame(['Jardin du Rhône'], $this->searchFarmNames('rhone'));
+        self::assertSame(['Jardin du Rhône'], $this->searchFarmNames('légumes'));
+    }
+
+    public function testSearchRequiresEveryWordToMatch(): void
+    {
+        $this->makeSearchableProducers();
+
+        self::assertSame(['Jardin du Rhône'], $this->searchFarmNames('tomates lyon'));
+        self::assertSame([], $this->searchFarmNames('tomates bordeaux'));
+    }
+
+    public function testSearchWithNothingFoundGivesAnEmptyListAndATotalOfZero(): void
+    {
+        $this->makeSearchableProducers();
+
+        $this->client->request('GET', '/api/producers?q=banane');
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([], json_decode($this->client->getResponse()->getContent(), true));
+        self::assertSame('0', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testSearchTakesPercentAndUnderscoreLiterally(): void
+    {
+        $this->makeSearchableProducers();
+
+        // * un « % » pris pour un joker renverrait tout le monde
+        self::assertSame([], $this->searchFarmNames('%'));
+        self::assertSame([], $this->searchFarmNames('_'));
+    }
+
+    public function testSearchCombinesWithTheOtherFilters(): void
+    {
+        $this->makeSearchableProducers();
+        $fruits = $this->em->getRepository(\App\Entity\Catalog\Category::class)->findOneBy(['name' => 'Fruits']);
+
+        $this->client->request('GET', '/api/producers?q=lilas&categoryId='.$fruits->getId()->toRfc4122());
+        self::assertSame(['Verger des Lilas'], array_column(json_decode($this->client->getResponse()->getContent(), true), 'farmName'));
+
+        $this->client->request('GET', '/api/producers?q=rhone&categoryId='.$fruits->getId()->toRfc4122());
+        self::assertSame([], json_decode($this->client->getResponse()->getContent(), true));
+    }
+
+    public function testASearchWithOnlySpacesIsNoSearch(): void
+    {
+        $this->makeSearchableProducers();
+
+        self::assertCount(3, $this->searchFarmNames('   '));
+    }
+
+    public function testSearchTextThatIsTooLongOrNotTextIsRefused(): void
+    {
+        $this->client->request('GET', '/api/producers?q='.str_repeat('a', 101));
+        self::assertResponseStatusCodeSame(400);
+
+        $this->client->request('GET', '/api/producers?q[]=tomates');
+        self::assertResponseStatusCodeSame(400);
+    }
 }

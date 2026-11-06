@@ -28,6 +28,9 @@ final class ProducerController extends AbstractController
     // * Bornes des paramètres publics : évitent des requêtes SQL démesurées (trop de sous-requêtes EXISTS,
     // * rayon couvrant la planète, LIMIT énorme).
     private const MAX_LABELS_FILTER = 10;
+    // * Recherche texte (?q=) : longueur totale et nombre de mots pris en compte, pour qu'une saisie démesurée ne multiplie pas les EXISTS.
+    private const MAX_SEARCH_LENGTH = 100;
+    private const MAX_SEARCH_TERMS = 5;
     private const MAX_RADIUS_KM = 500;
     private const MAX_FEATURED = 50;
     // * Cahier DevOps -- "pagination obligatoire" : une page par défaut même si le client n'envoie rien.
@@ -116,6 +119,34 @@ final class ProducerController extends AbstractController
 
             ";
             $params["label$i"] = $code;
+        }
+
+        // * Cahier fonctionnel, MVP : « recherche produit / localisation ». La localisation est latitude/longitude/radiusKm plus bas ;
+        // * ici le texte libre. Chaque mot doit se retrouver (ET) dans le nom de la ferme, sa ville, ou le nom d'un de ses produits actifs
+        // * ou de leur catégorie (nom de base ou traduit) : « tomates lyon » trouve les producteurs lyonnais de tomates. Sans accents ni
+        // * casse (unaccent + ILIKE), et les % _ \ saisis sont échappés : ils sont cherchés tels quels, pas pris pour des jokers.
+        foreach ($this->searchTerms($request) as $i => $term) {
+            $conditions[] = <<<SQL
+                (
+                    unaccent(pp.farm_name) ILIKE unaccent(CAST(:term$i AS text))
+                    OR unaccent(COALESCE(pp.city, '')) ILIKE unaccent(CAST(:term$i AS text))
+                    OR EXISTS (
+                        SELECT 1 FROM producer.producer_products prs
+                        JOIN catalog.products ps ON ps.id = prs.product_id
+                        LEFT JOIN catalog.product_translations pts ON pts.product_id = ps.id
+                        LEFT JOIN catalog.categories cs ON cs.id = ps.category_id
+                        LEFT JOIN catalog.category_translations cts ON cts.category_id = cs.id
+                        WHERE prs.producer_id = pp.id AND prs.is_active = true
+                            AND (
+                                unaccent(ps.name) ILIKE unaccent(CAST(:term$i AS text))
+                                OR unaccent(COALESCE(pts.name, '')) ILIKE unaccent(CAST(:term$i AS text))
+                                OR unaccent(COALESCE(cs.name, '')) ILIKE unaccent(CAST(:term$i AS text))
+                                OR unaccent(COALESCE(cts.name, '')) ILIKE unaccent(CAST(:term$i AS text))
+                            )
+                    )
+                )
+                SQL;
+            $params["term$i"] = '%'.addcslashes($term, '%_\\').'%';
         }
 
         if (($pickup = $request->query->get('pickupAvailable')) !== null) {
@@ -277,6 +308,11 @@ final class ProducerController extends AbstractController
             }
         }
 
+        $text = $request->query->all()['q'] ?? null;
+        if ($text !== null && (!is_string($text) || mb_strlen(trim($text)) > self::MAX_SEARCH_LENGTH)) {
+            return sprintf('Paramètre "q" invalide : un texte de %d caractères au plus est attendu.', self::MAX_SEARCH_LENGTH);
+        }
+
         $minRating = $request->query->get('minRating');
         if ($minRating !== null && (!is_numeric($minRating) || (float) $minRating < 0 || (float) $minRating > 5)) {
             return 'Paramètre "minRating" invalide : un nombre entre 0 et 5 est attendu.';
@@ -288,6 +324,23 @@ final class ProducerController extends AbstractController
         }
 
         return $this->validateLocation($request);
+    }
+
+    /**
+     * Les mots de ?q= (au plus MAX_SEARCH_TERMS), séparés par des espaces ; vide quand il n'y a pas de texte.
+     *
+     * @return list<string>
+     */
+    private function searchTerms(Request $request): array
+    {
+        $text = $request->query->all()['q'] ?? null;
+        if (!is_string($text)) {
+            return [];
+        }
+
+        $terms = preg_split('/\s+/u', trim($text), -1, PREG_SPLIT_NO_EMPTY);
+
+        return array_slice($terms === false ? [] : $terms, 0, self::MAX_SEARCH_TERMS);
     }
 
     /** Valide latitude/longitude (fournies ensemble) et radiusKm ; sans position, le rayon est ignoré. */
