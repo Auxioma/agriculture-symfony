@@ -1260,4 +1260,58 @@ final class ProducerControllerTest extends ApiTestCase
         $this->client->request('GET', '/api/producers?q[]=tomates');
         self::assertResponseStatusCodeSame(400);
     }
+
+    public function testListProducerReviewsIsPaginatedButTheAverageAndTheCountCoverAllOfThem(): void
+    {
+        $producer = $this->makeProducerProfile($this->makeUser('paginated-reviews'), $this->makeCountry());
+        $this->em->flush();
+        foreach ([5, 4, 3, 2, 1] as $i => $rating) {
+            $author = $this->makeUser('paginated-author'.$i);
+            $review = $this->makeReview($author, $producer, $this->makeClientRequest($author), $rating);
+            $this->em->flush();
+            // * created_at n'a pas de fractions de seconde et vaut « maintenant » : on le pose en SQL pour que l'ordre soit sûr
+            $this->em->getConnection()->executeStatement(
+                'UPDATE trust.reviews SET created_at = :at WHERE id = :id',
+                ['at' => sprintf('2026-08-%02d 09:00:00+00', 20 - $i), 'id' => $review->getId()->toRfc4122()]
+            );
+        }
+
+        $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122().'/reviews?pageSize=2&page=3');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame([1], array_column($data['reviews'], 'rating'));
+        self::assertSame(5, $data['count']);
+        self::assertEquals(3.0, $data['averageRating']);
+        self::assertSame('5', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testListProducerReviewsIsBoundedEvenWithoutParameters(): void
+    {
+        $producer = $this->makeProducerProfile($this->makeUser('bounded-reviews'), $this->makeCountry());
+        for ($i = 0; $i < 21; ++$i) {
+            $author = $this->makeUser('bounded-author'.$i);
+            $this->makeReview($author, $producer, $this->makeClientRequest($author), 4);
+        }
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122().'/reviews');
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertCount(20, $data['reviews']);
+        self::assertSame(21, $data['count']);
+        self::assertEquals(4.0, $data['averageRating']);
+    }
+
+    public function testListProducerReviewsRejectsInvalidPagination(): void
+    {
+        $producer = $this->makeProducerProfile($this->makeUser('invalid-reviews'), $this->makeCountry());
+        $this->em->flush();
+
+        foreach (['page=0', 'pageSize=101', 'pageSize=abc'] as $query) {
+            $this->client->request('GET', '/api/producers/'.$producer->getId()->toRfc4122().'/reviews?'.$query);
+            self::assertResponseStatusCodeSame(400, $query);
+        }
+    }
 }

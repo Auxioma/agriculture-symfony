@@ -10,6 +10,7 @@ use App\Entity\Producer\ProducerProfile;
 use App\Entity\Trust\Review;
 use App\Enum\ReviewStatus;
 use App\Repository\Producer\ProducerProductRepository;
+use App\Service\Pagination\Pagination;
 use App\Service\Producer\ProducerProductPresenter;
 use App\Service\Validation\UuidFormat;
 use Doctrine\ORM\EntityManagerInterface;
@@ -277,21 +278,16 @@ final class ProducerController extends AbstractController
     }
 
     /**
-     * Pagination de listProducers : ?page=<entier ≥ 1> (défaut 1) et ?pageSize=<1 à MAX_PAGE_SIZE> (défaut 12).
-     * filter_var plutôt que getInt() : une valeur comme "abc" doit donner null (donc une 400), pas une exception.
+     * Pagination de listProducers : ?page=<entier ≥ 1> (défaut 1) et ?pageSize=<1 à MAX_PAGE_SIZE> (défaut 12), lues par
+     * Pagination comme pour les autres listes de l'API. Cette liste, en SQL brut, garde sa propre découpe LIMIT/OFFSET.
      *
      * @return array{page: int, pageSize: int}|null null si "page" ou "pageSize" est invalide
      */
     private function parsePagination(Request $request): ?array
     {
-        $page = filter_var($request->query->get('page', 1), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-        $pageSize = filter_var(
-            $request->query->get('pageSize', self::DEFAULT_PAGE_SIZE),
-            FILTER_VALIDATE_INT,
-            ['options' => ['min_range' => 1, 'max_range' => self::MAX_PAGE_SIZE]]
-        );
+        $pagination = Pagination::fromRequest($request, self::DEFAULT_PAGE_SIZE, self::MAX_PAGE_SIZE);
 
-        return $page === false || $pageSize === false ? null : ['page' => $page, 'pageSize' => $pageSize];
+        return $pagination === null ? null : ['page' => $pagination->page, 'pageSize' => $pagination->pageSize];
     }
 
     /** Message d'erreur (HTTP 400) si un paramètre de listProducers est invalide, sinon null. */
@@ -632,9 +628,15 @@ final class ProducerController extends AbstractController
         ]);
     }
 
+    /** Par pages (?page=, ?pageSize= : 20 par défaut, 100 au plus ; le total de toutes les pages dans X-Total-Count et "count"). */
     #[Route('/api/producers/{identifier}/reviews', methods: ['GET'])]
-    public function listProducerReviews(string $identifier, EntityManagerInterface $em): JsonResponse
+    public function listProducerReviews(string $identifier, Request $request, EntityManagerInterface $em): JsonResponse
     {
+        $pagination = Pagination::fromRequest($request);
+        if ($pagination === null) {
+            return $this->json(['error' => Pagination::invalidMessage()], 400);
+        }
+
         $producer = $this->findActiveProducer($identifier, $em);
         if ($producer === null) {
             return $this->json(['error' => 'Producteur introuvable.'], 404);
@@ -644,22 +646,33 @@ final class ProducerController extends AbstractController
         // * ReviewCrudController (modération back-office).
         // * leftJoin + addSelect : charge les auteurs avec les avis en une seule requête (sinon Doctrine en
         // * ferait une de plus par auteur distinct pour afficher son nom).
-        $reviews = $em->getRepository(Review::class)->createQueryBuilder('r')
-            ->leftJoin('r.client', 'c')
-            ->addSelect('c')
+        // * la page ne porte que les avis demandés ; la moyenne et le nombre sont ceux de TOUS les avis publiés (AVG ignore les
+        // * notes absentes, comme avant), pas de la page
+        [$reviews, $count] = $pagination->slice(
+            $em->getRepository(Review::class)->createQueryBuilder('r')
+                ->leftJoin('r.client', 'c')
+                ->addSelect('c')
+                ->where('r.producer = :producer')
+                ->andWhere('r.status = :status')
+                ->setParameter('producer', $producer)
+                ->setParameter('status', ReviewStatus::Published)
+                ->orderBy('r.createdAt', 'DESC')
+                // * r.id en dernier tri : deux avis de la même seconde ne doivent pas changer de page d'un appel à l'autre
+                ->addOrderBy('r.id', 'ASC')
+        );
+        $average = $em->createQueryBuilder()
+            ->select('AVG(r.rating)')
+            ->from(Review::class, 'r')
             ->where('r.producer = :producer')
             ->andWhere('r.status = :status')
             ->setParameter('producer', $producer)
             ->setParameter('status', ReviewStatus::Published)
-            ->orderBy('r.createdAt', 'DESC')
             ->getQuery()
-            ->getResult();
+            ->getSingleScalarResult();
 
-        $ratings = array_filter(array_map(static fn (Review $r) => $r->getRating(), $reviews), static fn ($r) => $r !== null);
-
-        return $this->json([
-            'averageRating' => $ratings !== [] ? round(array_sum($ratings) / count($ratings), 1) : null,
-            'count' => count($reviews),
+        return $pagination->withTotal($this->json([
+            'averageRating' => $average !== null ? round((float) $average, 1) : null,
+            'count' => $count,
             'reviews' => array_map(
                 fn (Review $r) => [
                     'id' => $r->getId()->toRfc4122(),
@@ -671,6 +684,6 @@ final class ProducerController extends AbstractController
                 ],
                 $reviews
             ),
-        ]);
+        ]), $count);
     }
 }

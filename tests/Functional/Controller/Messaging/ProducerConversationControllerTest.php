@@ -357,4 +357,44 @@ final class ProducerConversationControllerTest extends ApiTestCase
 
         self::assertSame(0, $this->listAs($owner)[0]['unreadCount']);
     }
+
+    public function testTheListIsPaginatedMostRecentFirstWithTheTotalInTheHeader(): void
+    {
+        [$owner, $producer] = $this->makeProducer();
+        $ids = [];
+        for ($i = 0; $i < 5; ++$i) {
+            $ids[] = $this->makeConversation($producer, lastMessageAt: sprintf('2026-10-%02d 08:00:00+00', 20 - $i))->getId()->toRfc4122();
+        }
+
+        $this->client->request('GET', '/api/producer/conversations?pageSize=2&page=2', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$this->tokenOf($owner)]);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([$ids[2], $ids[3]], array_column(json_decode($this->client->getResponse()->getContent(), true), 'id'));
+        self::assertSame('5', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testTheListIsBoundedEvenWithoutParameters(): void
+    {
+        [$owner, $producer] = $this->makeProducer();
+        for ($i = 0; $i < 21; ++$i) {
+            $this->makeConversation($producer);
+        }
+
+        $this->client->request('GET', '/api/producer/conversations', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$this->tokenOf($owner)]);
+
+        self::assertCount(20, json_decode($this->client->getResponse()->getContent(), true));
+        self::assertSame('21', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testTheListRejectsInvalidPagination(): void
+    {
+        [$owner] = $this->makeProducer();
+        $this->em->flush();
+        $token = $this->tokenOf($owner);
+
+        foreach (['page=0', 'pageSize=0', 'pageSize=101', 'pageSize=abc'] as $query) {
+            $this->client->request('GET', '/api/producer/conversations?'.$query, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+            self::assertResponseStatusCodeSame(400, $query);
+        }
+    }
 }

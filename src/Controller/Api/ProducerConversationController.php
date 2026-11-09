@@ -9,9 +9,11 @@ use App\Service\Matching\AvailableRequestPresenter;
 use App\Service\Matching\ProducerRequestAccess;
 use App\Service\Messaging\LastMessageFinder;
 use App\Service\Messaging\UnreadMessageCounter;
+use App\Service\Pagination\Pagination;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 
@@ -28,6 +30,7 @@ final class ProducerConversationController extends AbstractController
 {
     #[Route('/api/producer/conversations', methods: ['GET'])]
     public function listConversations(
+        Request $request,
         #[CurrentUser] User $user,
         EntityManagerInterface $em,
         UnreadMessageCounter $unreadCounter,
@@ -35,31 +38,38 @@ final class ProducerConversationController extends AbstractController
         AvailableRequestPresenter $presenter,
         ProducerRequestAccess $access,
     ): JsonResponse {
+        $pagination = Pagination::fromRequest($request);
+        if ($pagination === null) {
+            return $this->json(['error' => Pagination::invalidMessage()], 400);
+        }
+
         $producer = $user->getProducerProfile();
         if ($producer === null) {
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
         }
 
-        // * Une conversation sans message (créée par une réponse sans texte) se classe à sa création.
-        $conversations = $em->getRepository(Conversation::class)->createQueryBuilder('c')
-            ->select('c', 'r', 'cl', 'p', 'u')
-            ->addSelect('COALESCE(c.lastMessageAt, c.createdAt) AS HIDDEN activityAt')
-            ->join('c.request', 'r')
-            ->leftJoin('c.client', 'cl')
-            ->leftJoin('r.product', 'p')
-            ->leftJoin('r.unit', 'u')
-            ->where('c.producer = :producer')
-            ->orderBy('activityAt', 'DESC')
-            ->setParameter('producer', $producer)
-            ->getQuery()
-            ->getResult();
+        // * Une conversation sans message (créée par une réponse sans texte) se classe à sa création ; c.id en dernier tri :
+        // * deux conversations de la même seconde ne doivent pas changer de page d'un appel à l'autre.
+        [$conversations, $total] = $pagination->slice(
+            $em->getRepository(Conversation::class)->createQueryBuilder('c')
+                ->select('c', 'r', 'cl', 'p', 'u')
+                ->addSelect('COALESCE(c.lastMessageAt, c.createdAt) AS HIDDEN activityAt')
+                ->join('c.request', 'r')
+                ->leftJoin('c.client', 'cl')
+                ->leftJoin('r.product', 'p')
+                ->leftJoin('r.unit', 'u')
+                ->where('c.producer = :producer')
+                ->orderBy('activityAt', 'DESC')
+                ->addOrderBy('c.id', 'ASC')
+                ->setParameter('producer', $producer)
+        );
 
         $unreadCounts = $unreadCounter->countByConversation($conversations, $user);
         $last = $lastMessages->byConversation($conversations);
         // * Sans abonnement valide le nom du client reste caché, comme dans la liste des demandes.
         $locked = !$access->hasFullAccess($producer);
 
-        return $this->json(array_map(function (Conversation $c) use ($user, $unreadCounts, $last, $lastMessages, $presenter, $locked) {
+        return $pagination->withTotal($this->json(array_map(function (Conversation $c) use ($user, $unreadCounts, $last, $lastMessages, $presenter, $locked) {
             $id = $c->getId()->toRfc4122();
             $request = $c->getRequest();
             $client = $c->getClient();
@@ -77,6 +87,6 @@ final class ProducerConversationController extends AbstractController
                 'unreadCount' => $unreadCounts[$id] ?? 0,
                 'lastMessage' => isset($last[$id]) ? $lastMessages->preview($last[$id], $user) : null,
             ];
-        }, $conversations));
+        }, $conversations)), $total);
     }
 }

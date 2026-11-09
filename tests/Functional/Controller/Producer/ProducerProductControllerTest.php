@@ -5,6 +5,9 @@ namespace App\Tests\Functional\Controller\Producer;
 use App\Entity\Catalog\Country;
 use App\Entity\Catalog\Currency;
 use App\Entity\Catalog\Unit;
+use App\Entity\Engagement\Favorite;
+use App\Entity\Identity\UserPreference;
+use App\Enum\UserStatus;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerProductMedia;
@@ -656,5 +659,176 @@ final class ProducerProductControllerTest extends ApiTestCase
         foreach (['producer.product_availabilities', 'producer.producer_product_labels', 'producer.producer_product_media'] as $table) {
             self::assertSame(0, (int) $connection->fetchOne("SELECT count(*) FROM $table WHERE producer_product_id = :id", ['id' => $id]), $table);
         }
+    }
+
+    // ---- « Producteur favori avec nouvelle disponibilité » (cahier fonctionnel, notifications client)
+
+    private function follow(User $follower, ProducerProfile $producer): void
+    {
+        $favorite = new Favorite();
+        $favorite->setIdUser($follower);
+        $favorite->setTargetType('producer_profile');
+        $favorite->setTargetId($producer->getId());
+        $this->em->persist($favorite);
+    }
+
+    /** @return list<array<string, mixed>> les notifications « nouveauté d'un producteur favori » de l'utilisateur */
+    private function availabilityNotifications(User $user): array
+    {
+        return array_map(
+            static fn (array $row) => array_merge($row, ['data' => json_decode($row['data'], true)]),
+            $this->em->getConnection()->fetchAllAssociative(
+                "SELECT title, body, data FROM notification.notifications WHERE user_id = :id AND type = 'favorite_producer_available' ORDER BY created_at",
+                ['id' => $user->getId()->toRfc4122()]
+            )
+        );
+    }
+
+    public function testAProductAddedToAFavoriteProducerNotifiesItsFollowers(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $follower = $this->makeUser('follower');
+        $this->follow($follower, $producer);
+        $product = $this->makeProduct($this->makeCategory('Fruits'), 'Cerises');
+        $this->em->flush();
+
+        self::assertSame(201, $this->postProduct($token, ['productId' => $product->getId()->toRfc4122()]));
+
+        $rows = $this->availabilityNotifications($follower);
+        self::assertCount(1, $rows);
+        self::assertSame($producer->getId()->toRfc4122(), $rows[0]['data']['producerId']);
+        self::assertSame($producer->getSlug(), $rows[0]['data']['producerSlug']);
+        self::assertSame('Cerises', $rows[0]['data']['productName']);
+        self::assertSame('Ferme producer propose maintenant Cerises.', $rows[0]['body']);
+    }
+
+    public function testNobodyIsNotifiedWhenTheProductIsAddedInactive(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $follower = $this->makeUser('follower');
+        $this->follow($follower, $producer);
+        $product = $this->makeProduct($this->makeCategory('Fruits'), 'Cerises');
+        $this->em->flush();
+
+        self::assertSame(201, $this->postProduct($token, ['productId' => $product->getId()->toRfc4122(), 'isActive' => false]));
+
+        self::assertSame([], $this->availabilityNotifications($follower));
+    }
+
+    public function testOnlyTheFollowersOfThatProducerAreNotified(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $follower = $this->makeUser('follower');
+        $this->follow($follower, $producer);
+        $stranger = $this->makeUser('stranger');
+        $other = $this->makeProducerProfile($this->makeUser('other-producer'), $producer->getCountry());
+        $this->follow($stranger, $other);
+        // * le producteur qui a mis sa propre fiche en favori n'est pas prévenu de ce qu'il fait lui-même
+        $this->follow($producer->getOwner(), $producer);
+        $product = $this->makeProduct($this->makeCategory('Fruits'), 'Cerises');
+        $this->em->flush();
+
+        $this->postProduct($token, ['productId' => $product->getId()->toRfc4122()]);
+
+        self::assertCount(1, $this->availabilityNotifications($follower));
+        self::assertSame([], $this->availabilityNotifications($stranger));
+        self::assertSame([], $this->availabilityNotifications($producer->getOwner()));
+    }
+
+    public function testAFollowerIsNotNotifiedTwiceInADayButIsAgainTheNextDay(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $follower = $this->makeUser('follower');
+        $this->follow($follower, $producer);
+        $category = $this->makeCategory('Fruits');
+        $cherries = $this->makeProduct($category, 'Cerises');
+        $plums = $this->makeProduct($category, 'Prunes');
+        $apricots = $this->makeProduct($category, 'Abricots');
+        $this->em->flush();
+
+        $this->postProduct($token, ['productId' => $cherries->getId()->toRfc4122()]);
+        $this->postProduct($token, ['productId' => $plums->getId()->toRfc4122()]);
+        self::assertCount(1, $this->availabilityNotifications($follower), 'deux ajouts le même jour : une seule notification');
+
+        $this->em->getConnection()->executeStatement(
+            "UPDATE notification.notifications SET created_at = now() - interval '2 days' WHERE user_id = :id AND type = 'favorite_producer_available'",
+            ['id' => $follower->getId()->toRfc4122()]
+        );
+        $this->postProduct($token, ['productId' => $apricots->getId()->toRfc4122()]);
+
+        self::assertCount(2, $this->availabilityNotifications($follower));
+    }
+
+    public function testAFollowerWhoSwitchedTheNotificationOffIsNotNotified(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $follower = $this->makeUser('follower');
+        $preference = new UserPreference();
+        $preference->setIdUser($follower);
+        $preference->setLocale('fr');
+        $preference->setNotificationSettings(['types' => ['favorite_producer_available' => false]]);
+        $follower->setPreference($preference);
+        $this->em->persist($preference);
+        $this->follow($follower, $producer);
+        $product = $this->makeProduct($this->makeCategory('Fruits'), 'Cerises');
+        $this->em->flush();
+
+        $this->postProduct($token, ['productId' => $product->getId()->toRfc4122()]);
+
+        self::assertSame([], $this->availabilityNotifications($follower));
+    }
+
+    public function testAClosedAccountIsNotNotified(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $follower = $this->makeUser('follower');
+        $follower->setStatus(UserStatus::Deleted);
+        $this->follow($follower, $producer);
+        $product = $this->makeProduct($this->makeCategory('Fruits'), 'Cerises');
+        $this->em->flush();
+
+        $this->postProduct($token, ['productId' => $product->getId()->toRfc4122()]);
+
+        self::assertSame([], $this->availabilityNotifications($follower));
+    }
+
+    public function testNobodyIsNotifiedByADeactivatedProducer(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $follower = $this->makeUser('follower');
+        $this->follow($follower, $producer);
+        $producer->setIsActive(false);
+        $product = $this->makeProduct($this->makeCategory('Fruits'), 'Cerises');
+        $this->em->flush();
+
+        $this->postProduct($token, ['productId' => $product->getId()->toRfc4122()]);
+
+        self::assertSame([], $this->availabilityNotifications($follower));
+    }
+
+    public function testAProductMadeActiveAgainNotifiesTheFollowersButASimpleEditDoesNot(): void
+    {
+        [$token, $producer] = $this->registerProducerAndLogin();
+        $follower = $this->makeUser('follower');
+        $this->follow($follower, $producer);
+        $producerProduct = $this->makeProducerProduct($producer, $this->makeProduct($this->makeCategory('Fruits'), 'Cerises'), false);
+        $this->em->flush();
+        $url = '/api/producer/products/'.$producerProduct->getId()->toRfc4122();
+
+        // * encore inactif : rien à annoncer
+        $this->client->request('PUT', $url, server: $this->jsonServer($token), content: json_encode(['isActive' => false, 'defaultPrice' => '3']));
+        self::assertResponseIsSuccessful();
+        self::assertSame([], $this->availabilityNotifications($follower));
+
+        $this->client->request('PUT', $url, server: $this->jsonServer($token), content: json_encode(['isActive' => true]));
+        self::assertResponseIsSuccessful();
+        self::assertCount(1, $this->availabilityNotifications($follower));
+
+        // * déjà actif : modifier le prix ne prévient personne de plus (et le délai de 24 h couvrirait de toute façon)
+        $this->em->getConnection()->executeStatement('DELETE FROM notification.notification_deliveries WHERE notification_id IN (SELECT id FROM notification.notifications WHERE user_id = :id)', ['id' => $follower->getId()->toRfc4122()]);
+        $this->em->getConnection()->executeStatement('DELETE FROM notification.notifications WHERE user_id = :id', ['id' => $follower->getId()->toRfc4122()]);
+        $this->client->request('PUT', $url, server: $this->jsonServer($token), content: json_encode(['isActive' => true, 'defaultPrice' => '4']));
+        self::assertResponseIsSuccessful();
+        self::assertSame([], $this->availabilityNotifications($follower));
     }
 }

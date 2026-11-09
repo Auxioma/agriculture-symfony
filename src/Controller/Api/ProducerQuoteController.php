@@ -8,9 +8,11 @@ use App\Enum\NeedType;
 use App\Enum\ReplyStatus;
 use App\Service\Matching\AvailableRequestPresenter;
 use App\Service\Matching\ReplyAttachmentManager;
+use App\Service\Pagination\Pagination;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Uid\Uuid;
@@ -27,31 +29,39 @@ use Symfony\Component\Uid\Uuid;
 
 final class ProducerQuoteController extends AbstractController
 {
+    /** Par pages (?page=, ?pageSize= : 100 par défaut et au plus ; le total de toutes les pages dans X-Total-Count). */
     #[Route('/api/producer/quotes', methods: ['GET'])]
-    public function listQuotes(#[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter): JsonResponse
+    public function listQuotes(Request $request, #[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter): JsonResponse
     {
+        $pagination = Pagination::fromRequest($request, defaultPageSize: Pagination::MAX_PAGE_SIZE);
+        if ($pagination === null) {
+            return $this->json(['error' => Pagination::invalidMessage()], 400);
+        }
+
         $producer = $user->getProducerProfile();
         if ($producer === null) {
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
         }
 
-        $replies = $em->getRepository(ProducerReply::class)->createQueryBuilder('pr')
-            ->select('pr', 'r', 'c', 'p', 'u', 'pu', 'cur')
-            ->join('pr.request', 'r')
-            ->join('r.client', 'c')
-            ->leftJoin('r.product', 'p')
-            ->leftJoin('r.unit', 'u')
-            ->leftJoin('pr.priceUnit', 'pu')
-            ->leftJoin('pr.currency', 'cur')
-            ->where('pr.producer = :producer')
-            ->andWhere('NOT (pr.status = :declined AND pr.priceAmount IS NULL AND pr.replyText IS NULL)')
-            ->orderBy('pr.createdAt', 'DESC')
-            ->setParameter('producer', $producer)
-            ->setParameter('declined', ReplyStatus::Declined->value)
-            ->getQuery()
-            ->getResult();
+        [$replies, $total] = $pagination->slice(
+            $em->getRepository(ProducerReply::class)->createQueryBuilder('pr')
+                ->select('pr', 'r', 'c', 'p', 'u', 'pu', 'cur')
+                ->join('pr.request', 'r')
+                ->join('r.client', 'c')
+                ->leftJoin('r.product', 'p')
+                ->leftJoin('r.unit', 'u')
+                ->leftJoin('pr.priceUnit', 'pu')
+                ->leftJoin('pr.currency', 'cur')
+                ->where('pr.producer = :producer')
+                ->andWhere('NOT (pr.status = :declined AND pr.priceAmount IS NULL AND pr.replyText IS NULL)')
+                ->orderBy('pr.createdAt', 'DESC')
+                // * pr.id en dernier tri : deux devis de la même seconde ne doivent pas changer de page d'un appel à l'autre
+                ->addOrderBy('pr.id', 'ASC')
+                ->setParameter('producer', $producer)
+                ->setParameter('declined', ReplyStatus::Declined->value)
+        );
 
-        return $this->json(array_map(fn (ProducerReply $reply) => $this->summary($reply, $presenter), $replies));
+        return $pagination->withTotal($this->json(array_map(fn (ProducerReply $reply) => $this->summary($reply, $presenter), $replies)), $total);
     }
 
     /**

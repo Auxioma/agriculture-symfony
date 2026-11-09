@@ -8,6 +8,7 @@ use App\Entity\Identity\User;
 use App\Entity\Support\Ticket;
 use App\Entity\Support\TicketAttachment;
 use App\Entity\Support\TicketMessage;
+use App\Service\Pagination\Pagination;
 use App\Service\Support\TicketAttachmentUploader;
 use Doctrine\ORM\EntityManagerInterface;
 use League\Flysystem\FilesystemOperator;
@@ -56,12 +57,24 @@ final class TicketController extends AbstractController
         return $this->json(['id' => $ticket->getId()->toRfc4122()], 201);
     }
 
+    /** Par pages (?page=, ?pageSize= : 100 par défaut et au plus ; le total de toutes les pages dans X-Total-Count). */
     #[Route('/api/support/tickets', methods: ['GET'])]
-    public function listTickets(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    public function listTickets(Request $request, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
-        $tickets = $em->getRepository(Ticket::class)->findBy(['idUser' => $user], ['createdAt' => 'DESC']);
+        $pagination = Pagination::fromRequest($request, defaultPageSize: Pagination::MAX_PAGE_SIZE);
+        if ($pagination === null) {
+            return $this->json(['error' => Pagination::invalidMessage()], 400);
+        }
 
-        return $this->json(array_map(
+        [$tickets, $total] = $pagination->slice(
+            $em->getRepository(Ticket::class)->createQueryBuilder('t')
+                ->where('t.idUser = :user')
+                ->setParameter('user', $user)
+                ->orderBy('t.createdAt', 'DESC')
+                ->addOrderBy('t.id', 'ASC')
+        );
+
+        return $pagination->withTotal($this->json(array_map(
             static fn (Ticket $t) => [
                 'id' => $t->getId()->toRfc4122(),
                 'subject' => $t->getSubject(),
@@ -71,7 +84,7 @@ final class TicketController extends AbstractController
                 'closedAt' => $t->getClosedAt()?->format(DATE_ATOM),
             ],
             $tickets
-        ));
+        )), $total);
     }
 
     #[Route('/api/support/tickets/{id}', methods: ['GET'])]

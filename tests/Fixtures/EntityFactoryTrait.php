@@ -131,6 +131,9 @@ trait EntityFactoryTrait
         return $producerProduct;
     }
 
+    /**
+     * @param array<string, mixed> $features
+     */
     protected function makeActiveSubscription(
         ProducerProfile $producer,
         SubscriptionStatus $status = SubscriptionStatus::Active,

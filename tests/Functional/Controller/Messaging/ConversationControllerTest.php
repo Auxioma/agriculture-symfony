@@ -5,6 +5,7 @@ namespace App\Tests\Functional\Controller\Messaging;
 use App\Entity\Catalog\Country;
 use App\Entity\Identity\User;
 use App\Entity\Messaging\BlockedUser;
+use App\Entity\Messaging\Conversation;
 use App\Entity\Producer\ProducerProfile;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\DefaultReferenceDataTrait;
@@ -385,5 +386,66 @@ final class ConversationControllerTest extends ApiTestCase
         ], files: ['file' => $file], content: null);
 
         self::assertResponseStatusCodeSame(403);
+    }
+
+    /**
+     * Un client (compte avec mot de passe) et $count conversations avec un même producteur, de la plus récente à la plus ancienne.
+     *
+     * @return array{0: string, 1: list<string>} [jeton du client, identifiants]
+     */
+    private function setUpClientWithConversations(int $count): array
+    {
+        $country = $this->em->find(Country::class, 'FR');
+        $producer = $this->makeProducerProfile($this->makeUser('producer'), $country);
+        $client = $this->makeUserWithPassword('client', 'motdepasse123');
+        $ids = [];
+        for ($i = 0; $i < $count; ++$i) {
+            $conversation = new Conversation();
+            $conversation->setRequest($this->makeClientRequest($client));
+            $conversation->setClient($client);
+            $conversation->setProducer($producer);
+            $conversation->setLastMessageAt(new \DateTimeImmutable('-'.($i + 1).' hours'));
+            $this->em->persist($conversation);
+            $ids[] = $conversation->getId()->toRfc4122();
+        }
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/auth/login', server: ['CONTENT_TYPE' => 'application/json'], content: json_encode([
+            'email' => $client->getEmail(),
+            'password' => 'motdepasse123',
+        ]));
+
+        return [json_decode($this->client->getResponse()->getContent(), true)['token'], $ids];
+    }
+
+    public function testListConversationsIsPaginatedAndTheTotalIsInTheHeader(): void
+    {
+        [$token, $ids] = $this->setUpClientWithConversations(5);
+
+        $this->client->request('GET', '/api/conversations?pageSize=2&page=3', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([$ids[4]], array_column(json_decode($this->client->getResponse()->getContent(), true), 'id'));
+        self::assertSame('5', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testListConversationsIsBoundedEvenWithoutParameters(): void
+    {
+        [$token] = $this->setUpClientWithConversations(21);
+
+        $this->client->request('GET', '/api/conversations', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertCount(20, json_decode($this->client->getResponse()->getContent(), true));
+        self::assertSame('21', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testListConversationsRejectsInvalidPagination(): void
+    {
+        [$token] = $this->setUpClientWithConversations(1);
+
+        foreach (['page=0', 'pageSize=101', 'pageSize=abc'] as $query) {
+            $this->client->request('GET', '/api/conversations?'.$query, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+            self::assertResponseStatusCodeSame(400, $query);
+        }
     }
 }

@@ -9,9 +9,11 @@ use App\Entity\Engagement\Favorite;
 use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerProfile;
 use App\Enum\VerificationStatus;
+use App\Service\Pagination\Pagination;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
@@ -24,12 +26,25 @@ use Symfony\Component\Uid\Uuid;
  */
 final class FavoriteController extends AbstractController
 {
+    /** Par pages (?page=, ?pageSize= : 100 par défaut et au plus ; le total de toutes les pages dans X-Total-Count). */
     #[Route('/api/favorites', methods: ['GET'])]
-    public function listFavorites(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    public function listFavorites(Request $request, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
-        $favorites = $em->getRepository(Favorite::class)->findBy(['idUser' => $user], ['createdAt' => 'DESC']);
+        $pagination = Pagination::fromRequest($request, defaultPageSize: Pagination::MAX_PAGE_SIZE);
+        if ($pagination === null) {
+            return $this->json(['error' => Pagination::invalidMessage()], 400);
+        }
 
-        return $this->json(array_map(
+        [$favorites, $total] = $pagination->slice(
+            $em->getRepository(Favorite::class)->createQueryBuilder('f')
+                ->where('f.idUser = :user')
+                ->setParameter('user', $user)
+                ->orderBy('f.createdAt', 'DESC')
+                // * f.id en dernier tri : deux favoris de la même seconde ne doivent pas changer de page d'un appel à l'autre
+                ->addOrderBy('f.id', 'ASC')
+        );
+
+        return $pagination->withTotal($this->json(array_map(
             fn (Favorite $f) => [
                 'id' => $f->getId()->toRfc4122(),
                 'targetType' => $f->getTargetType(),
@@ -41,7 +56,7 @@ final class FavoriteController extends AbstractController
                 'target' => $this->describeTarget($f->getTargetType(), $f->getTargetId(), $em),
             ],
             $favorites
-        ));
+        )), $total);
     }
 
     #[Route('/api/favorites', methods: ['POST'])]

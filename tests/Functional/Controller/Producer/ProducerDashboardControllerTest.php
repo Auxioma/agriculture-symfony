@@ -803,4 +803,32 @@ final class ProducerDashboardControllerTest extends ApiTestCase
 
         self::assertResponseStatusCodeSame(403);
     }
+
+    public function testQuotesArePaginatedNewestFirstWithTheTotalInTheHeader(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        $requestIds = [];
+        foreach (['-1 day', '-2 days', '-3 days', '-4 days', '-5 days'] as $sentAgo) {
+            $match = $this->makeMatch($producer, urgency: 0);
+            $this->reply($match, ReplyStatus::Sent, '10', $sentAgo);
+            $requestIds[] = $match->getRequest()->getId()->toRfc4122();
+        }
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/producer/quotes?pageSize=2&page=2', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([$requestIds[2], $requestIds[3]], array_column(json_decode($this->client->getResponse()->getContent(), true), 'requestId'));
+        self::assertSame('5', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testQuotesRejectInvalidPagination(): void
+    {
+        [$token] = $this->loginAsProducer();
+
+        foreach (['page=0', 'pageSize=101', 'pageSize=abc'] as $query) {
+            $this->client->request('GET', '/api/producer/quotes?'.$query, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+            self::assertResponseStatusCodeSame(400, $query);
+        }
+    }
 }

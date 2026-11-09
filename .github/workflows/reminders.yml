@@ -47,3 +47,12 @@ jobs:
             cd /var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
             php bin/console app:run-recurring-requests --env=prod --no-interaction
           EOF
+
+      # * Même job encore : « Avis à laisser » (notification client, cahier fonctionnel) pour les échanges terminés depuis plus de 7 jours.
+      - name: Rappeler aux clients de laisser un avis
+        run: |
+          sshpass -e ssh -p 22 ${{ secrets.APP_USER }}@${{ secrets.APP_HOST }} << 'EOF'
+            set -e
+            cd /var/www/vhosts/trouvemoi.com/admin-agriculture.trouvemoi.com
+            php bin/console app:send-review-reminders --env=prod --no-interaction
+          EOF

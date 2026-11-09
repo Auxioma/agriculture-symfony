@@ -500,4 +500,68 @@ final class ClientRequestControllerTest extends ApiTestCase
 
         self::assertResponseStatusCodeSame(409);
     }
+
+    private function createRequests(string $token, int $count): void
+    {
+        for ($i = 1; $i <= $count; ++$i) {
+            $this->client->request('POST', '/api/requests', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['needType' => 'price_request', 'customProduct' => 'Demande '.$i]));
+            self::assertResponseStatusCodeSame(201);
+        }
+    }
+
+    public function testListMyRequestsIsPaginatedAndTheTotalIsInTheHeader(): void
+    {
+        $token = $this->registerClientAndLogin();
+        $this->createRequests($token, 5);
+
+        $seen = [];
+        foreach ([1 => 2, 2 => 2, 3 => 1] as $page => $expectedCount) {
+            $this->client->request('GET', '/api/client/requests?pageSize=2&page='.$page, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+            self::assertResponseIsSuccessful();
+            $data = json_decode($this->client->getResponse()->getContent(), true);
+            self::assertCount($expectedCount, $data, 'page '.$page);
+            self::assertSame('5', $this->client->getResponse()->headers->get('X-Total-Count'));
+            $seen = [...$seen, ...array_column($data, 'id')];
+        }
+
+        // * le départage des égalités (même seconde) garde les pages stables : chaque demande une fois, aucune oubliée
+        self::assertCount(5, array_unique($seen));
+    }
+
+    public function testListMyRequestsIsBoundedEvenWithoutParameters(): void
+    {
+        $token = $this->registerClientAndLogin();
+        $this->createRequests($token, 21);
+
+        $this->client->request('GET', '/api/client/requests', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        self::assertCount(20, json_decode($this->client->getResponse()->getContent(), true));
+        self::assertSame('21', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testListMyRequestsTotalIgnoresCancelledRequests(): void
+    {
+        $token = $this->registerClientAndLogin();
+        $this->createRequests($token, 3);
+        $this->client->request('GET', '/api/client/requests', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        $first = json_decode($this->client->getResponse()->getContent(), true)[0]['id'];
+        $this->client->request('POST', '/api/client/requests/'.$first.'/cancel', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        self::assertResponseIsSuccessful();
+
+        $this->client->request('GET', '/api/client/requests?pageSize=1', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertSame('2', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testListMyRequestsRejectsInvalidPagination(): void
+    {
+        $token = $this->registerClientAndLogin();
+
+        foreach (['page=0', 'pageSize=0', 'pageSize=101', 'pageSize=abc'] as $query) {
+            $this->client->request('GET', '/api/client/requests?'.$query, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+            self::assertResponseStatusCodeSame(400, $query);
+        }
+    }
 }

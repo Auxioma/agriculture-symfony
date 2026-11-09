@@ -5,9 +5,11 @@ namespace App\Controller\Api;
 use App\Dto\ProfileClient\AddressRequest;
 use App\Entity\Identity\User;
 use App\Entity\Identity\UserAddress;
+use App\Service\Pagination\Pagination;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
@@ -22,12 +24,25 @@ final class ProfileController extends AbstractController
 {
     // ---------------------------------------------------------------- Adresses
 
+    /** Par pages (?page=, ?pageSize= : 100 par défaut et au plus ; le total de toutes les pages dans X-Total-Count). */
     #[Route('/api/me/addresses', methods: ['GET'])]
-    public function listAddresses(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    public function listAddresses(Request $request, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
-        $addresses = $em->getRepository(UserAddress::class)->findBy(['idUser' => $user], ['isDefault' => 'DESC']);
+        $pagination = Pagination::fromRequest($request, defaultPageSize: Pagination::MAX_PAGE_SIZE);
+        if ($pagination === null) {
+            return $this->json(['error' => Pagination::invalidMessage()], 400);
+        }
 
-        return $this->json(array_map($this->serializeAddress(...), $addresses));
+        // * l'adresse par défaut d'abord ; a.id en dernier tri : les autres gardent le même ordre d'un appel à l'autre
+        [$addresses, $total] = $pagination->slice(
+            $em->getRepository(UserAddress::class)->createQueryBuilder('a')
+                ->where('a.idUser = :user')
+                ->setParameter('user', $user)
+                ->orderBy('a.isDefault', 'DESC')
+                ->addOrderBy('a.id', 'ASC')
+        );
+
+        return $pagination->withTotal($this->json(array_map($this->serializeAddress(...), $addresses)), $total);
     }
 
     #[Route('/api/me/addresses', methods: ['POST'])]

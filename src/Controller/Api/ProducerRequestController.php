@@ -25,10 +25,12 @@ use App\Service\Matching\AvailableRequestPresenter;
 use App\Service\Matching\ProducerRequestAccess;
 use App\Service\Matching\ReplyAttachmentManager;
 use App\Service\Notification\NotificationService;
+use App\Service\Pagination\Pagination;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bridge\Doctrine\Types\UuidType;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
@@ -42,11 +44,17 @@ final class ProducerRequestController extends AbstractController
     private const REPORT_TARGET = 'client_request';
 
     /**
-     * Liste des demandes matching accessibles au producteur.
+     * Liste des demandes matching accessibles au producteur, par pages (?page=, ?pageSize= : 20 par défaut, 100 au plus ;
+     * le total de toutes les pages dans X-Total-Count).
      */
     #[Route('/api/producer/requests/available', methods: ['GET'])]
-    public function listAvailableRequests(#[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter, ProducerRequestAccess $access): JsonResponse
+    public function listAvailableRequests(Request $request, #[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter, ProducerRequestAccess $access): JsonResponse
     {
+        $pagination = Pagination::fromRequest($request);
+        if ($pagination === null) {
+            return $this->json(['error' => Pagination::invalidMessage()], 400);
+        }
+
         $producer = $user->getProducerProfile();
         if ($producer === null) {
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
@@ -54,13 +62,15 @@ final class ProducerRequestController extends AbstractController
         // ! sans abonnement : aperçu limité (cahier fonctionnel), pas le message ni le budget ni le nom du client
         $locked = !$access->hasFullAccess($producer);
 
-        $matches = $em->getRepository(RequestMatch::class)->createAvailableQueryBuilder($producer)
-            ->orderBy('m.score', 'DESC')
-            ->addOrderBy('m.createdAt', 'DESC')
-            ->getQuery()
-            ->getResult();
+        // * m.id en dernier tri : deux demandes de même score et de même date ne doivent pas changer de page d'un appel à l'autre
+        [$matches, $total] = $pagination->slice(
+            $em->getRepository(RequestMatch::class)->createAvailableQueryBuilder($producer)
+                ->orderBy('m.score', 'DESC')
+                ->addOrderBy('m.createdAt', 'DESC')
+                ->addOrderBy('m.id', 'ASC')
+        );
 
-        return $this->json(array_map(
+        return $pagination->withTotal($this->json(array_map(
             static fn (RequestMatch $m) => [
                 'matchId' => $m->getId()->toRfc4122(),
                 'score' => $m->getScore(),
@@ -68,7 +78,7 @@ final class ProducerRequestController extends AbstractController
                 'needType' => $m->getRequest()->getNeedType()->value,
             ] + $presenter->present($m, $locked),
             $matches
-        ));
+        )), $total);
     }
 
     /**
@@ -77,8 +87,13 @@ final class ProducerRequestController extends AbstractController
      * réponse envoyée ou refus (un brouillon ne compte pas), "closed" = plus ouverte (expirée, annulée...).
      */
     #[Route('/api/producer/requests/received', methods: ['GET'])]
-    public function listReceivedRequests(#[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter, ProducerRequestAccess $access): JsonResponse
+    public function listReceivedRequests(Request $request, #[CurrentUser] User $user, EntityManagerInterface $em, AvailableRequestPresenter $presenter, ProducerRequestAccess $access): JsonResponse
     {
+        $pagination = Pagination::fromRequest($request);
+        if ($pagination === null) {
+            return $this->json(['error' => Pagination::invalidMessage()], 400);
+        }
+
         $producer = $user->getProducerProfile();
         if ($producer === null) {
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
@@ -86,28 +101,34 @@ final class ProducerRequestController extends AbstractController
         $locked = !$access->hasFullAccess($producer);
 
         $repository = $em->getRepository(RequestMatch::class);
-        $newIds = array_flip(array_map(
-            static fn (RequestMatch $m) => $m->getId()->toRfc4122(),
-            $repository->createAvailableQueryBuilder($producer)->getQuery()->getResult()
-        ));
+        [$matches, $total] = $pagination->slice(
+            $repository->createQueryBuilder('m')
+                ->select('m', 'r', 'c')
+                ->join('m.request', 'r')
+                ->join('r.client', 'c')
+                ->where('m.producer = :producer')
+                ->orderBy('m.createdAt', 'DESC')
+                ->addOrderBy('m.id', 'ASC')
+                ->setParameter('producer', $producer)
+        );
+
+        // * « à traiter » et réponses ne sont cherchés que pour les demandes de la page (pas pour tout l'historique du producteur)
+        $newIds = [];
         $replies = [];
-        foreach ($em->getRepository(ProducerReply::class)->findBy(['producer' => $producer], ['createdAt' => 'ASC']) as $reply) {
-            if ($reply->getStatus() !== ReplyStatus::Draft) {
-                $replies[$reply->getRequest()->getId()->toRfc4122()] = $reply;
+        if ($matches !== []) {
+            $newIds = array_flip(array_map(
+                static fn (RequestMatch $m) => $m->getId()->toRfc4122(),
+                $repository->createAvailableQueryBuilder($producer)->andWhere('m IN (:pageMatches)')->setParameter('pageMatches', $matches)->getQuery()->getResult()
+            ));
+            $pageRequests = array_map(static fn (RequestMatch $m) => $m->getRequest(), $matches);
+            foreach ($em->getRepository(ProducerReply::class)->findBy(['producer' => $producer, 'request' => $pageRequests], ['createdAt' => 'ASC']) as $reply) {
+                if ($reply->getStatus() !== ReplyStatus::Draft) {
+                    $replies[$reply->getRequest()->getId()->toRfc4122()] = $reply;
+                }
             }
         }
 
-        $matches = $repository->createQueryBuilder('m')
-            ->select('m', 'r', 'c')
-            ->join('m.request', 'r')
-            ->join('r.client', 'c')
-            ->where('m.producer = :producer')
-            ->orderBy('m.createdAt', 'DESC')
-            ->setParameter('producer', $producer)
-            ->getQuery()
-            ->getResult();
-
-        return $this->json(array_map(function (RequestMatch $m) use ($newIds, $replies, $presenter, $locked) {
+        return $pagination->withTotal($this->json(array_map(function (RequestMatch $m) use ($newIds, $replies, $presenter, $locked) {
             $request = $m->getRequest();
             $reply = $replies[$request->getId()->toRfc4122()] ?? null;
             $quantity = $request->getQuantity();
@@ -125,7 +146,7 @@ final class ProducerRequestController extends AbstractController
                 'respondedAt' => $reply?->getCreatedAt()->format(DATE_ATOM),
                 'declined' => $reply?->getStatus() === ReplyStatus::Declined,
             ];
-        }, $matches));
+        }, $matches)), $total);
     }
 
     /**

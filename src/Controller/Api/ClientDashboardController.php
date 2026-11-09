@@ -3,6 +3,7 @@
 namespace App\Controller\Api;
 
 use App\Entity\Identity\User;
+use App\Service\Pagination\Pagination;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -32,13 +33,29 @@ final class ClientDashboardController extends AbstractController
         ]);
     }
 
+    /**
+     * Les demandes du client, la plus récente d'abord, par pages (?page=, ?pageSize= : 20 par défaut, 100 au plus ; le
+     * total de toutes les pages dans X-Total-Count).
+     */
     #[Route('/requests', methods: ['GET'])]
     public function listMyRequests(
         #[CurrentUser] User $client,
         Request $request,
         EntityManagerInterface $em,
     ): JsonResponse {
-        $rows = $em->getConnection()->fetchAllAssociative(<<<'SQL'
+        $pagination = Pagination::fromRequest($request);
+        if ($pagination === null) {
+            return $this->json(['error' => Pagination::invalidMessage()], 400);
+        }
+
+        $connection = $em->getConnection();
+        $total = (int) $connection->fetchOne(<<<'SQL'
+            SELECT COUNT(*) FROM matching.client_requests
+            WHERE client_id = :uid::uuid AND status NOT IN ('draft', 'cancelled')
+        SQL, ['uid' => $client->getId()->toRfc4122()]);
+
+        // * cr.id en dernier tri : deux demandes créées à la même seconde ne doivent pas changer de page d'un appel à l'autre
+        $rows = $connection->fetchAllAssociative(<<<'SQL'
             SELECT cr.id, cr.status, cr.created_at, cr.quantity, u.code AS unit,
                 COALESCE(pt.name, cr.custom_product) AS product_name
             FROM matching.client_requests cr
@@ -47,13 +64,16 @@ final class ClientDashboardController extends AbstractController
             LEFT JOIN catalog.units u ON u.id = cr.unit_id
             WHERE cr.client_id = :uid::uuid
             AND cr.status NOT IN ('draft', 'cancelled')
-            ORDER BY cr.created_at DESC
+            ORDER BY cr.created_at DESC, cr.id ASC
+            LIMIT :limit OFFSET :offset
         SQL, [
             'uid'    => $client->getId()->toRfc4122(),
             'locale' => $request->query->get('locale', 'fr'),
+            'limit'  => $pagination->pageSize,
+            'offset' => $pagination->offset(),
         ]);
 
-        return $this->json(array_map(static function (array $r): array {
+        return $pagination->withTotal($this->json(array_map(static function (array $r): array {
             $qty = $r['quantity'] !== null ? rtrim(rtrim((string) $r['quantity'], '0'), '.') : null;
 
             return [
@@ -62,7 +82,7 @@ final class ClientDashboardController extends AbstractController
                 'status' => $r['status'], // statut brut : le front décide du libellé et de la couleur
                 'sentAt' => (new \DateTimeImmutable($r['created_at']))->format(DATE_ATOM),
             ];
-        }, $rows));
+        }, $rows)), $total);
     }
 
     /**

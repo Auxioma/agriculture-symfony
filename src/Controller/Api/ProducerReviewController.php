@@ -5,9 +5,11 @@ namespace App\Controller\Api;
 use App\Entity\Identity\User;
 use App\Entity\Trust\Review;
 use App\Enum\ReviewStatus;
+use App\Service\Pagination\Pagination;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 
@@ -20,31 +22,48 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
 
 final class ProducerReviewController extends AbstractController
 {
+    /** Par pages (?page=, ?pageSize= : 100 par défaut et au plus ; le total de toutes les pages dans X-Total-Count et "count"). */
     #[Route('/api/producer/reviews', methods: ['GET'])]
-    public function listReviews(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    public function listReviews(Request $request, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
+        $pagination = Pagination::fromRequest($request, defaultPageSize: Pagination::MAX_PAGE_SIZE);
+        if ($pagination === null) {
+            return $this->json(['error' => Pagination::invalidMessage()], 400);
+        }
+
         $producer = $user->getProducerProfile();
         if ($producer === null) {
             return $this->json(['error' => 'Profil producteur introuvable.'], 404);
         }
 
         // * leftJoin + addSelect : les auteurs viennent avec les avis, sans une requête de plus par auteur.
-        $reviews = $em->getRepository(Review::class)->createQueryBuilder('r')
-            ->leftJoin('r.client', 'c')
-            ->addSelect('c')
+        // * la page ne porte que les avis demandés ; la moyenne et le nombre sont ceux de TOUS les avis publiés (AVG ignore les
+        // * notes absentes, comme avant), pas de la page
+        [$reviews, $count] = $pagination->slice(
+            $em->getRepository(Review::class)->createQueryBuilder('r')
+                ->leftJoin('r.client', 'c')
+                ->addSelect('c')
+                ->where('r.producer = :producer')
+                ->andWhere('r.status = :status')
+                ->setParameter('producer', $producer)
+                ->setParameter('status', ReviewStatus::Published)
+                ->orderBy('r.createdAt', 'DESC')
+                // * r.id en dernier tri : deux avis de la même seconde ne doivent pas changer de page d'un appel à l'autre
+                ->addOrderBy('r.id', 'ASC')
+        );
+        $average = $em->createQueryBuilder()
+            ->select('AVG(r.rating)')
+            ->from(Review::class, 'r')
             ->where('r.producer = :producer')
             ->andWhere('r.status = :status')
             ->setParameter('producer', $producer)
             ->setParameter('status', ReviewStatus::Published)
-            ->orderBy('r.createdAt', 'DESC')
             ->getQuery()
-            ->getResult();
+            ->getSingleScalarResult();
 
-        $ratings = array_filter(array_map(static fn (Review $r) => $r->getRating(), $reviews), static fn ($r) => $r !== null);
-
-        return $this->json([
-            'averageRating' => $ratings !== [] ? round(array_sum($ratings) / count($ratings), 1) : null,
-            'count' => count($reviews),
+        return $pagination->withTotal($this->json([
+            'averageRating' => $average !== null ? round((float) $average, 1) : null,
+            'count' => $count,
             'reviews' => array_map(
                 fn (Review $r) => [
                     'id' => $r->getId()->toRfc4122(),
@@ -56,7 +75,7 @@ final class ProducerReviewController extends AbstractController
                 ],
                 $reviews
             ),
-        ]);
+        ]), $count);
     }
 
     /**

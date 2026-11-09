@@ -15,6 +15,7 @@ use App\Entity\Producer\ProducerProfile;
 use App\Enum\BillingCycle;
 use App\Enum\SubscriptionStatus;
 use App\Service\Matching\MonthlyRequestCounter;
+use App\Service\Pagination\Pagination;
 use App\Service\Payment\PaymentGatewayInterface;
 use App\Service\Payment\StripeFailureLogger;
 use Doctrine\ORM\EntityManagerInterface;
@@ -24,6 +25,7 @@ use Stripe\Exception\InvalidRequestException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
@@ -103,27 +105,34 @@ final class SubscriptionController extends AbstractController
     }
 
     /**
-     * Historique des factures du producteur.
+     * Historique des factures du producteur, par pages (?page=, ?pageSize= : 100 par défaut et au plus ; le total de toutes
+     * les pages dans X-Total-Count).
      */
     #[Route('/api/subscription/invoices', methods: ['GET'])]
-    public function listInvoices(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    public function listInvoices(Request $request, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
+        $pagination = Pagination::fromRequest($request, defaultPageSize: Pagination::MAX_PAGE_SIZE);
+        if ($pagination === null) {
+            return $this->json(['error' => Pagination::invalidMessage()], 400);
+        }
+
         $producer = $user->getProducerProfile();
         if ($producer === null) {
             return $this->json(['error' => "Ce compte n'a pas de profil producteur."], 403);
         }
 
-        $invoices = $em->createQueryBuilder()
-            ->select('i')
-            ->from(Invoice::class, 'i')
-            ->join('i.subscription', 's')
-            ->where('s.producer = :producer')
-            ->setParameter('producer', $producer)
-            ->orderBy('i.createdAt', 'DESC')
-            ->getQuery()
-            ->getResult();
+        [$invoices, $total] = $pagination->slice(
+            $em->createQueryBuilder()
+                ->select('i')
+                ->from(Invoice::class, 'i')
+                ->join('i.subscription', 's')
+                ->where('s.producer = :producer')
+                ->setParameter('producer', $producer)
+                ->orderBy('i.createdAt', 'DESC')
+                ->addOrderBy('i.id', 'ASC')
+        );
 
-        return $this->json(array_map(
+        return $pagination->withTotal($this->json(array_map(
             static fn (Invoice $i) => [
                 'id' => $i->getId()->toRfc4122(),
                 'amount' => $i->getAmount(),
@@ -134,7 +143,7 @@ final class SubscriptionController extends AbstractController
                 'createdAt' => $i->getCreatedAt()->format(DATE_ATOM),
             ],
             $invoices
-        ));
+        )), $total);
     }
 
     /**

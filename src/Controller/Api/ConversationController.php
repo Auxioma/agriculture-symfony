@@ -15,6 +15,7 @@ use App\Enum\ConversationStatus;
 use App\Enum\RequestStatus;
 use App\Service\Messaging\UnreadMessageCounter;
 use App\Service\Notification\NotificationService;
+use App\Service\Pagination\Pagination;
 use Doctrine\ORM\EntityManagerInterface;
 use League\Flysystem\FilesystemOperator;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -37,16 +38,26 @@ final class ConversationController extends AbstractController
     private const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
 
     #[Route('/api/conversations', methods: ['GET'])]
-    public function listConversations(#[CurrentUser] User $user, EntityManagerInterface $em, UnreadMessageCounter $unreadCounter): JsonResponse
+    public function listConversations(Request $request, #[CurrentUser] User $user, EntityManagerInterface $em, UnreadMessageCounter $unreadCounter): JsonResponse
     {
+        $pagination = Pagination::fromRequest($request);
+        if ($pagination === null) {
+            return $this->json(['error' => Pagination::invalidMessage()], 400);
+        }
+
         $producer = $user->getProducerProfile();
-        $conversations = $producer !== null
-            ? $em->getRepository(Conversation::class)->findBy(['producer' => $producer], ['lastMessageAt' => 'DESC'])
-            : $em->getRepository(Conversation::class)->findBy(['client' => $user], ['lastMessageAt' => 'DESC']);
+        // * c.id en dernier tri : deux conversations de la même seconde ne doivent pas changer de page d'un appel à l'autre
+        [$conversations, $total] = $pagination->slice(
+            $em->getRepository(Conversation::class)->createQueryBuilder('c')
+                ->where($producer !== null ? 'c.producer = :owner' : 'c.client = :owner')
+                ->setParameter('owner', $producer ?? $user)
+                ->orderBy('c.lastMessageAt', 'DESC')
+                ->addOrderBy('c.id', 'ASC')
+        );
 
         $unreadCounts = $unreadCounter->countByConversation($conversations, $user);
 
-        return $this->json(array_map(
+        return $pagination->withTotal($this->json(array_map(
             static fn (Conversation $c) => [
                 'id' => $c->getId()->toRfc4122(),
                 'requestId' => $c->getRequest()->getId()->toRfc4122(),
@@ -55,7 +66,7 @@ final class ConversationController extends AbstractController
                 'unreadCount' => $unreadCounts[$c->getId()->toRfc4122()] ?? 0,
             ],
             $conversations
-        ));
+        )), $total);
     }
 
     #[Route('/api/conversations/{id}', methods: ['GET'])]

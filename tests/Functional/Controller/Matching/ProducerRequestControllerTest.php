@@ -5,6 +5,8 @@ namespace App\Tests\Functional\Controller\Matching;
 use App\Entity\Catalog\Unit;
 use App\Entity\Catalog\Country;
 use App\Entity\Identity\User;
+use App\Entity\Matching\RequestMatch;
+use App\Enum\MatchStatus;
 use App\Entity\Producer\ProducerProfile;
 use App\Tests\ApiTestCase;
 use App\Tests\Fixtures\DefaultReferenceDataTrait;
@@ -559,5 +561,161 @@ final class ProducerRequestControllerTest extends ApiTestCase
 
         $row = $this->em->getConnection()->fetchAssociative('SELECT status FROM matching.producer_replies WHERE id = :id', ['id' => $data['id']]);
         self::assertSame('declined', $row['status']);
+    }
+
+    /**
+     * Un producteur connecté avec $count demandes proposées, de la mieux notée à la moins bien notée (score 90, 80, 70...).
+     *
+     * @return array{0: string, 1: list<string>} [jeton, identifiants des demandes dans l'ordre des scores]
+     */
+    private function setUpProducerWithMatches(int $count): array
+    {
+        $country = $this->em->find(Country::class, 'FR');
+        $owner = $this->makeUserWithPassword('producer', 'motdepasse123');
+        $owner->setRoles([User::ROLE_PRODUCER]);
+        $producer = $this->makeProducerProfile($owner, $country);
+        $client = $this->makeUser('client');
+
+        $requestIds = [];
+        for ($i = 0; $i < $count; ++$i) {
+            $request = $this->makeClientRequest($client);
+            $match = new RequestMatch();
+            $match->setRequest($request);
+            $match->setProducer($producer);
+            $match->setStatus(MatchStatus::Proposed);
+            $match->setScore((string) (90 - 10 * $i));
+            $this->em->persist($match);
+            $requestIds[] = $request->getId()->toRfc4122();
+        }
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/auth/login', server: ['CONTENT_TYPE' => 'application/json'], content: json_encode([
+            'email' => $owner->getEmail(),
+            'password' => 'motdepasse123',
+        ]));
+        self::assertResponseIsSuccessful();
+
+        return [json_decode($this->client->getResponse()->getContent(), true)['token'], $requestIds];
+    }
+
+    public function testAvailableRequestsArePaginatedAndTheTotalIsInTheHeader(): void
+    {
+        [$token] = $this->setUpProducerWithMatches(5);
+
+        $this->client->request('GET', '/api/producer/requests/available?pageSize=2&page=2', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertCount(2, $data);
+        self::assertSame(['70.00', '60.00'], array_map(static fn (array $row) => $row['score'], $data));
+        self::assertSame('5', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testAvailableRequestsLastPageHoldsTheRemainder(): void
+    {
+        [$token] = $this->setUpProducerWithMatches(5);
+
+        $this->client->request('GET', '/api/producer/requests/available?pageSize=2&page=3', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        self::assertCount(1, json_decode($this->client->getResponse()->getContent(), true));
+        self::assertSame('5', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testAvailableRequestsPageBeyondTheEndIsEmptyButKeepsTheTotal(): void
+    {
+        [$token] = $this->setUpProducerWithMatches(3);
+
+        $this->client->request('GET', '/api/producer/requests/available?page=9', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([], json_decode($this->client->getResponse()->getContent(), true));
+        self::assertSame('3', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testAvailableRequestsAreBoundedEvenWithoutParameters(): void
+    {
+        [$token] = $this->setUpProducerWithMatches(21);
+
+        $this->client->request('GET', '/api/producer/requests/available', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        self::assertCount(20, json_decode($this->client->getResponse()->getContent(), true));
+        self::assertSame('21', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    #[DataProvider('invalidPaginationQueries')]
+    public function testAvailableRequestsRejectInvalidPagination(string $query): void
+    {
+        [$token] = $this->setUpProducerWithMatches(1);
+
+        $this->client->request('GET', '/api/producer/requests/available?'.$query, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseStatusCodeSame(400);
+    }
+
+    /**
+     * @return iterable<string, array{0: string}>
+     */
+    public static function invalidPaginationQueries(): iterable
+    {
+        yield 'page à zéro' => ['page=0'];
+        yield 'pageSize illisible' => ['pageSize=abc'];
+        yield 'pageSize au-dessus du plafond' => ['pageSize=101'];
+    }
+
+    public function testReceivedRequestsArePaginatedWithoutGapOrRepeatAndWithTheirStatus(): void
+    {
+        [$token, $requestIds] = $this->setUpProducerWithMatches(5);
+
+        $seen = [];
+        foreach ([1 => 2, 2 => 2, 3 => 1] as $page => $expectedCount) {
+            $this->client->request('GET', '/api/producer/requests/received?pageSize=2&page='.$page, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+            self::assertResponseIsSuccessful();
+            $data = json_decode($this->client->getResponse()->getContent(), true);
+            self::assertCount($expectedCount, $data);
+            self::assertSame('5', $this->client->getResponse()->headers->get('X-Total-Count'));
+            // * toutes encore à traiter : le statut est calculé pour les demandes de la page
+            foreach ($data as $row) {
+                self::assertSame('new', $row['status']);
+                $seen[] = $row['requestId'];
+            }
+        }
+
+        // * le départage des égalités (même seconde) garde les pages stables : chaque demande une fois, aucune oubliée
+        self::assertCount(5, array_unique($seen));
+        self::assertEqualsCanonicalizing($requestIds, $seen);
+    }
+
+    public function testReceivedRequestsShowTheReplyOfARequestOnTheRequestedPage(): void
+    {
+        [$token, $requestIds] = $this->setUpProducerWithMatches(3);
+        $this->client->request('POST', '/api/producer/requests/'.$requestIds[0].'/decline', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        self::assertResponseStatusCodeSame(201);
+
+        // * une demande par page : la réponse n'est cherchée que pour la demande de la page, et la bonne est trouvée
+        $declined = [];
+        foreach ([1, 2, 3] as $page) {
+            $this->client->request('GET', '/api/producer/requests/received?pageSize=1&page='.$page, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+            self::assertResponseIsSuccessful();
+            $row = json_decode($this->client->getResponse()->getContent(), true)[0];
+            if ($row['declined']) {
+                $declined[] = $row;
+            }
+        }
+
+        self::assertCount(1, $declined);
+        self::assertSame($requestIds[0], $declined[0]['requestId']);
+        self::assertSame('treated', $declined[0]['status']);
+    }
+
+    public function testReceivedRequestsRejectInvalidPagination(): void
+    {
+        [$token] = $this->setUpProducerWithMatches(1);
+
+        $this->client->request('GET', '/api/producer/requests/received?pageSize=0', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseStatusCodeSame(400);
     }
 }

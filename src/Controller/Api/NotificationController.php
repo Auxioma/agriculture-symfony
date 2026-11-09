@@ -4,6 +4,7 @@ namespace App\Controller\Api;
 
 use App\Entity\Identity\User;
 use App\Entity\Notification\Notification;
+use App\Service\Pagination\Pagination;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -26,8 +27,9 @@ final class NotificationController extends AbstractController
      * Récupère la liste des notifications de l'utilisateur connecté.
      *
      * Permet le filtrage optionnel des notifications non lues via le paramètre de requête `unreadOnly`.
-     * Les résultats sont ordonnés de la plus récente à la plus ancienne ; `limit` ne garde que les N plus récentes
-     * (la cloche de la navbar n'en affiche que quelques-unes, inutile de renvoyer tout l'historique).
+     * Les résultats sont ordonnés de la plus récente à la plus ancienne, par pages (?page=, ?pageSize= : 20 par défaut, 100 au
+     * plus ; le total de toutes les pages dans X-Total-Count). `limit` reste accepté : c'est la taille de page par défaut
+     * quand pageSize est absent (la cloche de la navbar n'en veut que quelques-unes, inutile de renvoyer tout l'historique).
      *
      * @param Request                $request Paramètres HTTP (query parameters `unreadOnly=true|false`, `limit=N`).
      * @param User                   $user    Utilisateur authentifié effectuant la requête.
@@ -38,21 +40,30 @@ final class NotificationController extends AbstractController
     #[Route('/api/notifications', methods: ['GET'])]
     public function listNotifications(Request $request, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
-        $criteria = ['idUser' => $user];
-        if (filter_var($request->query->get('unreadOnly'), FILTER_VALIDATE_BOOLEAN)) {
-            $criteria['readAt'] = null;
-        }
-
-        // * limit absent, illisible, 0 ou négatif : pas de limite (comportement d'avant) ; plafonné pour qu'un grand nombre ne la contourne pas.
+        // * limit absent, illisible, 0 ou négatif : la taille par défaut ; plafonné pour qu'un grand nombre ne la contourne pas.
         // * filter_var plutôt que getInt() : getInt() répond 400 sur "abc" au lieu de l'ignorer.
         $limit = (int) filter_var($request->query->get('limit'), FILTER_VALIDATE_INT);
-        $notifications = $em->getRepository(Notification::class)->findBy(
-            $criteria,
-            ['createdAt' => 'DESC'],
-            $limit > 0 ? min($limit, self::MAX_LIMIT) : null,
+        $pagination = Pagination::fromRequest(
+            $request,
+            defaultPageSize: $limit > 0 ? min($limit, self::MAX_LIMIT) : Pagination::DEFAULT_PAGE_SIZE,
+            maxPageSize: self::MAX_LIMIT,
         );
+        if ($pagination === null) {
+            return $this->json(['error' => Pagination::invalidMessage(self::MAX_LIMIT)], 400);
+        }
 
-        return $this->json(array_map(
+        $queryBuilder = $em->getRepository(Notification::class)->createQueryBuilder('n')
+            ->where('n.idUser = :user')
+            ->setParameter('user', $user)
+            ->orderBy('n.createdAt', 'DESC')
+            // * n.id en dernier tri : deux notifications de la même seconde ne doivent pas changer de page d'un appel à l'autre
+            ->addOrderBy('n.id', 'ASC');
+        if (filter_var($request->query->get('unreadOnly'), FILTER_VALIDATE_BOOLEAN)) {
+            $queryBuilder->andWhere('n.readAt IS NULL');
+        }
+        [$notifications, $total] = $pagination->slice($queryBuilder);
+
+        return $pagination->withTotal($this->json(array_map(
             static fn (Notification $n) => [
                 'id' => $n->getId()->toRfc4122(),
                 'type' => $n->getType(),
@@ -63,7 +74,7 @@ final class NotificationController extends AbstractController
                 'createdAt' => $n->getCreatedAt()->format(DATE_ATOM),
             ],
             $notifications
-        ));
+        )), $total);
     }
 
     /**

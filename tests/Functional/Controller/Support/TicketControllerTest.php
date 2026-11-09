@@ -215,4 +215,35 @@ final class TicketControllerTest extends ApiTestCase
 
         self::assertResponseStatusCodeSame(403);
     }
+
+    public function testListIsPaginatedAndTheTotalIsInTheHeader(): void
+    {
+        $token = $this->registerClientAndLogin('client');
+        for ($i = 1; $i <= 5; ++$i) {
+            $this->client->request('POST', '/api/support/tickets', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['subject' => 'Sujet '.$i, 'content' => 'Message '.$i]));
+            self::assertResponseStatusCodeSame(201);
+        }
+
+        $seen = [];
+        foreach ([1 => 2, 2 => 2, 3 => 1] as $page => $expectedCount) {
+            $this->client->request('GET', '/api/support/tickets?pageSize=2&page='.$page, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+            self::assertResponseIsSuccessful();
+            $data = json_decode($this->client->getResponse()->getContent(), true);
+            self::assertCount($expectedCount, $data, 'page '.$page);
+            self::assertSame('5', $this->client->getResponse()->headers->get('X-Total-Count'));
+            $seen = [...$seen, ...array_column($data, 'subject')];
+        }
+        self::assertCount(5, array_unique($seen));
+    }
+
+    public function testListRejectsInvalidPagination(): void
+    {
+        $token = $this->registerClientAndLogin('client');
+
+        foreach (['page=0', 'pageSize=101', 'pageSize=abc'] as $query) {
+            $this->client->request('GET', '/api/support/tickets?'.$query, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+            self::assertResponseStatusCodeSame(400, $query);
+        }
+    }
 }

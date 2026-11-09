@@ -194,4 +194,32 @@ final class ProducerReviewControllerTest extends ApiTestCase
 
         self::assertSame([null, null], $names);
     }
+
+    public function testReviewsArePaginatedButTheAverageAndTheCountCoverAllOfThem(): void
+    {
+        [$token, $producer] = $this->loginAsProducer();
+        foreach ([5, 4, 3, 2, 1] as $i => $rating) {
+            $this->review($producer, $this->makeUser('author'.$i), $rating, createdAt: sprintf('2026-08-%02d 09:00:00+00', 20 - $i));
+        }
+
+        $this->client->request('GET', '/api/producer/reviews?pageSize=2&page=2', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true);
+        // * la page 2 : les avis de note 3 et 2 (du plus récent au plus ancien) ; la moyenne et le nombre sont ceux des 5 avis
+        self::assertSame([3, 2], array_column($data['reviews'], 'rating'));
+        self::assertSame(5, $data['count']);
+        self::assertEquals(3.0, $data['averageRating']);
+        self::assertSame('5', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testReviewsRejectInvalidPagination(): void
+    {
+        [$token] = $this->loginAsProducer();
+
+        foreach (['page=0', 'pageSize=101', 'pageSize=abc'] as $query) {
+            $this->client->request('GET', '/api/producer/reviews?'.$query, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+            self::assertResponseStatusCodeSame(400, $query);
+        }
+    }
 }

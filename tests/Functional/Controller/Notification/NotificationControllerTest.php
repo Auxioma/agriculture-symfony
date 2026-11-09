@@ -203,4 +203,66 @@ final class NotificationControllerTest extends ApiTestCase
         );
         self::assertSame(0, $unreadCount);
     }
+
+    public function testListNotificationsIsPaginatedNewestFirstWithTheTotalInTheHeader(): void
+    {
+        $me = $this->makeUser('me');
+        $notifications = [];
+        for ($i = 1; $i <= 5; ++$i) {
+            $notifications[$i] = $this->makeNotification($me, 'Notification '.$i);
+        }
+        $this->em->flush();
+        foreach ($notifications as $i => $notification) {
+            $this->setCreatedAt($notification, sprintf('2026-10-%02d 08:00:00+00', $i));
+        }
+        $token = $this->loginAs($me);
+
+        $this->client->request('GET', '/api/notifications?pageSize=2&page=2', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(['Notification 3', 'Notification 2'], array_column(json_decode($this->client->getResponse()->getContent(), true), 'body'));
+        self::assertSame('5', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testListNotificationsTotalCountsOnlyUnreadOnesWhenFiltered(): void
+    {
+        $me = $this->makeUser('me');
+        $this->makeNotification($me, 'Lue', new \DateTimeImmutable());
+        $this->makeNotification($me, 'Non lue 1');
+        $this->makeNotification($me, 'Non lue 2');
+        $this->em->flush();
+        $token = $this->loginAs($me);
+
+        $this->client->request('GET', '/api/notifications?unreadOnly=true&pageSize=1', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertCount(1, json_decode($this->client->getResponse()->getContent(), true));
+        self::assertSame('2', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testListNotificationsIsBoundedEvenWithoutParameters(): void
+    {
+        $me = $this->makeUser('me');
+        for ($i = 0; $i < 21; ++$i) {
+            $this->makeNotification($me, 'Notification '.$i);
+        }
+        $this->em->flush();
+        $token = $this->loginAs($me);
+
+        $this->client->request('GET', '/api/notifications', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertCount(20, json_decode($this->client->getResponse()->getContent(), true));
+        self::assertSame('21', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testListNotificationsRejectsInvalidPagination(): void
+    {
+        $me = $this->makeUser('me');
+        $this->em->flush();
+        $token = $this->loginAs($me);
+
+        foreach (['page=0', 'pageSize=0', 'pageSize=101', 'pageSize=abc'] as $query) {
+            $this->client->request('GET', '/api/notifications?'.$query, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+            self::assertResponseStatusCodeSame(400, $query);
+        }
+    }
 }

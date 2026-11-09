@@ -13,10 +13,11 @@ use App\Entity\Identity\User;
 final class NotificationPreferences
 {
     // * les notifications du cahier fonctionnel que le back envoie : celles du producteur dans l'ordre de l'écran Paramètres, puis celles du
-    // * client (producer_replied, quote_received ; request_expiring_soon et new_message servent aux deux). Toutes les autres partent
-    // * toujours : un refus ou une demande de complément de profil, une invitation d'équipe, une réponse du support, un abonnement en double,
-    // * et "Demande envoyée" (la confirmation de sa propre action).
-    // * Pas proposées, rien ne les envoie encore : "Producteur favori avec nouvelle disponibilité" et "Avis à laisser" (client).
+    // * client (producer_replied, quote_received, favorite_producer_available, review_reminder ; request_expiring_soon et new_message
+    // * servent aux deux). Toutes les autres partent toujours : un refus ou une demande de complément de profil, une invitation d'équipe,
+    // * une réponse du support, un abonnement en double, et "Demande envoyée" (la confirmation de sa propre action).
+    // * "Producteur favori avec nouvelle disponibilité" y est sous "favorite_producer_available" (FavoriteProducerNotifier, quand un
+    // * producteur met un produit à disposition) et "Avis à laisser" sous "review_reminder" (SendReviewRemindersCommand, une tâche planifiée).
     // * "Avis publié" y est sous "new_review", envoyée à la création de l'avis ; "Réponse client" sous "client_replied", quand le client
     // * accepte ou refuse un devis (ClientReplyController).
     public const SWITCHABLE_TYPES = [
@@ -30,6 +31,8 @@ final class NotificationPreferences
         'producer_replied',
         'quote_received',
         'client_replied',
+        'favorite_producer_available',
+        'review_reminder',
     ];
 
     /**

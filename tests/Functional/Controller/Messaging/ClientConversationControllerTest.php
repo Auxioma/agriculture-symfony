@@ -133,4 +133,54 @@ final class ClientConversationControllerTest extends ApiTestCase
 
         self::assertResponseStatusCodeSame(401);
     }
+
+    /**
+     * Un client avec $count conversations, de la plus récente (index 0) à la plus ancienne.
+     *
+     * @return array{0: User, 1: list<string>}
+     */
+    private function makeClientWithConversations(int $count): array
+    {
+        $client = $this->makeUserWithPassword('client', self::PASSWORD);
+        $producer = $this->makeProducer('verger');
+        $ids = [];
+        for ($i = 0; $i < $count; ++$i) {
+            $ids[] = $this->makeConversation($this->makeClientRequest($client), $producer, new \DateTimeImmutable('-'.($i + 1).' hours'))->getId()->toRfc4122();
+        }
+        $this->em->flush();
+
+        return [$client, $ids];
+    }
+
+    public function testTheListIsPaginatedMostRecentFirstWithTheTotalInTheHeader(): void
+    {
+        [$client, $ids] = $this->makeClientWithConversations(5);
+
+        $this->client->request('GET', '/api/client/conversations?pageSize=2&page=2', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$this->login($client)]);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([$ids[2], $ids[3]], array_column(json_decode($this->client->getResponse()->getContent(), true), 'id'));
+        self::assertSame('5', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testTheListIsBoundedEvenWithoutParameters(): void
+    {
+        [$client] = $this->makeClientWithConversations(21);
+
+        $this->client->request('GET', '/api/client/conversations', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$this->login($client)]);
+
+        self::assertCount(20, json_decode($this->client->getResponse()->getContent(), true));
+        self::assertSame('21', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testTheListRejectsInvalidPagination(): void
+    {
+        [$client] = $this->makeClientWithConversations(1);
+        $token = $this->login($client);
+
+        foreach (['page=0', 'pageSize=0', 'pageSize=101', 'pageSize=abc'] as $query) {
+            $this->client->request('GET', '/api/client/conversations?'.$query, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+            self::assertResponseStatusCodeSame(400, $query);
+        }
+    }
 }

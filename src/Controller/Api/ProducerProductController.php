@@ -13,6 +13,7 @@ use App\Entity\Identity\User;
 use App\Entity\Producer\ProducerProduct;
 use App\Entity\Producer\ProductAvailability;
 use App\Repository\Producer\ProducerProductRepository;
+use App\Service\Notification\FavoriteProducerNotifier;
 use App\Service\Producer\ProducerProductPresenter;
 use App\Service\Producer\ProductAvailabilityWindow;
 use App\Service\Producer\ProductPhotoStorage;
@@ -82,6 +83,7 @@ final class ProducerProductController extends AbstractController
         #[CurrentUser] User $user,
         EntityManagerInterface $em,
         ProducerProductRepository $products,
+        FavoriteProducerNotifier $favoriteNotifier,
     ): JsonResponse {
         $producer = $user->getProducerProfile();
         if ($producer === null) {
@@ -114,6 +116,9 @@ final class ProducerProductController extends AbstractController
             return $error;
         }
 
+        // * cahier, notifications client : « Producteur favori avec nouvelle disponibilité » (rien si le produit est ajouté inactif)
+        $favoriteNotifier->notifyNewAvailability($producer, $producerProduct);
+
         $em->persist($producerProduct);
         $em->flush();
 
@@ -136,6 +141,7 @@ final class ProducerProductController extends AbstractController
         #[CurrentUser] User $user,
         EntityManagerInterface $em,
         ProducerProductRepository $products,
+        FavoriteProducerNotifier $favoriteNotifier,
     ): JsonResponse {
         $result = $this->findOwnedProducerProduct($id, $user, $em);
         if ($result instanceof JsonResponse) {
@@ -148,6 +154,7 @@ final class ProducerProductController extends AbstractController
         if ($products->hasVariety($producerProduct->getProducer(), $producerProduct->getProduct(), $variety, $producerProduct)) {
             return $this->json(['error' => self::DUPLICATE], 409);
         }
+        $wasActive = $producerProduct->isActive();
         $producerProduct->setVariety($variety);
         $producerProduct->setDescription($request->description);
         $producerProduct->setEstimatedVolume($request->estimatedVolume);
@@ -159,6 +166,11 @@ final class ProducerProductController extends AbstractController
             ?? $this->applyAvailability($producerProduct, $request->availability, $em);
         if ($error !== null) {
             return $error;
+        }
+
+        // * un produit remis actif (l'interrupteur de la liste) est de nouveau disponible : les abonnés du producteur en sont prévenus
+        if (!$wasActive) {
+            $favoriteNotifier->notifyNewAvailability($producerProduct->getProducer(), $producerProduct);
         }
 
         $em->flush();

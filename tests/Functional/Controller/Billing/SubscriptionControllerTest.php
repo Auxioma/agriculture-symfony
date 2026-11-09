@@ -952,4 +952,39 @@ final class SubscriptionControllerTest extends ApiTestCase
 
         self::assertResponseStatusCodeSame(409);
     }
+
+    public function testListInvoicesIsPaginatedNewestFirstWithTheTotalInTheHeader(): void
+    {
+        $this->makeCountry();
+        $this->em->flush();
+        [$token, $producer] = $this->registerProducerAndLogin('producer', 'FR');
+        $subscription = $this->makeActiveSubscription($producer);
+        for ($i = 1; $i <= 5; ++$i) {
+            $invoice = new Invoice();
+            $invoice->setSubscription($subscription);
+            $invoice->setAmount(sprintf('%d.00', 10 + $i));
+            $invoice->setStatus('paid');
+            $invoice->setCreatedAt(new \DateTimeImmutable(sprintf('2026-10-%02d 08:00:00+00:00', $i)));
+            $this->em->persist($invoice);
+        }
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/subscription/invoices?pageSize=2&page=2', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(['13.00', '12.00'], array_column(json_decode($this->client->getResponse()->getContent(), true), 'amount'));
+        self::assertSame('5', $this->client->getResponse()->headers->get('X-Total-Count'));
+    }
+
+    public function testListInvoicesRejectsInvalidPagination(): void
+    {
+        $this->makeCountry();
+        $this->em->flush();
+        [$token] = $this->registerProducerAndLogin('producer', 'FR');
+
+        foreach (['page=0', 'pageSize=101'] as $query) {
+            $this->client->request('GET', '/api/subscription/invoices?'.$query, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+            self::assertResponseStatusCodeSame(400, $query);
+        }
+    }
 }

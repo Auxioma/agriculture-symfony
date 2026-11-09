@@ -117,4 +117,42 @@ final class FavoriteControllerTest extends ApiTestCase
         $this->client->request('DELETE', '/api/favorites/'.$favoriteId, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$otherToken]);
         self::assertResponseStatusCodeSame(404);
     }
+
+    public function testListIsPaginatedAndTheTotalIsInTheHeader(): void
+    {
+        $token = $this->registerClientAndLogin('client');
+        $country = $this->makeCountry();
+        $producers = [];
+        for ($i = 0; $i < 5; ++$i) {
+            $producers[] = $this->makeProducerProfile($this->makeUser('producer'.$i), $country, farmName: 'Ferme '.$i);
+        }
+        $this->em->flush();
+        foreach ($producers as $producer) {
+            $this->client->request('POST', '/api/favorites', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$token], content: json_encode(['targetType' => 'producer_profile', 'targetId' => $producer->getId()->toRfc4122()]));
+            self::assertResponseStatusCodeSame(201);
+        }
+
+        $seen = [];
+        foreach ([1 => 2, 2 => 2, 3 => 1] as $page => $expectedCount) {
+            $this->client->request('GET', '/api/favorites?pageSize=2&page='.$page, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+
+            self::assertResponseIsSuccessful();
+            $data = json_decode($this->client->getResponse()->getContent(), true);
+            self::assertCount($expectedCount, $data, 'page '.$page);
+            self::assertSame('5', $this->client->getResponse()->headers->get('X-Total-Count'));
+            $seen = [...$seen, ...array_column($data, 'id')];
+        }
+        // * le départage des égalités (même seconde) garde les pages stables : chaque favori une fois, aucun oublié
+        self::assertCount(5, array_unique($seen));
+    }
+
+    public function testListRejectsInvalidPagination(): void
+    {
+        $token = $this->registerClientAndLogin('client');
+
+        foreach (['page=0', 'pageSize=0', 'pageSize=101', 'pageSize=abc'] as $query) {
+            $this->client->request('GET', '/api/favorites?'.$query, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+            self::assertResponseStatusCodeSame(400, $query);
+        }
+    }
 }

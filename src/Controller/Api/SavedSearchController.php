@@ -5,9 +5,11 @@ namespace App\Controller\Api;
 use App\Dto\Engagement\SaveSearchRequest;
 use App\Entity\Engagement\SavedSearch;
 use App\Entity\Identity\User;
+use App\Service\Pagination\Pagination;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
@@ -19,12 +21,24 @@ use Symfony\Component\Security\Http\Attribute\CurrentUser;
  */
 final class SavedSearchController extends AbstractController
 {
+    /** Par pages (?page=, ?pageSize= : 100 par défaut et au plus ; le total de toutes les pages dans X-Total-Count). */
     #[Route('/api/saved-searches', methods: ['GET'])]
-    public function listSavedSearches(#[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
+    public function listSavedSearches(Request $request, #[CurrentUser] User $user, EntityManagerInterface $em): JsonResponse
     {
-        $searches = $em->getRepository(SavedSearch::class)->findBy(['idUser' => $user], ['createdAt' => 'DESC']);
+        $pagination = Pagination::fromRequest($request, defaultPageSize: Pagination::MAX_PAGE_SIZE);
+        if ($pagination === null) {
+            return $this->json(['error' => Pagination::invalidMessage()], 400);
+        }
 
-        return $this->json(array_map($this->describe(...), $searches));
+        [$searches, $total] = $pagination->slice(
+            $em->getRepository(SavedSearch::class)->createQueryBuilder('s')
+                ->where('s.idUser = :user')
+                ->setParameter('user', $user)
+                ->orderBy('s.createdAt', 'DESC')
+                ->addOrderBy('s.id', 'ASC')
+        );
+
+        return $pagination->withTotal($this->json(array_map($this->describe(...), $searches)), $total);
     }
 
     #[Route('/api/saved-searches', methods: ['POST'])]
